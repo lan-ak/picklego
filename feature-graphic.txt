@@ -1,0 +1,19 @@
+FEATURE GRAPHIC DESIGN SPECIFICATIONS
+
+Size: 1024x500 pixels
+
+Layout:
+- Logo centered prominently (the green paddles with yellow ball and "PickleGo" text)
+- Light mint green background gradient (#F0F7F4 to #E8F5E9)
+- Visual elements showing pickleball court lines subtly in the background
+
+Text Elements:
+- Tagline: "Track Your Pickleball Journey" (below the logo)
+- Optional secondary text: "Matches • Stats • Players"
+
+Visual Style:
+- Clean, modern look matching the app's aesthetic
+- Use the same green (#0D6B3E) and accent colors from the app
+- Simple, uncluttered design that highlights the logo
+
+This feature graphic will be used on the Google Play Store listing page. 

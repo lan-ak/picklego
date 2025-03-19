@@ -1,0 +1,119 @@
+GOOGLE PLAY DATA SAFETY FORM GUIDE FOR PICKLEGO
+
+DATA COLLECTION AND HANDLING
+
+1. DATA TYPES COLLECTED:
+
+   A. PERSONAL INFORMATION
+      - Name: COLLECTED
+        Purpose: To identify users and display on player profiles
+        Required: Yes
+        Shared with third parties: No
+        Ephemeral: No
+        
+      - Email address: COLLECTED
+        Purpose: For account creation and player invitations
+        Required: Yes
+        Shared with third parties: No
+        Ephemeral: No
+        
+      - Phone number: COLLECTED
+        Purpose: For account verification and player invitations
+        Required: Optional
+        Shared with third parties: No
+        Ephemeral: No
+        
+      - User IDs: COLLECTED
+        Purpose: To identify users within the application
+        Required: Yes
+        Shared with third parties: No
+        Ephemeral: No
+        
+      - Photos: COLLECTED
+        Purpose: For profile pictures only
+        Required: Optional
+        Shared with third parties: No
+        Ephemeral: No
+        
+   B. LOCATION
+      - Approximate location: NOT COLLECTED
+      - Precise location: NOT COLLECTED
+      
+   C. FINANCIAL INFO
+      - NOT COLLECTED
+      
+   D. MESSAGES
+      - Emails: NOT COLLECTED
+      - SMS or MMS: NOT COLLECTED
+      - In-app messages: NOT COLLECTED
+      
+   E. PHOTOS AND VIDEOS
+      - Photos: COLLECTED (only for profile pictures)
+      - Videos: NOT COLLECTED
+      
+   F. AUDIO
+      - NOT COLLECTED
+      
+   G. FILES AND DOCS
+      - NOT COLLECTED
+      
+   H. CALENDAR
+      - NOT COLLECTED
+      
+   I. CONTACTS
+      - NOT COLLECTED
+      
+   J. APP ACTIVITY
+      - App interactions: COLLECTED
+        Purpose: To improve user experience
+        Required: Yes
+        Shared with third parties: No
+        Ephemeral: No
+      
+      - In-app search history: NOT COLLECTED
+      
+   K. WEB BROWSING
+      - NOT COLLECTED
+      
+   L. APP INFO AND PERFORMANCE
+      - Crash logs: COLLECTED
+        Purpose: App improvement and bug fixing
+        Required: Yes
+        Shared with third parties: No
+        Ephemeral: Yes
+        
+      - Diagnostics: COLLECTED
+        Purpose: App improvement and bug fixing
+        Required: Yes
+        Shared with third parties: No
+        Ephemeral: Yes
+        
+   M. DEVICE OR OTHER IDs
+      - Device or other IDs: COLLECTED
+        Purpose: To identify unique installations
+        Required: Yes
+        Shared with third parties: No
+        Ephemeral: No
+
+2. DATA SECURITY PRACTICES:
+
+   - Data is encrypted in transit: YES
+   - Data can be deleted by request: YES
+     Method: Users can contact support@akinyemi.ca to request data deletion
+   - Follows Security practices:
+     - Data is encrypted at rest
+     - App has a mechanism to allow users to request their data be deleted
+     - Limited data retention period, data is only retained as long as necessary
+   - Committed to following the Play Families Policy: YES
+
+3. DATA SHARING:
+
+   - Data is not shared with third parties: CORRECT
+   - Data is processed for legal purposes: YES
+     (legal obligations, fraud prevention, security)
+
+DATA DELETION MECHANISM:
+Users can request deletion of their data by:
+1. Emailing support@akinyemi.ca
+2. Using the account deletion option in the app settings
+3. Data will be deleted within 30 days of the request 

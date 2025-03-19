@@ -1,0 +1,103 @@
+PICKLEGO GOOGLE PLAY STORE RELEASE CHECKLIST
+
+□ 1. DEVELOPER ACCOUNT SETUP
+  □ Create Google Play Developer account ($25 one-time fee)
+  □ Complete account details and contact information
+  □ Set up merchant account (if planning paid features later)
+  □ Enable two-factor authentication for security
+
+□ 2. APP PREPARATION
+  □ Update app.json with proper configurations
+    □ Verify package name: com.akinyemi.picklego
+    □ Confirm version code and version name
+    □ Ensure proper app permissions are listed
+  □ Create production build
+    □ Run: npx expo build:android --type app-bundle
+    □ Sign the app bundle with upload key
+  □ Test the production build on multiple devices
+    □ Verify all functionality works as expected
+    □ Check for performance issues or crashes
+    □ Test on both phones and tablets
+  □ Implement the privacy policy in the app
+    □ Verify it's accessible from the Settings screen
+    □ Confirm all data collection is disclosed
+
+□ 3. STORE LISTING CONTENT
+  □ App Details
+    □ Title: PickleGo
+    □ Short description (80 chars max)
+    □ Full description (4000 chars max)
+    □ Set app category to Sports
+    □ Add relevant tags: pickleball, sports, tracking, etc.
+  □ Graphics Assets
+    □ App icon (512x512 PNG)
+    □ Feature graphic (1024x500 PNG)
+    □ At least 8 screenshots
+      □ Phone screenshots (16:9 aspect ratio)
+      □ Tablet screenshots (if supporting tablets)
+    □ Optional: Promotional video
+  □ Contact Information
+    □ Email: support@akinyemi.ca
+    □ Website: [Your website]
+    □ Privacy policy URL: [URL to hosted privacy policy]
+
+□ 4. CONTENT RATING
+  □ Complete the content rating questionnaire
+  □ Verify expected rating: Everyone / PEGI 3+
+
+□ 5. APP PRICING & DISTRIBUTION
+  □ Set app as Free
+  □ Select distribution countries
+  □ Confirm app is not designed primarily for children
+  □ Review and accept Content Guidelines
+
+□ 6. DATA SAFETY
+  □ Complete Data Safety form
+    □ Declare all data collection
+    □ Specify purposes for data use
+    □ Explain security practices
+  □ Confirm all declarations match privacy policy
+
+□ 7. APP RELEASE
+  □ Set up testing track
+    □ Internal testing (limited to Google Groups you create)
+    □ Closed testing (invite specific testers)
+    □ Open testing (anyone can join testing)
+  □ Upload the AAB (Android App Bundle) file
+  □ Add release notes
+  □ Start rollout to testing track
+  □ Collect feedback from testers
+  □ Make necessary adjustments 
+  □ Move to production track when ready
+
+□ 8. POST-RELEASE
+  □ Set up Google Analytics (optional)
+  □ Configure crash reporting
+  □ Monitor user reviews
+  □ Prepare maintenance plan for updates
+
+□ 9. COMPLIANCE VERIFICATION
+  □ Verify privacy policy compliance with GDPR, CCPA
+  □ Confirm proper data handling disclosed in the app
+  □ Validate all required permissions are justified
+
+□ 10. MARKETING PREPARATION (OPTIONAL)
+  □ Create app website or landing page
+  □ Set up social media channels
+  □ Prepare marketing materials
+  □ Develop a user acquisition strategy
+
+IMPORTANT FINAL CHECKS:
+□ App icon displays properly on different backgrounds
+□ All text in store listing is free of spelling/grammar errors
+□ Screenshots show the most important features
+□ App runs on Android 7.0+ devices
+□ App does not crash during normal usage patterns
+□ Privacy policy accurately reflects data handling practices
+□ Release notes clearly explain what the app does
+
+NOTES:
+- First review typically takes 1-3 days
+- Prepare to address any issues raised by Google reviewers
+- Keep your contact information up to date for review communications
+- Download the released app from the Play Store to verify final experience 

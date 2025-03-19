@@ -1,0 +1,164 @@
+PICKLEGO PRODUCTION BUILD INSTRUCTIONS
+
+===== PREREQUISITES =====
+
+1. Development Environment:
+   - Node.js (v14.0.0 or higher)
+   - npm or yarn package manager
+   - Expo CLI: `npm install -g expo-cli`
+   - Android Studio (for Android builds)
+   - Xcode (for iOS builds, Mac only)
+
+2. Account Setup:
+   - Expo account (https://expo.dev/signup)
+   - Google Play Developer account
+   - Apple Developer account (for iOS)
+
+===== ANDROID BUILD PROCESS =====
+
+1. Update app.json Configuration:
+   Ensure the following are correctly set:
+   ```json
+   {
+     "expo": {
+       "name": "PickleGo",
+       "slug": "PickleGo",
+       "version": "1.0.0",
+       "orientation": "portrait",
+       "icon": "./assets/icon.png",
+       "userInterfaceStyle": "light",
+       "newArchEnabled": true,
+       "entryPoint": "./App.tsx",
+       "splash": {
+         "image": "./assets/splash-icon.png",
+         "resizeMode": "contain",
+         "backgroundColor": "#ffffff"
+       },
+       "assetBundlePatterns": [
+         "**/*"
+       ],
+       "ios": {
+         "supportsTablet": true,
+         "bundleIdentifier": "com.akinyemi.picklego"
+       },
+       "android": {
+         "adaptiveIcon": {
+           "foregroundImage": "./assets/adaptive-icon.png",
+           "backgroundColor": "#ffffff"
+         },
+         "package": "com.akinyemi.picklego",
+         "versionCode": 1
+       }
+     }
+   }
+   ```
+
+2. Generate App Signing Key:
+   ```bash
+   keytool -genkeypair -v -storetype PKCS12 -keystore picklego-upload-key.keystore -alias picklego-key-alias -keyalg RSA -keysize 2048 -validity 10000
+   ```
+   - Keep this keystore file secure - you'll need it for all future updates!
+   - Remember the keystore password and alias
+
+3. Configure Gradle for App Signing:
+   Create or edit `android/app/gradle.properties`:
+   ```
+   MYAPP_UPLOAD_STORE_FILE=picklego-upload-key.keystore
+   MYAPP_UPLOAD_KEY_ALIAS=picklego-key-alias
+   MYAPP_UPLOAD_STORE_PASSWORD=<your-keystore-password>
+   MYAPP_UPLOAD_KEY_PASSWORD=<your-key-password>
+   ```
+
+4. Build Android App Bundle (AAB):
+   ```bash
+   npx expo build:android --type app-bundle
+   ```
+   This will:
+   - Start the build process
+   - Generate an Android App Bundle (.aab file)
+   - Either use your local keystore or let Expo manage signing
+
+5. Alternative: Build APK (for testing):
+   ```bash
+   npx expo build:android --type apk
+   ```
+
+6. Download the Build:
+   - Follow the URL provided after the build completes
+   - Or find it in your Expo dashboard
+
+===== iOS BUILD PROCESS (if applicable) =====
+
+1. Configure iOS Bundle Identifier:
+   - This should be set in app.json (already done above)
+
+2. Start the iOS Build:
+   ```bash
+   npx expo build:ios --type archive
+   ```
+
+3. Follow Expo's Prompts:
+   - You'll need to provide your Apple Developer credentials
+   - Choose distribution certificate options
+
+4. Download the Build:
+   - Get the .ipa file from the provided URL
+   - Or find it in your Expo dashboard
+
+===== TESTING THE PRODUCTION BUILD =====
+
+1. Android Testing:
+   - Install the APK on test devices directly
+   - Or use Google Play Internal Test Track
+
+2. iOS Testing:
+   - Use TestFlight for distribution
+   - Add test users' Apple IDs
+
+===== UPLOADING TO PLAY STORE =====
+
+1. Create Release in Google Play Console:
+   - Log in to Google Play Console
+   - Go to "Production" track (or testing track)
+   - Create a new release
+
+2. Upload the AAB File:
+   - Use the .aab file from your build
+   - Add release notes
+
+3. Complete Store Listing:
+   - Use the materials created in the documentation
+
+4. Submit for Review:
+   - Complete content rating if not already done
+   - Approve the rollout
+
+===== TROUBLESHOOTING =====
+
+1. Build Failures:
+   - Check Expo build logs
+   - Verify all native dependencies are compatible
+   - Ensure app.json is correctly formatted
+
+2. Signing Issues:
+   - Verify keystore information is correct
+   - Confirm the keystore file is in the right location
+
+3. Play Store Rejection:
+   - Review the specific policy violation
+   - Fix issues and resubmit
+
+===== MAINTAINING BUILDS =====
+
+1. Version Management:
+   - Increment "version" for user-facing version
+   - Increment "versionCode" (Android) for each release
+   - Increment "buildNumber" (iOS) for each release
+
+2. Keep Original Keystore:
+   - Store securely with backup
+   - Required for all future updates
+
+3. Plan for Updates:
+   - Schedule regular updates
+   - Maintain a changelog 

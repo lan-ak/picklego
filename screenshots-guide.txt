@@ -1,0 +1,67 @@
+PICKLEGO SCREENSHOT SPECIFICATIONS FOR GOOGLE PLAY STORE
+
+Required: Minimum 8 screenshots (recommended: 2-3 for each device type)
+Format: PNG or JPEG, RGB color space
+Resolution: High resolution for each target device
+
+PHONE SCREENSHOTS (16:9 aspect ratio)
+1. HOME SCREEN
+   - Show the home screen with upcoming matches
+   - Include recent activity and stats summary
+   - Caption: "View your upcoming matches and stats at a glance"
+
+2. MATCHES SCREEN
+   - Show the matches tab with a mix of completed and upcoming matches
+   - Make sure to show the filtering tabs at the top
+   - Include at least one match with a "Won" badge
+   - Caption: "Track all your matches in one place with easy filtering"
+
+3. NEW MATCH CREATION
+   - Show the player selection and match details input
+   - Include team setup for doubles match
+   - Caption: "Schedule singles or doubles matches with just a few taps"
+
+4. MATCH DETAILS
+   - Show a completed match with scores and winner highlighted
+   - Include game results and statistics
+   - Caption: "Review detailed match results and performance stats"
+
+5. PLAYER STATS SCREEN
+   - Show the main statistics screen with win percentage graph
+   - Include performance metrics and history
+   - Caption: "Monitor your performance with comprehensive statistics"
+
+6. PLAYER PROFILE
+   - Show a player profile with their stats and history
+   - Include their recent matches
+   - Caption: "Manage your network of pickleball partners"
+
+7. INVITE PLAYERS SCREEN
+   - Show the invite screen where users can add new players
+   - Include the form for entering player details
+   - Caption: "Easily add and invite new players to join your matches"
+
+8. SETTINGS SCREEN
+   - Show the settings screen with various options
+   - Make sure the privacy policy option is visible
+   - Caption: "Customize your experience with flexible settings"
+
+TABLET SCREENSHOTS (Optional - if supporting tablets)
+1. MATCHES SCREEN (TABLET)
+   - Show the expanded layout on tablet with more visible matches
+   - Caption: "Optimized layout for larger screens"
+
+2. MATCH DETAILS (TABLET)
+   - Show the expanded match details with statistics side by side
+   - Caption: "See all match details at once on your tablet"
+
+DEVICE FRAMING
+- Include device frames for a more professional look
+- Use consistent framing across all screenshots
+- Make sure the app content is clearly visible and readable
+
+DESIGN TIPS
+- Ensure all personal/test data is replaced with realistic but non-identifiable information
+- Show the app in action with real usage scenarios
+- Maintain consistent brightness and contrast across all screenshots
+- Use the green theme color (#0D6B3E) consistently throughout 

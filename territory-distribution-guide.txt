@@ -1,0 +1,64 @@
+PICKLEGO GOOGLE PLAY DISTRIBUTION TERRITORIES GUIDE
+
+RECOMMENDED DISTRIBUTION SETTINGS
+
+1. COUNTRY/REGION SELECTION:
+   ☑ Make this app available in all countries/regions (default setting)
+   
+   RATIONALE: Pickleball is growing globally, with players in many countries. Making the app available worldwide maximizes potential user base.
+   
+   ALTERNATIVE: If focusing on specific markets initially, prioritize these regions:
+   - United States
+   - Canada
+   - United Kingdom
+   - Australia
+   - Spain
+   - Germany
+   - Netherlands
+   - India
+   - Singapore
+   - Japan
+   (These countries have growing pickleball communities)
+
+2. EXCLUDED COUNTRIES (if necessary):
+   None recommended, unless there are specific legal/regulatory concerns.
+
+3. PRICING & MONETIZATION:
+   ☑ Free app
+   ☐ In-app purchases: None at this time
+   ☐ Subscription: None at this time
+   ☐ Paid app: Not applicable
+
+4. COMPATIBLE DEVICES:
+   ☑ Phones
+   ☑ Tablets
+   ☐ TV: Not applicable for this sports activity tracking app
+   ☐ Wear OS: Not applicable at this stage
+   ☐ Chromebooks: Optional, but not primary target
+   ☐ Android Auto: Not applicable for this app type
+
+5. MINIMUM ANDROID REQUIREMENTS:
+   - Minimum Android version: Android 7.0 (Nougat)
+   - Target Android version: Android 14
+   
+   This covers approximately 97% of Android devices currently in use.
+
+6. USER PROGRAMS:
+   ☐ Pre-registration: Not applicable for initial launch
+   ☑ Early access: Consider using for beta testing before full launch
+   ☐ Timed publishing: Not necessary unless coordinating with marketing campaign
+
+7. MANAGED PUBLISHING:
+   ☑ Enabled: Recommended for better control over updates
+
+8. COUNTRIES REQUIRING SPECIAL CONSIDERATION:
+   - China: Requires local partner and additional regulations
+   - Russia: May have data localization requirements
+   - South Korea: Requires additional age verification for users
+   - Brazil: Has specific consumer protection laws
+
+ADDITIONAL RECOMMENDATIONS:
+1. Start with English language support only, then expand to Spanish, French, German, and Japanese based on user adoption.
+2. Enable Google Play App Signing for better security and smaller app size.
+3. Consider setting up a testing track to gather feedback before wide release.
+4. Review local data protection regulations if expanding to EU (GDPR compliance). 

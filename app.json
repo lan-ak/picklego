@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "PickleGo",
+    "slug": "PickleGo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "entryPoint": "./App.tsx",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.akinyemi.picklego"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.akinyemi.picklego"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

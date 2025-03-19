@@ -1,0 +1,63 @@
+GOOGLE PLAY STORE CONTENT RATING QUESTIONNAIRE GUIDE FOR PICKLEGO
+
+QUESTIONNAIRE RESPONSES
+
+1. CATEGORY
+   App Category: Sports
+
+2. VIOLENCE
+   Question: Does the app contain any violent content?
+   Answer: NO
+   Notes: PickleGo does not contain any depictions of violence or references to violent acts.
+
+3. SEXUALITY
+   Question: Does the app contain any sexual content or nudity?
+   Answer: NO
+   Notes: PickleGo contains no sexual content, suggestive themes, or nudity.
+
+4. LANGUAGE
+   Question: Does the app contain any potentially offensive language?
+   Answer: NO
+   Notes: PickleGo does not contain profanity or other offensive language.
+
+5. CONTROLLED SUBSTANCES
+   Question: Does the app reference alcohol, tobacco, or drugs?
+   Answer: NO
+   Notes: PickleGo makes no references to controlled substances of any kind.
+
+6. MISCELLANEOUS
+   Question: Does the app include user-generated content or user-to-user communication?
+   Answer: NO
+   Notes: While users can invite others to join matches, there is no direct messaging or chat functionality.
+
+   Question: Does the app share the user's physical location with other users?
+   Answer: NO
+   Notes: Match locations are specified, but user's real-time location is not tracked or shared.
+
+7. ADVERTISING
+   Question: Does the app contain ads?
+   Answer: NO
+   Notes: PickleGo is ad-free.
+
+   Question: If yes, do any of the ads contain mature or adult content?
+   Answer: Not Applicable
+
+8. GAMBLING
+   Question: Does the app simulate gambling or contain gambling content?
+   Answer: NO
+   Notes: No gambling elements are present in the app.
+
+9. AGE TARGETING
+   Question: Is the app specifically targeted at children under 13?
+   Answer: NO
+   Notes: While users of all ages can use PickleGo, it is primarily designed for adult pickleball players.
+
+EXPECTED RATINGS
+
+Based on these responses, your app should receive the following ratings:
+- ESRB: Everyone
+- PEGI: 3+
+- USK: 0+
+- IARC: General Audience
+
+These ratings indicate that your app is appropriate for users of all ages, with no objectionable content. 
