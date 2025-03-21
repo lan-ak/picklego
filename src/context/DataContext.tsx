@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Match, Player, DataContextType } from '../types';
+import { Match, Player, DataContextType, PlayerStats } from '../types';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -57,34 +57,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     saveData();
   }, [matches, players, deletedPlayers, currentUser]);
 
-  const addMatch = async (matchData: Omit<Match, 'id'>) => {
+  const addMatch = async (matchData: Omit<Match, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
     const newMatch = {
       ...matchData,
       id: Date.now().toString(),
     };
     setMatches(prev => [...prev, newMatch]);
-    return newMatch;
   };
 
   const updateMatch = async (matchId: string, updates: Partial<Match>): Promise<void> => {
-    // Find the match to update
     const matchToUpdate = matches.find(m => m.id === matchId);
     if (!matchToUpdate) return;
 
-    // Create updated match object
     const updatedMatch = { ...matchToUpdate, ...updates };
     
-    // Update matches state
     setMatches(prev => prev.map(match => 
       match.id === matchId ? updatedMatch : match
     ));
     
-    // If match is being completed, update player stats
     if (updates.status === 'completed' && updates.score) {
-      // Parse game scores
       const gameScores = parseGameScores(updates.score.toString());
       
-      // Update match winner stats
       if (updates.winner) {
         const winnerIds = Array.isArray(updates.winner) 
           ? updates.winner 
@@ -96,19 +89,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         winnerIds.forEach(playerId => {
           const player = players.find(p => p.id === playerId);
           if (player) {
-            const currentStats = { ...player.stats };
+            const currentStats = player.stats || {
+              totalMatches: 0,
+              wins: 0,
+              losses: 0,
+              winPercentage: 0,
+              totalGames: 0,
+              gameWins: 0,
+              gameLosses: 0
+            };
+            
             updatePlayer(playerId, {
               stats: {
-                ...currentStats,
-                wins: (currentStats.wins || 0) + 1,
-                totalMatches: (currentStats.totalMatches || 0) + 1,
-                winPercentage: ((currentStats.wins + 1) / (currentStats.totalMatches + 1)) * 100
+                totalMatches: currentStats.totalMatches + 1,
+                wins: currentStats.wins + 1,
+                losses: currentStats.losses,
+                winPercentage: ((currentStats.wins + 1) / (currentStats.totalMatches + 1)) * 100,
+                totalGames: currentStats.totalGames,
+                gameWins: currentStats.gameWins,
+                gameLosses: currentStats.gameLosses
               }
             });
           }
         });
         
-        // Get all player IDs involved in the match
         const allPlayerIds = updatedMatch.teams
           ? [...updatedMatch.teams.team1, ...updatedMatch.teams.team2]
           : updatedMatch.players;
@@ -119,94 +123,52 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .forEach(playerId => {
             const player = players.find(p => p.id === playerId);
             if (player) {
-              const currentStats = { ...player.stats };
+              const currentStats = player.stats || {
+                totalMatches: 0,
+                wins: 0,
+                losses: 0,
+                winPercentage: 0,
+                totalGames: 0,
+                gameWins: 0,
+                gameLosses: 0
+              };
+              
               updatePlayer(playerId, {
                 stats: {
-                  ...currentStats,
-                  losses: (currentStats.losses || 0) + 1,
-                  totalMatches: (currentStats.totalMatches || 0) + 1,
-                  winPercentage: (currentStats.wins / (currentStats.totalMatches + 1)) * 100
+                  totalMatches: currentStats.totalMatches + 1,
+                  wins: currentStats.wins,
+                  losses: currentStats.losses + 1,
+                  winPercentage: (currentStats.wins / (currentStats.totalMatches + 1)) * 100,
+                  totalGames: currentStats.totalGames,
+                  gameWins: currentStats.gameWins,
+                  gameLosses: currentStats.gameLosses
                 }
               });
             }
           });
-        
-        // Update game stats for all players
-        if (updatedMatch.teams) {
-          // For matches with teams property (new format)
-          [...updatedMatch.teams.team1, ...updatedMatch.teams.team2].forEach(playerId => {
-            const isTeam1 = updatedMatch.teams?.team1.includes(playerId);
-            
-            // Count game wins and losses
-            let gameWins = 0;
-            let gameLosses = 0;
-            
-            gameScores.forEach(game => {
-              const team1Won = game.team1Score > game.team2Score;
-              if ((isTeam1 && team1Won) || (!isTeam1 && !team1Won)) {
-                gameWins++;
-              } else {
-                gameLosses++;
-              }
-            });
-            
-            // Update player game stats
-            for (let i = 0; i < gameWins; i++) {
-              updatePlayerGameStats(playerId, true);
-            }
-            
-            for (let i = 0; i < gameLosses; i++) {
-              updatePlayerGameStats(playerId, false);
-            }
-          });
-        } else {
-          // For matches without teams property (old format)
-          updatedMatch.players.forEach(playerId => {
-            const playerIndex = updatedMatch.players.indexOf(playerId);
-            const isTeam1 = !updatedMatch.isDoubles 
-              ? playerIndex === 0 
-              : playerIndex < Math.floor(updatedMatch.players.length / 2);
-            
-            const playerTeam = isTeam1 ? 'team1' : 'team2';
-            const opponentTeam = isTeam1 ? 'team2' : 'team1';
-            
-            // Count game wins and losses
-            let gameWins = 0;
-            let gameLosses = 0;
-            
-            gameScores.forEach(game => {
-              const team1Won = game.team1Score > game.team2Score;
-              if ((isTeam1 && team1Won) || (!isTeam1 && !team1Won)) {
-                gameWins++;
-              } else {
-                gameLosses++;
-              }
-            });
-            
-            // Update player game stats
-            for (let i = 0; i < gameWins; i++) {
-              updatePlayerGameStats(playerId, true);
-            }
-            
-            for (let i = 0; i < gameLosses; i++) {
-              updatePlayerGameStats(playerId, false);
-            }
-          });
-        }
       }
     }
   };
 
-  // Add this function to update player game stats
   const updatePlayerGameStats = (playerId: string, isWin: boolean): void => {
     setPlayers(prev => prev.map(player => {
       if (player.id === playerId) {
-        const updatedStats = { ...player.stats };
+        const currentStats = player.stats || {
+          totalMatches: 0,
+          wins: 0,
+          losses: 0,
+          winPercentage: 0,
+          totalGames: 0,
+          gameWins: 0,
+          gameLosses: 0
+        };
         
-        // Update game stats
-        updatedStats.gameWins = (updatedStats.gameWins || 0) + (isWin ? 1 : 0);
-        updatedStats.gameLosses = (updatedStats.gameLosses || 0) + (isWin ? 0 : 1);
-        updatedStats.totalGames = (updatedStats.totalGames || 0) + 1;
+        const updatedStats: PlayerStats = {
+          ...currentStats,
+          totalGames: (currentStats.totalGames || 0) + 1,
+          gameWins: (currentStats.gameWins || 0) + (isWin ? 1 : 0),
+          gameLosses: (currentStats.gameLosses || 0) + (isWin ? 0 : 1)
+        };
         
         // Update the current user if needed
         if (currentUser && currentUser.id === playerId) {
@@ -235,10 +197,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const addPlayer = async (playerData: Omit<Player, 'id' | 'stats'>) => {
+  const addPlayer = async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>) => {
     const newPlayer = {
       ...playerData,
       id: Date.now().toString(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
       stats: {
         totalMatches: 0,
         wins: 0,
@@ -320,14 +284,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
   
-  // Check if username is available (not already used)
-  const isUsernameAvailable = async (username: string): Promise<boolean> => {
-    const normalizedUsername = username.trim().toLowerCase();
-    return !players.some(player => 
-      player.username?.toLowerCase() === normalizedUsername
-    );
-  };
-
   // Invite a player by creating a placeholder account
   const invitePlayer = async (name: string, email: string): Promise<Player | null> => {
     if (!name || !email) return null;
@@ -335,12 +291,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Check if email is already in use
     if (!await isEmailAvailable(email)) return null;
 
-    const newPlayer: Omit<Player, 'id' | 'stats'> = {
+    const newPlayer: Omit<Player, 'id' | 'createdAt' | 'updatedAt'> = {
       name,
       email,
-      isInvited: true,
-      invitedBy: currentUser?.id,
-      pendingClaim: true,
+      password: '', // This will be set when they claim their account
+      stats: {
+        totalMatches: 0,
+        wins: 0,
+        losses: 0,
+        winPercentage: 0,
+      }
     };
 
     await addPlayer(newPlayer);
@@ -416,7 +376,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Add this function to insert dummy data
   const insertDummyData = async () => {
     try {
-      // Create dummy players
       const dummyPlayers: Player[] = [
         {
           id: 'player1',
@@ -424,7 +383,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: 'john@example.com',
           phoneNumber: '555-123-4567',
           rating: 4.2,
-          profilePic: 'https://randomuser.me/api/portraits/men/32.jpg',
+          profilePicture: 'https://randomuser.me/api/portraits/men/32.jpg',
+          password: 'dummy-password',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
           stats: {
             totalMatches: 15,
             wins: 10,
@@ -441,7 +403,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: 'sarah@example.com',
           phoneNumber: '555-987-6543',
           rating: 3.8,
-          profilePic: 'https://randomuser.me/api/portraits/women/44.jpg',
+          profilePicture: 'https://randomuser.me/api/portraits/women/44.jpg',
+          password: 'dummy-password',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
           stats: {
             totalMatches: 12,
             wins: 7,
@@ -458,7 +423,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: 'mike@example.com',
           phoneNumber: '555-456-7890',
           rating: 4.5,
-          profilePic: 'https://randomuser.me/api/portraits/men/67.jpg',
+          profilePicture: 'https://randomuser.me/api/portraits/men/67.jpg',
+          password: 'dummy-password',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
           stats: {
             totalMatches: 20,
             wins: 15,
@@ -475,7 +443,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: 'emily@example.com',
           phoneNumber: '555-789-0123',
           rating: 3.5,
-          profilePic: 'https://randomuser.me/api/portraits/women/17.jpg',
+          profilePicture: 'https://randomuser.me/api/portraits/women/17.jpg',
+          password: 'dummy-password',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
           stats: {
             totalMatches: 8,
             wins: 3,
@@ -495,6 +466,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isInvited: true,
           invitedBy: 'player1',
           pendingClaim: true,
+          password: 'dummy-password',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          profilePicture: 'https://randomuser.me/api/portraits/men/92.jpg',
           stats: {
             totalMatches: 5,
             wins: 3,
@@ -644,25 +619,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Context value with all the methods and data
   const contextValue: DataContextType = {
+        players,
     matches,
-    players,
     deletedPlayers,
     currentUser,
-    addMatch,
-    updateMatch,
     addPlayer,
     removePlayer,
-    getPlayerName,
-    setCurrentUser,
+    addMatch,
+    updateMatch,
     deleteMatch,
     updatePlayer,
+    getPlayerName,
+    setCurrentUser,
     resetAllData,
     invitePlayer,
     claimInvitation,
     getInvitedPlayers,
     isEmailAvailable,
-    isUsernameAvailable,
-    insertDummyData,
+    insertDummyData
   };
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;
