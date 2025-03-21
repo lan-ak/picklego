@@ -16,13 +16,12 @@ import { useData } from '../context/DataContext';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../types';
+import { RootStackParamList, Player } from '../types';
 
 const ProfileSetupView = () => {
   const { addPlayer, setCurrentUser } = useData();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,11 +31,6 @@ const ProfileSetupView = () => {
     // Validate fields
     if (!name.trim()) {
       Alert.alert('Error', 'Please enter your name');
-      return;
-    }
-    
-    if (!username.trim()) {
-      Alert.alert('Error', 'Please enter a username');
       return;
     }
     
@@ -71,10 +65,18 @@ const ProfileSetupView = () => {
     try {
       await addPlayer({
         name: name.trim(),
-        username: username.trim(),
         email: email.trim(),
         password: password,
-        rating: ratingNum
+        rating: ratingNum,
+        stats: {
+          totalMatches: 0,
+          wins: 0,
+          losses: 0,
+          winPercentage: 0,
+          totalGames: 0,
+          gameWins: 0,
+          gameLosses: 0
+        }
       });
       
       // Navigate back to home after creating profile
@@ -137,18 +139,6 @@ const ProfileSetupView = () => {
             </View>
             
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Username</Text>
-              <TextInput
-                style={styles.input}
-                value={username}
-                onChangeText={setUsername}
-                placeholder="Choose a username"
-                returnKeyType="next"
-                autoCapitalize="none"
-              />
-            </View>
-            
-            <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Password</Text>
               <TextInput
                 style={styles.input}
@@ -198,10 +188,9 @@ const ProfileSetupView = () => {
 };
 
 const ProfileScreen = () => {
-  const { currentUser, updatePlayer, isEmailAvailable, isUsernameAvailable } = useData();
+  const { currentUser, updatePlayer, isEmailAvailable } = useData();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(currentUser?.name || '');
-  const [username, setUsername] = useState(currentUser?.username || '');
   const [email, setEmail] = useState(currentUser?.email || '');
   const [phoneNumber, setPhoneNumber] = useState(currentUser?.phoneNumber || '');
   const [password, setPassword] = useState('');
@@ -217,7 +206,6 @@ const ProfileScreen = () => {
   // Start editing profile
   const handleEditProfile = () => {
     setName(currentUser?.name || '');
-    setUsername(currentUser?.username || '');
     setEmail(currentUser?.email || '');
     setPhoneNumber(currentUser?.phoneNumber || '');
     setPassword('');
@@ -251,14 +239,6 @@ const ProfileScreen = () => {
     if (!name.trim()) {
       Alert.alert('Error', 'Name cannot be empty');
       return;
-    }
-
-    if (username && username !== currentUser.username) {
-      const isAvailable = await isUsernameAvailable(username);
-      if (!isAvailable) {
-        Alert.alert('Error', 'Username is already taken');
-        return;
-      }
     }
 
     if (email && email !== currentUser.email) {
@@ -299,28 +279,22 @@ const ProfileScreen = () => {
     }
 
     try {
-      // Prepare updates object
-      const updates: any = {
+      const updates: Partial<Player> = {
         name: name.trim(),
+        email: email.trim(),
+        phoneNumber: phoneNumber.trim(),
         rating: ratingNum
       };
-      
-      // Only include these if they're provided
-      if (username) updates.username = username;
-      if (email) updates.email = email;
-      if (phoneNumber) updates.phoneNumber = phoneNumber;
-      if (showPasswordFields && password) updates.password = password;
+
+      if (showPasswordFields && password) {
+        updates.password = password;
+      }
 
       await updatePlayer(currentUser.id, updates);
-      
-      Alert.alert('Success', 'Profile updated successfully');
       setEditing(false);
-      setShowPasswordFields(false);
-      setPassword('');
-      setConfirmPassword('');
+      Alert.alert('Success', 'Profile updated successfully');
     } catch (error) {
       Alert.alert('Error', 'Failed to update profile');
-      console.error(error);
     }
   };
 
@@ -328,9 +302,9 @@ const ProfileScreen = () => {
   const handlePickImage = async () => {
     if (!currentUser) return;
 
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Please grant camera roll permissions to upload a photo.');
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Please grant access to your photo library to change your profile picture.');
       return;
     }
 
@@ -351,6 +325,42 @@ const ProfileScreen = () => {
         Alert.alert('Error', 'Failed to update profile picture');
       }
     }
+  };
+
+  const renderStats = () => {
+    if (!currentUser?.stats) {
+      return (
+        <View style={styles.statsContainer}>
+          <Text style={styles.noStatsText}>No stats available yet</Text>
+        </View>
+      );
+    }
+
+    const stats = currentUser.stats;
+    const winPercentage = stats.totalMatches > 0 
+      ? ((stats.wins / stats.totalMatches) * 100).toFixed(1) 
+      : '0.0';
+
+    return (
+      <View style={styles.statsContainer}>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Total Matches</Text>
+          <Text style={styles.statValue}>{stats.totalMatches}</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Wins</Text>
+          <Text style={styles.statValue}>{stats.wins}</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Losses</Text>
+          <Text style={styles.statValue}>{stats.losses}</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Win Rate</Text>
+          <Text style={styles.statValue}>{winPercentage}%</Text>
+        </View>
+      </View>
+    );
   };
 
   return (
@@ -384,17 +394,6 @@ const ProfileScreen = () => {
                   value={name}
                   onChangeText={setName}
                   placeholder="Your name"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Username</Text>
-                <TextInput
-                  style={styles.input}
-                  value={username}
-                  onChangeText={setUsername}
-                  placeholder="Choose a username"
-                  autoCapitalize="none"
                 />
               </View>
 
@@ -495,13 +494,6 @@ const ProfileScreen = () => {
                 <Text style={styles.infoValue}>{currentUser.name}</Text>
               </View>
 
-              {currentUser.username && (
-                <View style={styles.infoItem}>
-                  <Text style={styles.infoLabel}>Username</Text>
-                  <Text style={styles.infoValue}>{currentUser.username}</Text>
-                </View>
-              )}
-
               {currentUser.email && (
                 <View style={styles.infoItem}>
                   <Text style={styles.infoLabel}>Email</Text>
@@ -540,31 +532,7 @@ const ProfileScreen = () => {
         <View style={styles.statsSection}>
           <Text style={[styles.sectionTitle, { color: '#0D6B3E' }]}>Player Statistics</Text>
           
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{currentUser.stats.totalMatches}</Text>
-              <Text style={styles.statLabel}>Matches</Text>
-            </View>
-            
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{currentUser.stats.wins}</Text>
-              <Text style={styles.statLabel}>Wins</Text>
-            </View>
-            
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{currentUser.stats.losses}</Text>
-              <Text style={styles.statLabel}>Losses</Text>
-            </View>
-            
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#0D6B3E' }]}>
-                {currentUser.stats.totalMatches > 0 
-                  ? Math.round((currentUser.stats.wins / currentUser.stats.totalMatches) * 100) 
-                  : 0}%
-              </Text>
-              <Text style={styles.statLabel}>Win Rate</Text>
-            </View>
-          </View>
+          {renderStats()}
         </View>
       </ScrollView>
     </Layout>
@@ -760,7 +728,7 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 16,
   },
-  statsGrid: {
+  statsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
@@ -856,6 +824,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  noStatsText: {
+    fontSize: 18,
+    color: '#666',
+    textAlign: 'center',
   },
 });
 

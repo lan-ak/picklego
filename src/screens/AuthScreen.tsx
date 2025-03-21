@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -21,21 +22,20 @@ type AuthScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const AuthScreen = () => {
   const navigation = useNavigation<AuthScreenNavigationProp>();
-  const { addPlayer, isEmailAvailable, isUsernameAvailable, setCurrentUser, insertDummyData } = useData();
+  const { addPlayer, isEmailAvailable, setCurrentUser, signIn } = useData();
   
   const [isLogin, setIsLogin] = useState(false);
   const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   
   const handleToggleMode = () => {
     setIsLogin(!isLogin);
     // Clear form fields when switching modes
     setName('');
-    setUsername('');
     setEmail('');
     setPassword('');
     setConfirmPassword('');
@@ -45,11 +45,6 @@ const AuthScreen = () => {
     // Validate fields
     if (!name.trim()) {
       Alert.alert('Error', 'Please enter your name');
-      return;
-    }
-    
-    if (!username.trim()) {
-      Alert.alert('Error', 'Please enter a username');
       return;
     }
     
@@ -70,6 +65,11 @@ const AuthScreen = () => {
       return;
     }
     
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
+    }
+    
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match');
       return;
@@ -82,67 +82,41 @@ const AuthScreen = () => {
       return;
     }
     
-    // Check if username is available
-    const usernameAvailable = await isUsernameAvailable(username);
-    if (!usernameAvailable) {
-      Alert.alert('Error', 'This username is already taken');
-      return;
-    }
-    
+    setIsLoading(true);
     try {
-      // Create new player
+      // Create new player with Firebase authentication
       await addPlayer({
         name: name.trim(),
-        username: username.trim(),
         email: email.trim(),
-        password: password, // In a real app, this should be hashed
+        password: password,
       });
       
       // Navigate to main app
       navigation.navigate('MainTabs', { screen: 'Home' });
-    } catch (error) {
-      Alert.alert('Error', 'Failed to create account');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to create account');
+    } finally {
+      setIsLoading(false);
     }
   };
   
   const handleLogin = async () => {
-    // In a real app, you would validate credentials against a backend
-    // For this demo, we'll just check if the email and password match any player
-    
     if (!email.trim() || !password) {
       Alert.alert('Error', 'Please enter both email and password');
       return;
     }
     
+    setIsLoading(true);
     try {
-      // Simulate login by finding a player with matching email
-      // In a real app, this would be a server request
-      const { players } = useData();
-      const matchingPlayer = players.find(
-        player => player.email === email.trim() && player.password === password
-      );
+      // Sign in with Firebase
+      await signIn(email.trim(), password);
       
-      if (matchingPlayer) {
-        // Set as current user
-        setCurrentUser(matchingPlayer);
-        
-        // Navigate to main app
-        navigation.navigate('MainTabs', { screen: 'Home' });
-      } else {
-        Alert.alert('Error', 'Invalid email or password');
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Login failed');
-    }
-  };
-  
-  // Handle inserting dummy data for quick testing
-  const handleInsertDummyData = async () => {
-    const success = await insertDummyData();
-    if (success) {
-      navigation.navigate('MainTabs' as never);
-    } else {
-      Alert.alert('Error', 'Failed to insert dummy data.');
+      // Navigate to main app
+      navigation.navigate('MainTabs', { screen: 'Home' });
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Login failed');
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -190,17 +164,6 @@ const AuthScreen = () => {
                   placeholder="Your full name"
                 />
               </View>
-              
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Username</Text>
-                <TextInput
-                  style={styles.input}
-                  value={username}
-                  onChangeText={setUsername}
-                  placeholder="Choose a username"
-                  autoCapitalize="none"
-                />
-              </View>
             </>
           )}
           
@@ -218,35 +181,54 @@ const AuthScreen = () => {
           
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Password</Text>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Choose a password"
-              secureTextEntry
-            />
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter your password"
+                secureTextEntry={!showPassword}
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off' : 'eye'}
+                  size={24}
+                  color="#666"
+                />
+              </TouchableOpacity>
+            </View>
           </View>
           
           {!isLogin && (
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Confirm Password</Text>
-              <TextInput
-                style={styles.input}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                placeholder="Confirm your password"
-                secureTextEntry
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Confirm your password"
+                  secureTextEntry={!showPassword}
+                />
+              </View>
             </View>
           )}
           
           <TouchableOpacity
-            style={styles.submitButton}
+            style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
             onPress={isLogin ? handleLogin : handleSignUp}
+            disabled={isLoading}
           >
-            <Text style={styles.submitButtonText}>
-              {isLogin ? 'Login' : 'Create Account'}
-            </Text>
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitButtonText}>
+                {isLogin ? 'Login' : 'Create Account'}
+              </Text>
+            )}
           </TouchableOpacity>
           
           <TouchableOpacity
@@ -257,14 +239,6 @@ const AuthScreen = () => {
               {isLogin ? 'Need an account? Sign up' : 'Already have an account? Login'}
             </Text>
           </TouchableOpacity>
-          
-          {/* Add a button for quick testing with dummy data */}
-          <TouchableOpacity 
-            style={styles.dummyDataButton} 
-            onPress={handleInsertDummyData}
-          >
-            <Text style={styles.dummyDataButtonText}>Quick Start with Demo Data</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -274,74 +248,77 @@ const AuthScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: '#fff',
   },
   scrollContent: {
     flexGrow: 1,
     padding: 20,
+    justifyContent: 'center',
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: 40,
     marginBottom: 40,
   },
   appName: {
     fontSize: 32,
     fontWeight: 'bold',
     color: '#0D6B3E',
-    marginTop: 16,
+    marginTop: 10,
   },
   tagline: {
     fontSize: 16,
     color: '#666',
-    marginTop: 8,
+    marginTop: 5,
   },
   formContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderRadius: 10,
     padding: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   tabContainer: {
     flexDirection: 'row',
     marginBottom: 20,
     borderRadius: 8,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#0D6B3E',
+    backgroundColor: '#f0f0f0',
+    padding: 4,
   },
   tabButton: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: 'center',
+    borderRadius: 6,
   },
   activeTab: {
     backgroundColor: '#0D6B3E',
   },
   inactiveTab: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'transparent',
   },
   tabText: {
     fontSize: 16,
     fontWeight: '600',
   },
   activeTabText: {
-    color: '#FFFFFF',
+    color: '#fff',
   },
   inactiveTabText: {
-    color: '#0D6B3E',
+    color: '#666',
   },
   inputContainer: {
     marginBottom: 16,
   },
   inputLabel: {
-    fontSize: 16,
-    marginBottom: 8,
+    fontSize: 14,
     color: '#333',
+    marginBottom: 8,
   },
   input: {
     borderWidth: 1,
@@ -350,40 +327,39 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
   },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingRight: 12,
+  },
+  eyeIcon: {
+    padding: 8,
+  },
   submitButton: {
     backgroundColor: '#0D6B3E',
-    paddingVertical: 14,
+    padding: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 20,
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
   },
   submitButtonText: {
-    color: '#FFFFFF',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
   toggleButton: {
-    alignItems: 'center',
     marginTop: 16,
-    padding: 8,
+    alignItems: 'center',
   },
   toggleButtonText: {
     color: '#0D6B3E',
     fontSize: 14,
-  },
-  dummyDataButton: {
-    marginTop: 20,
-    backgroundColor: '#E8F5E9',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#0D6B3E',
-  },
-  dummyDataButtonText: {
-    color: '#0D6B3E',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
 

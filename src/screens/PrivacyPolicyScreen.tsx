@@ -63,7 +63,7 @@ const PrivacyPolicyScreen: React.FC = () => {
             We may share your information with:
           </Text>
           <Text style={styles.paragraph}>
-            • <Text style={styles.bold}>Other Users</Text>: Your username, profile picture, and game statistics are visible to other users of the App.
+            • <Text style={styles.bold}>Other Users</Text>: Your name, profile picture, and game statistics are visible to other users of the App.
           </Text>
           <Text style={styles.paragraph}>
             • <Text style={styles.bold}>Service Providers</Text>: We may share information with third-party vendors who provide services on our behalf.

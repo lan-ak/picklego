@@ -35,7 +35,7 @@ type SettingSection = {
 type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const SettingsScreen: React.FC = () => {
-  const { currentUser, updatePlayer, resetAllData, invitePlayer, getInvitedPlayers, players, removePlayer, insertDummyData } = useData();
+  const { currentUser, updatePlayer, resetAllData, invitePlayer, getInvitedPlayers, players, removePlayer, insertDummyData, signOutUser } = useData();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -256,6 +256,37 @@ const SettingsScreen: React.FC = () => {
         },
       ],
     },
+    {
+      title: 'Account Actions',
+      items: [
+        {
+          icon: 'log-out-outline',
+          label: 'Sign Out',
+          onPress: async () => {
+            Alert.alert(
+              'Sign Out',
+              'Are you sure you want to sign out?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Sign Out',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await signOutUser();
+                      navigation.navigate('Auth');
+                    } catch (error) {
+                      Alert.alert('Error', 'Failed to sign out. Please try again.');
+                    }
+                  }
+                }
+              ]
+            );
+          },
+          danger: true
+        }
+      ]
+    }
   ];
 
   // Invite Player Modal

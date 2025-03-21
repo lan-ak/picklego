@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Match, Player, DataContextType, PlayerStats } from '../types';
+import { 
+  signUpWithEmail, 
+  signInWithEmail, 
+  signOut, 
+  onAuthStateChanged,
+  createPlayerDocument,
+  updatePlayerDocument,
+  getPlayerDocument,
+  getPlayerByEmail
+} from '../config/firebase';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -56,6 +66,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     saveData();
   }, [matches, players, deletedPlayers, currentUser]);
+
+  // Initialize Firebase auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        // Get the player document from Firestore
+        const playerDoc = await getPlayerDocument(firebaseUser.uid);
+        if (playerDoc) {
+          setCurrentUser(playerDoc);
+          setPlayers(prev => {
+            const filtered = prev.filter(p => p.id !== playerDoc.id);
+            return [...filtered, playerDoc];
+          });
+        }
+      } else {
+        setCurrentUser(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const addMatch = async (matchData: Omit<Match, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
     const newMatch = {
@@ -197,24 +228,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const addPlayer = async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newPlayer = {
-      ...playerData,
-      id: Date.now().toString(),
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      stats: {
-        totalMatches: 0,
-        wins: 0,
-        losses: 0,
-        winPercentage: 0,
-      },
-    };
-    setPlayers(prev => [...prev, newPlayer]);
-    
-    // Set as current user if it's the first player
-    if (players.length === 0) {
+  const addPlayer = async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
+    try {
+      // Create Firebase auth user
+      const firebaseUser = await signUpWithEmail(playerData.email, playerData.password);
+      
+      // Create player in Firestore
+      const newPlayer: Player = {
+        ...playerData,
+        id: firebaseUser.uid,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        stats: {
+          totalMatches: 0,
+          wins: 0,
+          losses: 0,
+          winPercentage: 0,
+          totalGames: 0,
+          gameWins: 0,
+          gameLosses: 0
+        }
+      };
+
+      await createPlayerDocument(newPlayer);
+      setPlayers(prev => [...prev, newPlayer]);
       setCurrentUser(newPlayer);
+    } catch (error: any) {
+      throw new Error(error.message);
     }
   };
 
@@ -240,18 +280,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMatches(prev => prev.filter(match => match.id !== matchId));
   };
 
-  const updatePlayer = async (playerId: string, updates: Partial<Player>) => {
-    setPlayers(prev => prev.map(player => {
-      if (player.id === playerId) {
-        const updatedPlayer = { ...player, ...updates };
-        // If updating the current user, also update currentUser state
-        if (currentUser && currentUser.id === playerId) {
-          setCurrentUser(updatedPlayer);
+  const updatePlayer = async (playerId: string, data: Partial<Player>) => {
+    try {
+      await updatePlayerDocument(playerId, data);
+      const updatedDoc = await getPlayerDocument(playerId);
+      if (updatedDoc) {
+        setPlayers(prev => {
+          const filtered = prev.filter(p => p.id !== playerId);
+          return [...filtered, updatedDoc];
+        });
+        if (currentUser?.id === playerId) {
+          setCurrentUser(updatedDoc);
         }
-        return updatedPlayer;
       }
-      return player;
-    }));
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
   };
 
   const resetAllData = async () => {
@@ -278,10 +322,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Check if email is available (not already used)
   const isEmailAvailable = async (email: string): Promise<boolean> => {
-    const normalizedEmail = email.trim().toLowerCase();
-    return !players.some(player => 
-      player.email?.toLowerCase() === normalizedEmail
-    );
+    try {
+      const existingPlayer = await getPlayerByEmail(email);
+      return !existingPlayer;
+    } catch (error) {
+      console.error('Error checking email availability:', error);
+      return false;
+    }
   };
   
   // Invite a player by creating a placeholder account
@@ -383,7 +430,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: 'john@example.com',
           phoneNumber: '555-123-4567',
           rating: 4.2,
-          profilePicture: 'https://randomuser.me/api/portraits/men/32.jpg',
+          profilePic: 'https://randomuser.me/api/portraits/men/32.jpg',
           password: 'dummy-password',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -403,7 +450,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: 'sarah@example.com',
           phoneNumber: '555-987-6543',
           rating: 3.8,
-          profilePicture: 'https://randomuser.me/api/portraits/women/44.jpg',
+          profilePic: 'https://randomuser.me/api/portraits/women/44.jpg',
           password: 'dummy-password',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -423,7 +470,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: 'mike@example.com',
           phoneNumber: '555-456-7890',
           rating: 4.5,
-          profilePicture: 'https://randomuser.me/api/portraits/men/67.jpg',
+          profilePic: 'https://randomuser.me/api/portraits/men/67.jpg',
           password: 'dummy-password',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -443,7 +490,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: 'emily@example.com',
           phoneNumber: '555-789-0123',
           rating: 3.5,
-          profilePicture: 'https://randomuser.me/api/portraits/women/17.jpg',
+          profilePic: 'https://randomuser.me/api/portraits/women/17.jpg',
           password: 'dummy-password',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -469,7 +516,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           password: 'dummy-password',
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          profilePicture: 'https://randomuser.me/api/portraits/men/92.jpg',
+          profilePic: 'https://randomuser.me/api/portraits/men/92.jpg',
           stats: {
             totalMatches: 5,
             wins: 3,
@@ -617,6 +664,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const signIn = async (email: string, password: string) => {
+    try {
+      const firebaseUser = await signInWithEmail(email, password);
+      const playerDoc = await getPlayerDocument(firebaseUser.uid);
+      if (playerDoc) {
+        setCurrentUser(playerDoc);
+        setPlayers(prev => {
+          const filtered = prev.filter(p => p.id !== playerDoc.id);
+          return [...filtered, playerDoc];
+        });
+      }
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  };
+
+  const signOutUser = async () => {
+    try {
+      await signOut();
+      setCurrentUser(null);
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  };
+
   // Context value with all the methods and data
   const contextValue: DataContextType = {
         players,
@@ -636,7 +708,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     claimInvitation,
     getInvitedPlayers,
     isEmailAvailable,
-    insertDummyData
+    insertDummyData,
+    signIn,
+    signOutUser
   };
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;

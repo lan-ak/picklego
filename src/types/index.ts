@@ -19,9 +19,9 @@ export interface Player {
   password: string;  // In a real app, this would be hashed
   rating?: number;   // Player's skill rating (1.0-5.0)
   phoneNumber?: string;
-  profilePicture?: string;
+  profilePic?: string;
   matches?: string[];  // Array of match IDs
-  stats?: PlayerStats;
+  stats: PlayerStats;
   createdAt: number;
   updatedAt: number;
   invitedBy?: string;  // ID of the player who invited this player
@@ -68,6 +68,8 @@ export interface DataContextType {
   getInvitedPlayers: () => Player[];
   isEmailAvailable: (email: string) => Promise<boolean>;
   insertDummyData: () => Promise<boolean>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOutUser: () => Promise<void>;
 }
 
 export type MainTabParamList = {
