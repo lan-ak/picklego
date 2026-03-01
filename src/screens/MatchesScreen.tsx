@@ -1,11 +1,10 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
 import { format } from 'date-fns';
 import Layout from '../components/Layout';
-import { FooterButton } from '../components/FooterButton';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -23,20 +22,6 @@ const MatchesScreen = () => {
   const navigation = useNavigation<MatchesScreenNavigationProp>();
   const { matches, players, currentUser, getPlayerName } = useData();
   const [activeTab, setActiveTab] = useState<MatchesTab>('all');
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title: 'Matches',
-      headerRight: () => (
-        <TouchableOpacity
-          onPress={() => navigation.navigate('AddMatch')}
-          style={styles.headerButton}
-        >
-          <Icon name="plus-circle" size={24} color={colors.primary} />
-        </TouchableOpacity>
-      ),
-    });
-  }, [navigation]);
 
   // Filter matches based on active tab
   const getFilteredMatches = (): typeof matches => {
@@ -297,6 +282,7 @@ const MatchesScreen = () => {
     <Layout
       title="Matches"
       showBackButton={true}
+      isInTabNavigator={true}
       rightComponent={
         <TouchableOpacity
           onPress={() => navigation.navigate('AddMatch')}
@@ -337,18 +323,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    padding: spacing.lg,
-    paddingTop: 60,
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray100,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.secondary,
-    textAlign: 'center',
-  },
   tabsContainer: {
     backgroundColor: colors.white,
     ...shadows.sm,
@@ -382,7 +356,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
-    paddingBottom: 100,
+    paddingBottom: spacing.xxxl,
   },
   matchCard: {
     padding: spacing.lg,
@@ -449,7 +423,7 @@ const styles = StyleSheet.create({
   matchType: {
     ...typography.label,
     color: colors.primary,
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
   teamsContainer: {
     marginVertical: spacing.md,
@@ -487,7 +461,7 @@ const styles = StyleSheet.create({
   matchLocation: {
     ...typography.bodySmall,
     color: colors.gray500,
-    marginTop: 10,
+    marginTop: spacing.sm,
   },
   matchScore: {
     ...typography.scoreDisplay,

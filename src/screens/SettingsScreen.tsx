@@ -469,7 +469,7 @@ const SettingsScreen: React.FC = () => {
   };
 
   return (
-    <Layout title="Settings">
+    <Layout title="Settings" isInTabNavigator={true}>
       <ScrollView style={styles.container}>
         {/* Profile Section */}
         <View style={styles.profileSection}>
@@ -601,12 +601,12 @@ const styles = StyleSheet.create({
   profileName: {
     ...typography.h3,
     color: colors.neutral,
-    marginBottom: 6,
+    marginBottom: spacing.xs,
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
   ratingText: {
     ...typography.bodyLarge,
@@ -617,7 +617,7 @@ const styles = StyleSheet.create({
   editProfileButton: {
     backgroundColor: colors.primaryOverlay,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.xs,
     borderRadius: borderRadius.xl,
     alignSelf: 'flex-start',
     borderWidth: 1,
@@ -669,12 +669,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: spacing.xxl,
-    paddingVertical: 40,
+    paddingVertical: spacing.xxxxl,
   },
   modalContent: {
     backgroundColor: colors.white,
-    borderRadius: 15,
-    padding: 14,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
     width: '85%',
     maxWidth: 360,
   },
@@ -682,10 +682,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
   closeButton: {
-    padding: 5,
+    padding: spacing.xs,
   },
   modalDescription: {
     ...typography.bodyLarge,
@@ -696,9 +696,9 @@ const styles = StyleSheet.create({
   inviteButton: {
     backgroundColor: colors.primary,
     borderRadius: borderRadius.sm,
-    padding: 15,
+    padding: spacing.lg,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: spacing.sm,
   },
   inviteButtonText: {
     ...typography.button,
@@ -711,7 +711,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 15,
+    padding: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: colors.cardBorder,
   },
@@ -731,8 +731,8 @@ const styles = StyleSheet.create({
   invitedPlayerStatus: {
     fontSize: 14,
     fontWeight: '500',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: borderRadius.md,
     overflow: 'hidden',
   },
@@ -819,13 +819,13 @@ const styles = StyleSheet.create({
   inputLabel: {
     ...typography.label,
     color: colors.neutral,
-    marginBottom: 2,
+    marginBottom: spacing.xs,
   },
   input: {
     borderWidth: 1,
     borderColor: colors.inputBorder,
     borderRadius: borderRadius.sm,
-    padding: 7,
+    padding: spacing.sm,
     fontSize: 13,
   },
   pendingText: {
@@ -835,10 +835,10 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: colors.primary,
-    paddingVertical: 10,
+    paddingVertical: spacing.sm,
     borderRadius: borderRadius.sm,
     alignItems: 'center',
-    marginTop: 14,
+    marginTop: spacing.md,
   },
   saveButtonText: {
     ...typography.button,

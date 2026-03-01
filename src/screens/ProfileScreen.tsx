@@ -8,7 +8,6 @@ import {
   Image,
   TextInput,
   Alert,
-  Platform
 } from 'react-native';
 import { Icon } from '../components/Icon';
 import Layout from '../components/Layout';
@@ -546,21 +545,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
-    paddingBottom: 40,
-  },
-  header: {
-    padding: spacing.lg,
-    paddingTop: Platform.OS === 'ios' ? 60 : spacing.xl,
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-    backgroundColor: colors.white,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.secondary,
-  },
   profileSection: {
     backgroundColor: colors.white,
     margin: spacing.lg,
@@ -614,7 +598,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.inputBorder,
     borderRadius: borderRadius.sm,
-    padding: 14,
+    padding: spacing.md,
     ...typography.bodyLarge,
   },
   buttonRow: {
@@ -628,7 +612,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 5,
+    marginHorizontal: spacing.xs,
   },
   saveButton: {
     backgroundColor: colors.secondary,
@@ -648,7 +632,7 @@ const styles = StyleSheet.create({
   },
   passwordToggle: {
     alignItems: 'center',
-    padding: 10,
+    padding: spacing.sm,
     marginBottom: spacing.lg,
   },
   passwordToggleText: {
@@ -683,7 +667,7 @@ const styles = StyleSheet.create({
   ratingText: {
     ...typography.bodyLarge,
     fontWeight: '500',
-    marginLeft: 5,
+    marginLeft: spacing.xs,
     color: colors.neutral,
   },
   editButton: {
@@ -751,7 +735,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingVertical: 40,
+    paddingVertical: spacing.xxxxl,
     paddingHorizontal: spacing.xxl,
     justifyContent: 'center',
   },
@@ -774,7 +758,7 @@ const styles = StyleSheet.create({
     ...typography.h1,
     fontSize: 28,
     color: colors.primary,
-    marginBottom: 10,
+    marginBottom: spacing.sm,
     textAlign: 'center',
   },
   setupSubtitle: {

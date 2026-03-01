@@ -124,8 +124,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   contentContainer: {
-    padding: spacing.xl,
-    paddingBottom: 40,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxxl,
   },
   effectiveDate: {
     ...typography.bodySmall,

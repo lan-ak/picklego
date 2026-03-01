@@ -700,7 +700,7 @@ const MyStatsScreen = () => {
   };
 
   return (
-    <Layout title="My Stats">
+    <Layout title="My Stats" isInTabNavigator={true}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {renderStatsTabs()}
         {renderTimeFilters()}
@@ -857,7 +857,7 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: spacing.md,
     alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
@@ -896,7 +896,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.h3,
     color: colors.primary,
-    marginLeft: 10,
+    marginLeft: spacing.sm,
     letterSpacing: 0.5,
   },
   sectionSubtitle: {
@@ -991,7 +991,7 @@ const styles = StyleSheet.create({
   },
   resultBadge: {
     paddingHorizontal: spacing.md,
-    paddingVertical: 5,
+    paddingVertical: spacing.xs,
     borderRadius: borderRadius.md,
   },
   winBadge: {
@@ -1019,7 +1019,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
   matchOpponents: {
     ...typography.bodyLarge,
@@ -1032,7 +1032,7 @@ const styles = StyleSheet.create({
     color: colors.gray500,
     fontWeight: '500',
     backgroundColor: colors.surface,
-    paddingHorizontal: 10,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.sm,
   },
@@ -1044,7 +1044,7 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.gray500,
     fontWeight: '500',
-    marginRight: 6,
+    marginRight: spacing.xs,
   },
   matchScore: {
     ...typography.label,
@@ -1063,7 +1063,7 @@ const styles = StyleSheet.create({
   },
   timeFilterTab: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: spacing.sm,
     alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
@@ -1215,7 +1215,7 @@ const styles = StyleSheet.create({
   sectionDivider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 14,
+    marginVertical: spacing.md,
     paddingHorizontal: spacing.lg,
   },
   dividerLine: {
@@ -1263,7 +1263,7 @@ const styles = StyleSheet.create({
     ...typography.stats,
     fontSize: 36,
     color: colors.primary,
-    marginVertical: 6,
+    marginVertical: spacing.xs,
   },
   streakLabel: {
     ...typography.caption,
@@ -1282,7 +1282,7 @@ const styles = StyleSheet.create({
   },
   partnerHeader: {
     flexDirection: 'row',
-    paddingBottom: 10,
+    paddingBottom: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray200,
     marginBottom: spacing.sm,
@@ -1303,7 +1303,7 @@ const styles = StyleSheet.create({
   partnerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.surface,
   },
@@ -1333,7 +1333,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
     textAlign: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.md,
     overflow: 'hidden',

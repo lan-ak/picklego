@@ -343,7 +343,7 @@ const styles = StyleSheet.create({
   inputLabel: {
     ...typography.label,
     color: colors.neutral,
-    marginBottom: 6,
+    marginBottom: spacing.xs,
   },
   input: {
     borderWidth: 1,

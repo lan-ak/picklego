@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
 import type { MainTabParamList } from '../types';
-import { colors, shadows } from '../theme';
+import { colors, shadows, layout } from '../theme';
 
 // Screen imports
 import HomeScreen from '../screens/HomeScreen';
@@ -15,6 +16,8 @@ import SettingsScreen from '../screens/SettingsScreen';
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 const MainTabs = () => {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={({ navigation }) => ({
@@ -22,7 +25,11 @@ const MainTabs = () => {
         tabBarShowLabel: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.tabInactive,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: {
+          ...styles.tabBar,
+          height: layout.TAB_BAR_HEIGHT + insets.bottom,
+          paddingBottom: insets.bottom,
+        },
       })}
     >
       <Tab.Screen
@@ -91,7 +98,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 60,
+    height: layout.TAB_BAR_HEIGHT,
     backgroundColor: colors.white,
     borderRadius: 0,
     shadowColor: '#000',

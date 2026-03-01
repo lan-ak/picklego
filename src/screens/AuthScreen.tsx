@@ -5,13 +5,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Image,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
@@ -26,13 +26,13 @@ type AuthScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const AuthScreen = () => {
   const navigation = useNavigation<AuthScreenNavigationProp>();
-  const { addPlayer, isEmailAvailable, setCurrentUser, signIn } = useData();
+  const { addPlayer, setCurrentUser, signIn } = useData();
   const { showToast } = useToast();
 
   const [isLogin, setIsLogin] = useState(false);
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState(__DEV__ ? 'test@test.com' : '');
+  const [password, setPassword] = useState(__DEV__ ? 'password123' : '');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -79,13 +79,6 @@ const AuthScreen = () => {
 
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-
-    // Check if email is available
-    const emailAvailable = await isEmailAvailable(email);
-    if (!emailAvailable) {
-      Alert.alert('Error', 'This email is already registered');
       return;
     }
 
@@ -145,11 +138,12 @@ const AuthScreen = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.logoContainer}>
           <PicklePete pose="welcome" size="sm" message="Let's play!" />
           <Text style={styles.appName}>PickleGo</Text>
@@ -332,15 +326,19 @@ const AuthScreen = () => {
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: colors.white,
+  },
+  keyboardView: {
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
@@ -349,17 +347,17 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: spacing.xxxl,
   },
   appName: {
     ...typography.h1,
     color: colors.primary,
-    marginTop: 10,
+    marginTop: spacing.sm,
   },
   tagline: {
     ...typography.bodyLarge,
     color: colors.gray500,
-    marginTop: 5,
+    marginTop: spacing.xs,
   },
   formContainer: {
     backgroundColor: colors.white,
@@ -376,9 +374,9 @@ const styles = StyleSheet.create({
   },
   tabButton: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: spacing.sm,
     alignItems: 'center',
-    borderRadius: 6,
+    borderRadius: borderRadius.sm,
   },
   activeTab: {
     backgroundColor: colors.primary,
@@ -472,7 +470,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   cancelButton: {
-    marginTop: 10,
+    marginTop: spacing.sm,
     alignItems: 'center',
   },
   cancelButtonText: {

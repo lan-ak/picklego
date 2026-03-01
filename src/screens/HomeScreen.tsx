@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Animated } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -8,7 +9,6 @@ import { RootStackParamList, MainTabParamList, Match, Game } from '../types';
 import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
 import { format } from 'date-fns';
-import { Animated } from 'react-native';
 import Layout from '../components/Layout';
 import MatchCard from '../components/MatchCard';
 import PicklePete from '../components/PicklePete';
@@ -23,7 +23,7 @@ const OnboardingView = ({ onComplete }: { onComplete: () => void }) => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
 
   return (
-    <View style={styles.onboardingContainer}>
+    <SafeAreaView style={styles.onboardingContainer} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.onboardingContent}>
         <PicklePete pose="welcome" size="md" message="Let's track your pickleball journey!" />
         <Text style={styles.onboardingTitle}>Welcome to PickleGo!</Text>
@@ -42,7 +42,7 @@ const OnboardingView = ({ onComplete }: { onComplete: () => void }) => {
           <Icon name="arrow-right" size={20} color={colors.white} />
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -184,6 +184,7 @@ const HomeScreen = () => {
       title="PickleGo"
       showBackButton={false}
       isHomeScreen={true}
+      isInTabNavigator={true}
       rightComponent={
         <TouchableOpacity
           onPress={navigateToProfile}
@@ -328,7 +329,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    padding: spacing.xl,
+    padding: spacing.lg,
     paddingBottom: spacing.xxl,
     justifyContent: 'space-between',
   },
@@ -336,7 +337,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
+    marginTop: spacing.sm,
     marginBottom: spacing.xl,
   },
   logoImage: {
@@ -383,7 +384,7 @@ const styles = StyleSheet.create({
   },
   onboardingContent: {
     backgroundColor: colors.white,
-    padding: 30,
+    padding: spacing.xxxl,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
     width: '100%',
@@ -408,18 +409,18 @@ const styles = StyleSheet.create({
     ...typography.bodyLarge,
     color: colors.gray500,
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: spacing.xxxl,
     lineHeight: 22,
   },
   onboardingButton: {
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.xxl,
-    paddingVertical: 14,
+    paddingVertical: spacing.md,
     borderRadius: borderRadius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
+    marginTop: spacing.sm,
   },
   onboardingButtonText: {
     ...typography.button,
@@ -479,7 +480,7 @@ const styles = StyleSheet.create({
   emptyStateCard: {
     backgroundColor: colors.white,
     borderRadius: borderRadius.lg,
-    padding: 30,
+    padding: spacing.xxxl,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.md,
@@ -537,7 +538,7 @@ const styles = StyleSheet.create({
     color: colors.loss,
   },
   matchDetails: {
-    marginBottom: 5,
+    marginBottom: spacing.xs,
   },
   playerNames: {
     ...typography.bodyLarge,
@@ -552,7 +553,7 @@ const styles = StyleSheet.create({
   locationText: {
     ...typography.bodySmall,
     color: colors.gray500,
-    marginTop: 5,
+    marginTop: spacing.xs,
   },
   nextMatchCard: {
     backgroundColor: colors.white,
@@ -583,7 +584,7 @@ const styles = StyleSheet.create({
   matchFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 5,
+    marginTop: spacing.xs,
   },
   profileButton: {
     padding: spacing.xs,

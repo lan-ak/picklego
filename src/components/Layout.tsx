@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Platform, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -12,6 +13,7 @@ type LayoutProps = {
   showBackButton?: boolean;
   rightComponent?: React.ReactNode;
   isHomeScreen?: boolean;
+  isInTabNavigator?: boolean;
 };
 
 const Layout: React.FC<LayoutProps> = ({
@@ -19,23 +21,27 @@ const Layout: React.FC<LayoutProps> = ({
   title,
   showBackButton = true,
   rightComponent,
-  isHomeScreen = false
+  isHomeScreen = false,
+  isInTabNavigator = false,
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const statusBarHeight = StatusBar.currentHeight || 0;
+  const insets = useSafeAreaInsets();
 
   const navigateToHome = () => {
     navigation.navigate('MainTabs', { screen: 'Home' });
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar backgroundColor={colors.white} barStyle="dark-content" />
+    <View style={[
+      styles.safeArea,
+      {
+        paddingBottom: isInTabNavigator ? 0 : insets.bottom,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      },
+    ]}>
       {title && (
-        <View style={[
-          styles.header,
-          Platform.OS === 'android' && { paddingTop: statusBarHeight + spacing.lg }
-        ]}>
+        <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
           {showBackButton && navigation.canGoBack() && (
             <TouchableOpacity
               style={styles.backButton}
@@ -66,10 +72,10 @@ const Layout: React.FC<LayoutProps> = ({
           </View>
         </View>
       )}
-      <View style={styles.container}>
+      <View style={[styles.container, !title && { paddingTop: insets.top }]}>
         {children}
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -86,7 +92,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingTop: Platform.OS === 'android' ? spacing.lg : spacing.md,
     paddingBottom: spacing.md,
     backgroundColor: colors.white,
     borderBottomWidth: 1,

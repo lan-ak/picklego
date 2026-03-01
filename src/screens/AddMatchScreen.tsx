@@ -17,7 +17,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
-import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { colors, typography, spacing, borderRadius, shadows, layout } from '../theme';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -653,7 +653,7 @@ const AddMatchScreen = () => {
   );
 
   return (
-    <Layout title={isEditing ? "Edit Match" : "New Match"}>
+    <Layout title={isEditing ? "Edit Match" : "New Match"} isInTabNavigator={true}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -846,7 +846,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: layout.TAB_BAR_HEIGHT + spacing.xxxl,
   },
   section: {
     backgroundColor: colors.white,
@@ -863,7 +863,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.h3,
     color: colors.primary,
-    marginLeft: 10,
+    marginLeft: spacing.sm,
     textAlign: 'center',
   },
   settingRow: {
@@ -903,7 +903,7 @@ const styles = StyleSheet.create({
     borderColor: colors.inputBorder,
     borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.xs,
     width: 60,
     textAlign: 'center',
     fontSize: 16,
@@ -955,7 +955,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.surface,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.xs,
     borderRadius: borderRadius.lg,
     gap: spacing.sm,
   },
@@ -1029,7 +1029,7 @@ const styles = StyleSheet.create({
   },
   scheduleButton: {
     backgroundColor: colors.primary,
-    paddingVertical: 14,
+    paddingVertical: spacing.md,
     borderRadius: borderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1037,7 +1037,7 @@ const styles = StyleSheet.create({
   },
   playNowButton: {
     backgroundColor: colors.action,
-    paddingVertical: 14,
+    paddingVertical: spacing.md,
     borderRadius: borderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1063,7 +1063,7 @@ const styles = StyleSheet.create({
   onboardingContent: {
     backgroundColor: colors.white,
     borderRadius: borderRadius.md,
-    padding: 30,
+    padding: spacing.xxxl,
     alignItems: 'center',
     width: '100%',
     ...shadows.lg,
@@ -1092,12 +1092,12 @@ const styles = StyleSheet.create({
   onboardingButton: {
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.xxl,
-    paddingVertical: 14,
+    paddingVertical: spacing.md,
     borderRadius: borderRadius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
+    marginTop: spacing.sm,
   },
   onboardingButtonText: {
     ...typography.button,
@@ -1124,28 +1124,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: spacing.lg,
   },
   modalTitle: {
     ...typography.h2,
     color: colors.primary,
   },
   closeButton: {
-    padding: 5,
+    padding: spacing.xs,
   },
   inputContainer: {
-    marginBottom: 15,
+    marginBottom: spacing.lg,
   },
   inputLabel: {
     ...typography.label,
     color: colors.neutral,
-    marginBottom: 5,
+    marginBottom: spacing.xs,
   },
   switchContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: spacing.lg,
   },
   switchLabel: {
     ...typography.bodyLarge,
@@ -1227,7 +1227,7 @@ const styles = StyleSheet.create({
   },
   addNewPlayerButton: {
     backgroundColor: colors.primary,
-    paddingVertical: 10,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: borderRadius.sm,
   },
@@ -1241,14 +1241,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
-    padding: 10,
+    padding: spacing.sm,
   },
   selectedPlayerChip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primaryOverlay,
     borderRadius: borderRadius.xl,
-    paddingVertical: 6,
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     marginRight: spacing.sm,
     marginBottom: spacing.sm,
