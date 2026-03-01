@@ -16,7 +16,10 @@ import {
   deleteMatchDocument,
   deletePlayerDocument,
   getMatchesForPlayer,
-  sendPasswordReset
+  sendPasswordReset,
+  signInWithGoogle,
+  signInWithApple,
+  getCurrentUser,
 } from '../config/firebase';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -958,6 +961,112 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const signInWithSocial = async (provider: 'google' | 'apple'): Promise<{ needsName: boolean }> => {
+    try {
+      let firebaseUser;
+      let socialDisplayName: string | null = null;
+
+      if (provider === 'google') {
+        firebaseUser = await signInWithGoogle();
+        socialDisplayName = firebaseUser.displayName;
+      } else {
+        const result = await signInWithApple();
+        firebaseUser = result.user;
+        socialDisplayName = result.displayName || firebaseUser.displayName;
+      }
+
+      // Check if Player doc already exists (returning user)
+      const existingPlayer = await getPlayerDocument(firebaseUser.uid);
+      if (existingPlayer) {
+        setCurrentUser(existingPlayer);
+        setPlayers(prev => {
+          const filtered = prev.filter(p => p.id !== existingPlayer.id);
+          return [...filtered, existingPlayer];
+        });
+        return { needsName: false };
+      }
+
+      // New user — create Player doc
+      const displayName = socialDisplayName || '';
+      const needsName = !displayName.trim();
+
+      if (!needsName) {
+        const newPlayer: Player = {
+          id: firebaseUser.uid,
+          name: displayName,
+          email: firebaseUser.email || undefined,
+          profilePic: firebaseUser.photoURL || undefined,
+          authProvider: provider,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          stats: {
+            totalMatches: 0,
+            wins: 0,
+            losses: 0,
+            winPercentage: 0,
+            totalGames: 0,
+            gameWins: 0,
+            gameLosses: 0,
+          },
+        };
+
+        await createPlayerDocument(newPlayer);
+        setPlayers(prev => [...prev, newPlayer]);
+        setCurrentUser(newPlayer);
+
+        // Claim placeholder profile if email matches an invited player
+        if (firebaseUser.email) {
+          await claimPlaceholderProfile(firebaseUser.uid, displayName, firebaseUser.email);
+        }
+      }
+
+      return { needsName };
+    } catch (error: any) {
+      if (error.cancelled) {
+        throw error;
+      }
+      throw new Error(error.message);
+    }
+  };
+
+  const completeSocialSignUp = async (name: string, provider: 'google' | 'apple') => {
+    try {
+      const firebaseUser = getCurrentUser();
+      if (!firebaseUser) {
+        throw new Error('No authenticated user found');
+      }
+
+      const newPlayer: Player = {
+        id: firebaseUser.uid,
+        name: name.trim(),
+        email: firebaseUser.email || undefined,
+        profilePic: firebaseUser.photoURL || undefined,
+        authProvider: provider,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        stats: {
+          totalMatches: 0,
+          wins: 0,
+          losses: 0,
+          winPercentage: 0,
+          totalGames: 0,
+          gameWins: 0,
+          gameLosses: 0,
+        },
+      };
+
+      await createPlayerDocument(newPlayer);
+      setPlayers(prev => [...prev, newPlayer]);
+      setCurrentUser(newPlayer);
+
+      if (firebaseUser.email) {
+        await claimPlaceholderProfile(firebaseUser.uid, name.trim(), firebaseUser.email);
+      }
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  };
+
   const signOutUser = async () => {
     try {
       await signOut();
@@ -988,6 +1097,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isEmailAvailable,
     insertDummyData,
     signIn,
+    signInWithSocial,
+    completeSocialSignUp,
     signOutUser
   };
 

@@ -29,6 +29,7 @@ export interface Player {
   invitedBy?: string;
   pendingClaim?: boolean;
   isInvited?: boolean;
+  authProvider?: 'email' | 'google' | 'apple';
 }
 
 export interface Coordinates {
@@ -117,6 +118,8 @@ export interface DataContextType {
   isEmailAvailable: (email: string) => Promise<boolean>;
   insertDummyData: () => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithSocial: (provider: 'google' | 'apple') => Promise<{ needsName: boolean }>;
+  completeSocialSignUp: (name: string, provider: 'google' | 'apple') => Promise<void>;
   signOutUser: () => Promise<void>;
 }
 
@@ -137,7 +140,6 @@ export type RootStackParamList = {
   Settings: undefined;
   Auth: undefined;
   EditProfile: undefined;
-  PrivacyPolicy: undefined;
   CourtsDiscovery: undefined;
 };
 

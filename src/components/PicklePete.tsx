@@ -8,7 +8,7 @@ type PetePose = 'high-five' | 'stopwatch' | 'welcome' | 'win' | 'loss' | 'invite
 
 type PicklePeteProps = {
   pose: PetePose;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   message?: string;
 };
 
@@ -26,6 +26,7 @@ const SIZES = {
 sm: { width: 120, height: 65 },
   md: { width: 180, height: 98 },
   lg: { width: 240, height: 131 },
+  xl: { width: 320, height: 174 },
 };
 
 const PicklePete = ({ pose, size = 'md', message }: PicklePeteProps) => {

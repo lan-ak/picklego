@@ -10,7 +10,8 @@ import {
   Alert,
   Modal,
   Platform,
-  FlatList
+  FlatList,
+  Linking,
 } from 'react-native';
 import { Icon, IconName } from '../components/Icon';
 import Layout from '../components/Layout';
@@ -237,26 +238,6 @@ const SettingsScreen: React.FC = () => {
             );
           },
           danger: true
-        },
-      ],
-    },
-    {
-      title: 'About',
-      items: [
-        {
-          icon: 'info',
-          label: 'About PickleGo',
-          onPress: () => Alert.alert('PickleGo', 'Version 1.0.0\n\nTrack your pickleball matches and stats.')
-        },
-        {
-          icon: 'file-text',
-          label: 'Privacy Policy',
-          onPress: () => navigation.navigate('PrivacyPolicy'),
-        },
-        {
-          icon: 'help-circle',
-          label: 'Help & Support',
-          onPress: () => Alert.alert('Help & Support', 'For help and support, please contact us at support@picklego.app')
         },
       ],
     },
@@ -549,6 +530,32 @@ const SettingsScreen: React.FC = () => {
         {renderInvitePlayerModal()}
         {renderInvitedPlayersModal()}
         {renderManagePlayersModal()}
+
+        {/* Footer links */}
+        <View style={styles.footerLinks}>
+          <View style={styles.footerRow}>
+            <Text
+              style={styles.footerLink}
+              onPress={() => Linking.openURL('https://playpicklego.com/privacy.html')}
+            >
+              Privacy Policy
+            </Text>
+            <Text style={styles.footerDot}>&middot;</Text>
+            <Text
+              style={styles.footerLink}
+              onPress={() => Linking.openURL('https://playpicklego.com/terms.html')}
+            >
+              Terms of Service
+            </Text>
+          </View>
+          <Text
+            style={styles.footerLink}
+            onPress={() => Linking.openURL('mailto:hi@playpicklego.com')}
+          >
+            hi@playpicklego.com
+          </Text>
+          <Text style={styles.footerVersion}>v1.0.0</Text>
+        </View>
       </ScrollView>
     </Layout>
   );
@@ -832,6 +839,30 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     fontWeight: '500',
     color: colors.warning,
+  },
+  footerLinks: {
+    alignItems: 'center',
+    paddingVertical: spacing.xxxl,
+    paddingBottom: spacing.xxxxl,
+    gap: spacing.sm,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  footerLink: {
+    ...typography.bodySmall,
+    color: colors.gray400,
+  },
+  footerDot: {
+    ...typography.bodySmall,
+    color: colors.gray400,
+  },
+  footerVersion: {
+    ...typography.caption,
+    color: colors.gray300,
+    marginTop: spacing.xs,
   },
   saveButton: {
     backgroundColor: colors.primary,

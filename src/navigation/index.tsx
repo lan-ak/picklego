@@ -9,7 +9,6 @@ import CompleteMatchScreen from '../screens/CompleteMatchScreen';
 import PlayerStatsScreen from '../screens/PlayerStatsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
-import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import CourtsDiscoveryScreen from '../screens/CourtsDiscoveryScreen';
 import MainTabs from './TabNavigator';
 
@@ -28,7 +27,6 @@ const Navigation = () => {
       <Stack.Screen name="PlayerStats" component={PlayerStatsScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
       <Stack.Screen name="CourtsDiscovery" component={CourtsDiscoveryScreen} />
     </Stack.Navigator>
   );

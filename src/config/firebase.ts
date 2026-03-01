@@ -7,7 +7,10 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged as firebaseOnAuthStateChanged,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  signInWithCredential,
+  GoogleAuthProvider,
+  OAuthProvider,
 } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -183,5 +186,80 @@ export const sendPasswordReset = async (email: string) => {
     await sendPasswordResetEmail(auth, email);
   } catch (error: any) {
     throw new Error(error.message);
+  }
+};
+
+// Social authentication
+
+export const signInWithGoogle = async () => {
+  try {
+    const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+    GoogleSignin.configure({
+      webClientId: '79098545592-mggm81d58hh9ruli271csod90jrblqut.apps.googleusercontent.com',
+    });
+    await GoogleSignin.hasPlayServices();
+    const response = await GoogleSignin.signIn();
+    const idToken = response.data?.idToken;
+    if (!idToken) {
+      throw new Error('No ID token returned from Google Sign-In');
+    }
+    const credential = GoogleAuthProvider.credential(idToken);
+    const userCredential = await signInWithCredential(auth, credential);
+    return userCredential.user;
+  } catch (error: any) {
+    if (error.code === 'SIGN_IN_CANCELLED') {
+      throw { cancelled: true, message: 'Google Sign-In was cancelled' };
+    }
+    throw new Error('Google Sign-In failed: ' + error.message);
+  }
+};
+
+export const signInWithApple = async () => {
+  try {
+    const AppleAuthentication = require('expo-apple-authentication');
+    const Crypto = require('expo-crypto');
+
+    const rawNonce = Math.random().toString(36).substring(2, 10) +
+      Math.random().toString(36).substring(2, 10);
+    const hashedNonce = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      rawNonce,
+    );
+
+    const appleCredential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+      nonce: hashedNonce,
+    });
+
+    const { identityToken, fullName } = appleCredential;
+    if (!identityToken) {
+      throw new Error('No identity token returned from Apple Sign-In');
+    }
+
+    const provider = new OAuthProvider('apple.com');
+    const oAuthCredential = provider.credential({
+      idToken: identityToken,
+      rawNonce: rawNonce,
+    });
+
+    const userCredential = await signInWithCredential(auth, oAuthCredential);
+
+    // Apple only provides the name on the very first sign-in
+    const displayName = fullName
+      ? [fullName.givenName, fullName.familyName].filter(Boolean).join(' ')
+      : null;
+
+    return {
+      user: userCredential.user,
+      displayName,
+    };
+  } catch (error: any) {
+    if (error.code === 'ERR_REQUEST_CANCELED') {
+      throw { cancelled: true, message: 'Apple Sign-In was cancelled' };
+    }
+    throw new Error('Apple Sign-In failed: ' + error.message);
   }
 }; 

@@ -18,6 +18,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supportsTablet: true,
     bundleIdentifier: "com.akinyemi.picklego",
     googleServicesFile: "./GoogleService-Info.plist",
+    usesAppleSignIn: true,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSLocationWhenInUseUsageDescription:
@@ -61,6 +62,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           "Allow PickleGo to use your location to find nearby pickleball courts.",
         locationWhenInUsePermission:
           "Allow PickleGo to use your location to find nearby pickleball courts.",
+      },
+    ],
+    "expo-apple-authentication",
+    [
+      "@react-native-google-signin/google-signin",
+      {
+        iosUrlScheme:
+          "com.googleusercontent.apps.79098545592-ucg9fpm4752382fa41pogoublqat85qi",
       },
     ],
   ],
