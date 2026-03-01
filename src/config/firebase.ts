@@ -46,10 +46,8 @@ const db = getFirestore(app);
 // Firestore helper functions
 export const createPlayerDocument = async (player: Player) => {
   try {
-    await setDoc(doc(db, 'players', player.id), {
-      ...player,
-      password: undefined // Don't store password in Firestore
-    });
+    const { password, ...playerData } = player;
+    await setDoc(doc(db, 'players', player.id), playerData);
   } catch (error: any) {
     throw new Error('Failed to create player document: ' + error.message);
   }
