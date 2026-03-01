@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import {
   initializeAuth,
+  // @ts-ignore - getReactNativePersistence exists at runtime but is missing from TS declarations
   getReactNativePersistence,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,

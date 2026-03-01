@@ -7,15 +7,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "entryPoint": "./App.tsx",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.akinyemi.picklego",
@@ -40,12 +36,10 @@
         "expo-build-properties",
         {
           "ios": {
-            "deploymentTarget": "15.1",
+            "deploymentTarget": "16.0",
             "useFrameworks": "static"
           },
-          "android": {
-            "newArchEnabled": true
-          }
+          "android": {}
         }
       ],
       "@react-native-firebase/app",
