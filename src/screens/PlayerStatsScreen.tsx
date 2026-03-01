@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
 import Layout from '../components/Layout';
 import { Match, Game } from '../types';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import PicklePete from '../components/PicklePete';
 
 type PlayerStats = {
   totalMatches: number;
@@ -59,6 +61,11 @@ const MyStatsScreen = () => {
     singles: 0,
     doubles: 0
   });
+  const [lossStreak, setLossStreak] = useState<Record<StatsMode, number>>({
+    overall: 0,
+    singles: 0,
+    doubles: 0
+  });
   const [matchesSinceLastWin, setMatchesSinceLastWin] = useState<Record<StatsMode, number>>({
     overall: 0,
     singles: 0,
@@ -84,33 +91,33 @@ const MyStatsScreen = () => {
     if (!currentUser) return;
 
     const newExtendedStats: Record<string, ExtendedPlayerStats> = {};
-    
+
     // Initialize stats for current user
     newExtendedStats[currentUser.id] = {
-      overall: { 
-        totalMatches: 0, 
-        wins: 0, 
-        losses: 0, 
+      overall: {
+        totalMatches: 0,
+        wins: 0,
+        losses: 0,
         winPercentage: 0,
         totalGames: 0,
         gameWins: 0,
         gameLosses: 0,
         gameWinPercentage: 0,
       },
-      singles: { 
-        totalMatches: 0, 
-        wins: 0, 
-        losses: 0, 
+      singles: {
+        totalMatches: 0,
+        wins: 0,
+        losses: 0,
         winPercentage: 0,
         totalGames: 0,
         gameWins: 0,
         gameLosses: 0,
         gameWinPercentage: 0,
       },
-      doubles: { 
-        totalMatches: 0, 
-        wins: 0, 
-        losses: 0, 
+      doubles: {
+        totalMatches: 0,
+        wins: 0,
+        losses: 0,
         winPercentage: 0,
         totalGames: 0,
         gameWins: 0,
@@ -118,7 +125,7 @@ const MyStatsScreen = () => {
         gameWinPercentage: 0,
       },
     };
-    
+
     // Process each completed match
     const completedMatches = matches
       .filter(match => match.status === 'completed')
@@ -130,10 +137,10 @@ const MyStatsScreen = () => {
 
       // Determine the match type (singles or doubles)
       const matchType = match.matchType;
-      
+
       // Determine if player won the match
       const isWinner = isUserWinner(match, currentUser.id);
-      
+
       // Update overall stats
       newExtendedStats[currentUser.id].overall.totalMatches++;
       if (isWinner) {
@@ -141,7 +148,7 @@ const MyStatsScreen = () => {
       } else {
         newExtendedStats[currentUser.id].overall.losses++;
       }
-      
+
       // Update match type specific stats (singles or doubles)
       newExtendedStats[currentUser.id][matchType].totalMatches++;
       if (isWinner) {
@@ -149,7 +156,7 @@ const MyStatsScreen = () => {
       } else {
         newExtendedStats[currentUser.id][matchType].losses++;
       }
-      
+
       // Process game-level statistics if available
       if (match.games && match.games.length > 0) {
         // Get the user's team number
@@ -160,15 +167,15 @@ const MyStatsScreen = () => {
         match.games.forEach((game) => {
           // Update overall game stats
           newExtendedStats[currentUser.id].overall.totalGames!++;
-          
+
           // Update match type specific game stats
           newExtendedStats[currentUser.id][matchType].totalGames!++;
-          
+
           // Determine user's score and opponent's score
           const userScore = userTeamNumber === 1 ? game.team1Score : game.team2Score;
           const opponentScore = userTeamNumber === 1 ? game.team2Score : game.team1Score;
           const userWonGame = userScore > opponentScore;
-          
+
           // Update win/loss counts
           if (userWonGame) {
             newExtendedStats[currentUser.id].overall.gameWins!++;
@@ -180,20 +187,20 @@ const MyStatsScreen = () => {
         });
       }
     });
-    
+
     // Calculate win percentages
     Object.keys(newExtendedStats).forEach(playerId => {
       ['overall', 'singles', 'doubles'].forEach(type => {
         const stats = newExtendedStats[playerId][type as keyof ExtendedPlayerStats];
         const total = stats.wins + stats.losses;
         stats.winPercentage = total > 0 ? (stats.wins / total) * 100 : 0;
-        
+
         // Calculate game win percentage
         const totalGames = stats.gameWins! + stats.gameLosses!;
         stats.gameWinPercentage = totalGames > 0 ? (stats.gameWins! / totalGames) * 100 : 0;
       });
     });
-    
+
     setExtendedStats(newExtendedStats);
   }, [currentUser, matches]);
 
@@ -203,7 +210,7 @@ const MyStatsScreen = () => {
 
     const recentCutoff = new Date();
     recentCutoff.setDate(recentCutoff.getDate() - 30); // 30 days ago
-    
+
     // Get relevant matches based on time filter
     const filteredMatches = matches.filter(match => {
       // Only completed matches with the current user
@@ -240,14 +247,14 @@ const MyStatsScreen = () => {
 
       // Get opponent IDs
       const opponents = userTeamNumber === 1 ? match.team2PlayerIds : match.team1PlayerIds;
-      
+
       // For each opponent, update their stats
       opponents.forEach(opponentId => {
         if (!opponentId || opponentId === currentUser.id) return;
-        
+
         const opponent = players.find(p => p.id === opponentId);
         if (!opponent) return;
-        
+
         if (!opponentMap[opponentId]) {
           opponentMap[opponentId] = {
             playerId: opponentId,
@@ -258,13 +265,13 @@ const MyStatsScreen = () => {
             winPercentage: 0
           };
         }
-        
+
         // Update opponent stats
         opponentMap[opponentId].totalMatches++;
-        
+
         // Determine if the user won against this opponent
         const userWon = isUserWinner(match, currentUser.id);
-        
+
         if (userWon) {
           opponentMap[opponentId].wins++;
         } else {
@@ -272,99 +279,74 @@ const MyStatsScreen = () => {
         }
       });
     });
-    
+
     // Calculate win percentage for opponents
     Object.values(opponentMap).forEach(stat => {
-      stat.winPercentage = stat.totalMatches > 0 ? 
+      stat.winPercentage = stat.totalMatches > 0 ?
         (stat.wins / stat.totalMatches) * 100 : 0;
     });
-    
+
     // Sort opponents by number of matches played together
     const sortedOpponents = Object.values(opponentMap)
       .sort((a, b) => b.totalMatches - a.totalMatches);
-    
+
     setOpponentStats(sortedOpponents);
   }, [currentUser, matches, players, statsMode, timeFilter]);
 
   // Calculate win streak and matches since last win
   useEffect(() => {
     if (!currentUser || !matches.length) return;
-    
+
     // Get completed matches involving the current user
     const userMatches = matches
       .filter(match => {
         return match.status === 'completed' && match.allPlayerIds.includes(currentUser.id);
       })
       .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime()); // Sort newest first
-    
+
     // Calculate streaks for each mode
     const newWinStreak = { overall: 0, singles: 0, doubles: 0 };
+    const newLossStreak = { overall: 0, singles: 0, doubles: 0 };
     const newMatchesSinceLastWin = { overall: 0, singles: 0, doubles: 0 };
-    
-    // Overall streak
-    for (const match of userMatches) {
-      const isWin = isUserWinner(match, currentUser.id);
-      
-      if (isWin) {
-        if (newMatchesSinceLastWin.overall === 0) {
-          newWinStreak.overall++;
+
+    // Helper to compute current streak (win or loss) from a list of matches
+    const computeStreaks = (matchList: typeof userMatches, mode: 'overall' | 'singles' | 'doubles') => {
+      for (const match of matchList) {
+        const isWin = isUserWinner(match, currentUser.id);
+        if (isWin) {
+          if (newLossStreak[mode] === 0) {
+            newWinStreak[mode]++;
+          } else {
+            break;
+          }
         } else {
-          // Win streak is broken
-          break;
+          if (newWinStreak[mode] === 0) {
+            newLossStreak[mode]++;
+          } else {
+            break;
+          }
+          newMatchesSinceLastWin[mode]++;
         }
-      } else {
-        newMatchesSinceLastWin.overall++;
-        // Once we hit a loss, we can stop counting for win streak
-        break;
       }
-    }
-    
-    // Singles streak
-    const singleMatches = userMatches.filter(match => match.matchType === 'singles');
-    for (const match of singleMatches) {
-      const isWin = isUserWinner(match, currentUser.id);
-      
-      if (isWin) {
-        if (newMatchesSinceLastWin.singles === 0) {
-          newWinStreak.singles++;
-        } else {
-          break;
-        }
-      } else {
-        newMatchesSinceLastWin.singles++;
-        break;
-      }
-    }
-    
-    // Doubles streak
-    const doubleMatches = userMatches.filter(match => match.matchType === 'doubles');
-    for (const match of doubleMatches) {
-      const isWin = isUserWinner(match, currentUser.id);
-      
-      if (isWin) {
-        if (newMatchesSinceLastWin.doubles === 0) {
-          newWinStreak.doubles++;
-        } else {
-          break;
-        }
-      } else {
-        newMatchesSinceLastWin.doubles++;
-        break;
-      }
-    }
-    
+    };
+
+    computeStreaks(userMatches, 'overall');
+    computeStreaks(userMatches.filter(m => m.matchType === 'singles'), 'singles');
+    computeStreaks(userMatches.filter(m => m.matchType === 'doubles'), 'doubles');
+
     setWinStreak(newWinStreak);
+    setLossStreak(newLossStreak);
     setMatchesSinceLastWin(newMatchesSinceLastWin);
   }, [currentUser, matches]);
 
   // Calculate partner stats
   useEffect(() => {
     if (!currentUser || !matches.length) return;
-    
+
     // Get relevant doubles matches based on time filter
     const recentCutoff = new Date();
     recentCutoff.setDate(recentCutoff.getDate() - 30); // 30 days ago
-    
+
     const filteredMatches = matches.filter(match => {
       // Only include completed doubles matches with the current user
       if (match.status !== 'completed' || match.matchType !== 'doubles') return false;
@@ -390,18 +372,18 @@ const MyStatsScreen = () => {
 
       // Get the team members
       const team = userTeamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
-      
+
       // Find partners (skip if user is not in a team of 2)
       if (team.length !== 2) return;
-      
+
       // Get partner ID (the other player in the team)
       const partnerId = team.find(id => id !== currentUser.id);
       if (!partnerId) return;
-      
+
       // Find partner in players list
       const partner = players.find(p => p.id === partnerId);
       if (!partner) return;
-      
+
       // Initialize partner stats if needed
       if (!partnerMap[partnerId]) {
         partnerMap[partnerId] = {
@@ -413,10 +395,10 @@ const MyStatsScreen = () => {
           winPercentage: 0
         };
       }
-      
+
       // Update partner stats
       partnerMap[partnerId].totalMatches++;
-      
+
       // Check if user's team won
       const didUserWin = isUserWinner(match, currentUser.id);
       if (didUserWin) {
@@ -425,24 +407,24 @@ const MyStatsScreen = () => {
         partnerMap[partnerId].losses++;
       }
     });
-    
+
     // Calculate win percentages
     Object.values(partnerMap).forEach(stat => {
-      stat.winPercentage = stat.totalMatches > 0 
-        ? (stat.wins / stat.totalMatches) * 100 
+      stat.winPercentage = stat.totalMatches > 0
+        ? (stat.wins / stat.totalMatches) * 100
         : 0;
     });
-    
+
     // Sort partners by most matches played together
     const sortedPartners = Object.values(partnerMap)
       .sort((a, b) => b.totalMatches - a.totalMatches);
-    
+
     setPartnerStats(sortedPartners);
   }, [currentUser, matches, players, timeFilter]);
 
   const renderStatsTabs = () => (
     <View style={styles.tabContainer}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.tab, statsMode === 'overall' && styles.activeTab]}
         onPress={() => setStatsMode('overall')}
       >
@@ -450,7 +432,7 @@ const MyStatsScreen = () => {
           Overall
         </Text>
       </TouchableOpacity>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.tab, statsMode === 'singles' && styles.activeTab]}
         onPress={() => setStatsMode('singles')}
       >
@@ -458,7 +440,7 @@ const MyStatsScreen = () => {
           Singles
         </Text>
       </TouchableOpacity>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.tab, statsMode === 'doubles' && styles.activeTab]}
         onPress={() => setStatsMode('doubles')}
       >
@@ -474,66 +456,66 @@ const MyStatsScreen = () => {
     if (!currentUser || !extendedStats[currentUser.id]) {
       return (
         <View style={styles.emptyStateContainer}>
-          <Text style={styles.emptyStateText}>No stats available</Text>
+          <PicklePete pose="error" size="sm" message="No stats yet — go play!" />
         </View>
       );
     }
 
     const stats = extendedStats[currentUser.id][statsMode];
-    
+
     return (
       <View style={styles.statsCard}>
         {/* Match Statistics */}
         <View style={styles.sectionHeader}>
-          <Ionicons name="trophy" size={22} color="#0D6B3E" />
+          <Icon name="trophy" size={22} color={colors.primary} />
           <Text style={styles.sectionTitle}>Match Statistics</Text>
         </View>
-        
+
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.totalMatches}</Text>
             <Text style={styles.statLabel}>Matches</Text>
           </View>
-          
+
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.wins}</Text>
             <Text style={styles.statLabel}>Wins</Text>
           </View>
-          
+
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.losses}</Text>
             <Text style={styles.statLabel}>Losses</Text>
           </View>
-          
+
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.winPercentage.toFixed(1)}%</Text>
             <Text style={styles.statLabel}>Win Rate</Text>
           </View>
         </View>
-        
+
         {/* Game-level statistics */}
         <View style={styles.sectionDivider}>
           <View style={styles.dividerLine} />
           <Text style={styles.dividerText}>Game Statistics</Text>
           <View style={styles.dividerLine} />
         </View>
-        
+
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.totalGames || 0}</Text>
             <Text style={styles.statLabel}>Games</Text>
           </View>
-          
+
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.gameWins || 0}</Text>
             <Text style={styles.statLabel}>Wins</Text>
           </View>
-          
+
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.gameLosses || 0}</Text>
             <Text style={styles.statLabel}>Losses</Text>
           </View>
-          
+
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.gameWinPercentage ? stats.gameWinPercentage.toFixed(1) : '0.0'}%</Text>
             <Text style={styles.statLabel}>Win Rate</Text>
@@ -546,7 +528,7 @@ const MyStatsScreen = () => {
   // Function to get the filtered matches based on statsMode
   const getFilteredMatches = () => {
     if (!currentUser) return [];
-    
+
     return matches
       .filter(match => {
         // Filter for completed matches
@@ -595,7 +577,7 @@ const MyStatsScreen = () => {
   // Add a function to render time filters
   const renderTimeFilters = () => (
     <View style={styles.timeFiltersContainer}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.timeFilterTab, timeFilter === 'all' && styles.activeTimeFilter]}
         onPress={() => setTimeFilter('all')}
       >
@@ -603,7 +585,7 @@ const MyStatsScreen = () => {
           All Time
         </Text>
       </TouchableOpacity>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.timeFilterTab, timeFilter === 'recent' && styles.activeTimeFilter]}
         onPress={() => setTimeFilter('recent')}
       >
@@ -618,7 +600,7 @@ const MyStatsScreen = () => {
   const renderOpponentAnalytics = () => (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Ionicons name="people" size={24} color="#0D6B3E" />
+        <Icon name="users" size={24} color={colors.primary} />
         <Text style={styles.sectionTitle}>Opponent Analysis</Text>
       </View>
 
@@ -635,7 +617,7 @@ const MyStatsScreen = () => {
             <Text style={styles.opponentStatHeader}>W-L</Text>
             <Text style={styles.opponentStatHeader}>Win %</Text>
           </View>
-          
+
           {opponentStats.slice(0, 5).map((opponent) => (
             <View key={opponent.playerId} style={styles.opponentRow}>
               <Text style={styles.opponentName}>{opponent.playerName}</Text>
@@ -652,7 +634,7 @@ const MyStatsScreen = () => {
               </View>
             </View>
           ))}
-          
+
           {opponentStats.length > 5 && (
             <Text style={styles.moreOpponentsText}>
               +{opponentStats.length - 5} more opponents
@@ -667,14 +649,14 @@ const MyStatsScreen = () => {
   const renderPartnerStats = () => {
     // Only show for doubles or overall modes
     if (statsMode === 'singles') return null;
-    
+
     return (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Ionicons name="people-circle" size={24} color="#0D6B3E" />
+          <Icon name="users" size={24} color={colors.primary} />
           <Text style={styles.sectionTitle}>Doubles Partners</Text>
         </View>
-        
+
         {partnerStats.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>
@@ -689,7 +671,7 @@ const MyStatsScreen = () => {
               <Text style={styles.partnerStatHeader}>W-L</Text>
               <Text style={styles.partnerStatHeader}>Win %</Text>
             </View>
-            
+
             {partnerStats.slice(0, 5).map((partner) => (
               <View key={partner.partnerId} style={styles.partnerRow}>
                 <Text style={styles.partnerName}>{partner.partnerName}</Text>
@@ -705,7 +687,7 @@ const MyStatsScreen = () => {
                 </Text>
               </View>
             ))}
-            
+
             {partnerStats.length > 5 && (
               <Text style={styles.morePartnersText}>
                 +{partnerStats.length - 5} more partners
@@ -723,11 +705,22 @@ const MyStatsScreen = () => {
         {renderStatsTabs()}
         {renderTimeFilters()}
 
+        {winStreak[statsMode] > 3 && (
+          <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
+            <PicklePete pose="win" message={`${winStreak[statsMode]} win streak! You're on fire!`} />
+          </View>
+        )}
+        {lossStreak[statsMode] > 3 && (
+          <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
+            <PicklePete pose="loss" size="sm" message="Keep your head up, you'll bounce back!" />
+          </View>
+        )}
+
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="analytics" size={24} color="#0D6B3E" />
+            <Icon name="bar-chart" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>
-              {statsMode === 'overall' ? 'Overall Performance' : 
+              {statsMode === 'overall' ? 'Overall Performance' :
                statsMode === 'singles' ? 'Singles Performance' : 'Doubles Performance'}
             </Text>
           </View>
@@ -740,10 +733,10 @@ const MyStatsScreen = () => {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="trending-up" size={24} color="#0D6B3E" />
+            <Icon name="trending-up" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Performance Summary</Text>
           </View>
-          
+
           {(!currentUser || !extendedStats[currentUser.id]) ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>
@@ -755,31 +748,31 @@ const MyStatsScreen = () => {
               <View style={styles.streakContainer}>
                 <View style={styles.streakCard}>
                   <View style={styles.streakIconBackground}>
-                    <Ionicons name="flame" size={28} color="#FF9500" />
+                    <Icon name="flame" size={28} color={colors.action} />
                   </View>
                   <Text style={styles.streakValue}>{winStreak[statsMode]}</Text>
                   <Text style={styles.streakLabel}>CURRENT WIN STREAK</Text>
                 </View>
-                
+
                 <View style={styles.streakCard}>
                   <View style={styles.streakIconBackground}>
-                    <Ionicons name="time" size={28} color="#FF3B30" />
+                    <Icon name="clock" size={28} color={colors.loss} />
                   </View>
                   <Text style={styles.streakValue}>
-                    {matchesSinceLastWin[statsMode] > 0 
-                      ? matchesSinceLastWin[statsMode] 
+                    {matchesSinceLastWin[statsMode] > 0
+                      ? matchesSinceLastWin[statsMode]
                       : '-'}
                   </Text>
                   <Text style={styles.streakLabel}>
-                    {matchesSinceLastWin[statsMode] > 0 
-                      ? 'MATCHES SINCE WIN' 
+                    {matchesSinceLastWin[statsMode] > 0
+                      ? 'MATCHES SINCE WIN'
                       : 'ON A WINNING STREAK!'}
                   </Text>
                 </View>
               </View>
-              
+
               <View style={styles.winRateBadge}>
-                <Ionicons name="stats-chart" size={18} color="#0D6B3E" style={styles.winRateIcon} />
+                <Icon name="bar-chart-2" size={18} color={colors.primary} style={styles.winRateIcon} />
                 <Text style={styles.winRateText}>
                   WIN RATE: {extendedStats[currentUser.id][statsMode].winPercentage.toFixed(1)}%
                 </Text>
@@ -790,10 +783,10 @@ const MyStatsScreen = () => {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="list" size={24} color="#0D6B3E" />
+            <Icon name="list" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Match History</Text>
           </View>
-          
+
           {getFilteredMatches().length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>
@@ -811,14 +804,14 @@ const MyStatsScreen = () => {
                       currentUser && isUserWinner(match, currentUser.id) ? styles.winBadge : styles.lossBadge
                     ]}>
                       <Text style={[
-                        styles.resultText, 
+                        styles.resultText,
                         currentUser && isUserWinner(match, currentUser.id) ? styles.winText : styles.lossText
                       ]}>
                         {currentUser && isUserWinner(match, currentUser.id) ? 'Win' : 'Loss'}
                       </Text>
                     </View>
                   </View>
-                  
+
                   <View style={styles.matchDetails}>
                     <Text style={styles.matchOpponents}>
                       vs {getOpponentNames(match)}
@@ -827,7 +820,7 @@ const MyStatsScreen = () => {
                       {match.matchType === 'doubles' ? 'Doubles' : 'Singles'}
                     </Text>
                   </View>
-                  
+
                   {match.games && match.games.length > 0 && (
                     <View style={styles.scoreContainer}>
                       <Text style={styles.scoreLabel}>Score:</Text>
@@ -851,20 +844,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 16,
+    paddingBottom: spacing.lg,
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    margin: 16,
-    marginBottom: 8,
-    borderRadius: 16,
+    backgroundColor: colors.white,
+    margin: spacing.lg,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...shadows.md,
   },
   tab: {
     flex: 1,
@@ -874,171 +863,157 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   activeTab: {
-    borderBottomColor: '#0D6B3E',
-    backgroundColor: '#f0fff4',
+    borderBottomColor: colors.primary,
+    backgroundColor: colors.primaryOverlay,
   },
   tabText: {
+    ...typography.label,
     fontSize: 15,
     fontWeight: '600',
-    color: '#666',
+    color: colors.gray500,
     letterSpacing: 0.5,
   },
   activeTabText: {
-    color: '#0D6B3E',
+    color: colors.primary,
     fontWeight: '700',
   },
   section: {
-    backgroundColor: '#fff',
-    margin: 16,
-    marginBottom: 20,
-    padding: 20,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.12,
-    shadowRadius: 5,
-    elevation: 4,
+    backgroundColor: colors.white,
+    margin: spacing.lg,
+    marginBottom: spacing.xl,
+    padding: spacing.xl,
+    borderRadius: borderRadius.lg,
+    ...shadows.md,
     borderLeftWidth: 1,
     borderTopWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: colors.surface,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0D6B3E',
+    ...typography.h3,
+    color: colors.primary,
     marginLeft: 10,
     letterSpacing: 0.5,
   },
   sectionSubtitle: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '600',
-    color: '#0D6B3E',
-    marginVertical: 12,
+    color: colors.primary,
+    marginVertical: spacing.md,
   },
   statsCard: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    backgroundColor: colors.gray100,
+    borderRadius: borderRadius.md,
+    padding: spacing.xl,
+    ...shadows.sm,
     borderLeftWidth: 2,
-    borderLeftColor: '#0D6B3E',
+    borderLeftColor: colors.primary,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   statItem: {
     alignItems: 'center',
     minWidth: 65,
   },
   statValue: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#0D6B3E',
+    ...typography.stats,
+    color: colors.primary,
   },
   statLabel: {
-    fontSize: 14,
+    ...typography.bodySmall,
     fontWeight: '500',
-    color: '#666',
-    marginTop: 4,
+    color: colors.gray500,
+    marginTop: spacing.xs,
     textAlign: 'center',
   },
   divider: {
     height: 1,
-    backgroundColor: '#E0E0E0',
-    marginVertical: 16,
+    backgroundColor: colors.gray200,
+    marginVertical: spacing.lg,
   },
   emptyState: {
-    padding: 24,
+    padding: spacing.xxl,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f8f8f8',
-    borderRadius: 8,
+    backgroundColor: colors.gray100,
+    borderRadius: borderRadius.sm,
   },
   emptyStateText: {
-    fontSize: 16,
-    color: '#666',
+    ...typography.bodyLarge,
+    color: colors.gray500,
     textAlign: 'center',
     lineHeight: 24,
   },
   performanceSummary: {
-    padding: 20,
-    backgroundColor: '#f5f7fa',
-    borderRadius: 16,
+    padding: spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
     borderLeftWidth: 3,
-    borderLeftColor: '#0D6B3E',
+    borderLeftColor: colors.primary,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: colors.gray200,
     borderBottomWidth: 1,
-    borderBottomColor: '#f5f5f5',
+    borderBottomColor: colors.surface,
   },
   summaryText: {
-    fontSize: 16,
-    color: '#333',
+    ...typography.bodyLarge,
+    color: colors.neutral,
     lineHeight: 24,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   matchItem: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: colors.gray100,
+    borderRadius: borderRadius.md,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
     borderLeftWidth: 4,
-    borderLeftColor: '#ddd',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    borderLeftColor: colors.inputBorder,
+    ...shadows.sm,
   },
   matchHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   matchDate: {
+    ...typography.label,
     fontSize: 15,
     fontWeight: '600',
-    color: '#0D6B3E',
+    color: colors.primary,
   },
   resultBadge: {
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 5,
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
   },
   winBadge: {
-    backgroundColor: 'rgba(13, 107, 62, 0.15)',
+    backgroundColor: colors.winOverlay,
     borderWidth: 1,
-    borderColor: '#0D6B3E',
+    borderColor: colors.primary,
   },
   lossBadge: {
-    backgroundColor: 'rgba(255, 59, 48, 0.15)',
+    backgroundColor: colors.lossOverlay,
     borderWidth: 1,
-    borderColor: '#FF3B30',
+    borderColor: colors.loss,
   },
   resultText: {
+    ...typography.caption,
     fontSize: 13,
     fontWeight: '700',
   },
   winText: {
-    color: '#0D6B3E',
+    color: colors.win,
   },
   lossText: {
-    color: '#FF3B30',
+    color: colors.loss,
   },
   matchDetails: {
     flexDirection: 'row',
@@ -1047,42 +1022,43 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   matchOpponents: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '600',
-    color: '#333',
+    color: colors.neutral,
     flex: 1,
   },
   matchType: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     fontWeight: '500',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: colors.surface,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.sm,
   },
   scoreContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   scoreLabel: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     fontWeight: '500',
     marginRight: 6,
   },
   matchScore: {
+    ...typography.label,
     fontSize: 15,
-    color: '#0D6B3E',
+    color: colors.primary,
     fontWeight: '600',
   },
   timeFiltersContainer: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    margin: 16,
+    backgroundColor: colors.white,
+    margin: spacing.lg,
     marginTop: 0,
-    marginBottom: 8,
-    borderRadius: 12,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.md,
     overflow: 'hidden',
   },
   timeFilterTab: {
@@ -1093,102 +1069,98 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   activeTimeFilter: {
-    borderBottomColor: '#0D6B3E',
-    backgroundColor: '#f0f9ff',
+    borderBottomColor: colors.primary,
+    backgroundColor: colors.primaryOverlay,
   },
   timeFilterText: {
-    fontSize: 14,
+    ...typography.bodySmall,
     fontWeight: '500',
-    color: '#666',
+    color: colors.gray500,
   },
   activeTimeFilterText: {
-    color: '#0D6B3E',
+    color: colors.primary,
   },
   opponentListContainer: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: colors.gray100,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
   },
   opponentHeader: {
     flexDirection: 'row',
-    paddingBottom: 8,
+    paddingBottom: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    marginBottom: 4,
+    borderBottomColor: colors.cardBorder,
+    marginBottom: spacing.xs,
   },
   opponentNameHeader: {
     flex: 3,
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     fontWeight: '500',
   },
   opponentStatHeader: {
     flex: 1,
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     fontWeight: '500',
     textAlign: 'center',
   },
   opponentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: colors.surface,
   },
   opponentName: {
     flex: 3,
-    fontSize: 16,
-    color: '#333',
+    ...typography.bodyLarge,
+    color: colors.neutral,
   },
   opponentRecord: {
     flex: 1,
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     textAlign: 'center',
   },
   winRateBadge: {
-    backgroundColor: '#E8F5E9',
+    backgroundColor: colors.primaryOverlay,
     borderWidth: 1,
-    borderColor: '#0D6B3E',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    borderColor: colors.primary,
+    borderRadius: borderRadius.xl,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    ...shadows.sm,
   },
   goodWinRate: {
-    backgroundColor: 'rgba(13, 107, 62, 0.2)',
+    backgroundColor: colors.winOverlay,
   },
   badWinRate: {
-    backgroundColor: 'rgba(255, 59, 48, 0.2)',
+    backgroundColor: colors.lossOverlay,
   },
   winRateText: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '700',
-    color: '#0D6B3E',
+    color: colors.primary,
     letterSpacing: 0.5,
   },
   winRateIcon: {
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   moreOpponentsText: {
     textAlign: 'center',
-    color: '#666',
-    fontSize: 14,
-    marginTop: 8,
+    color: colors.gray500,
+    ...typography.bodySmall,
+    marginTop: spacing.sm,
   },
   scoreSpreadContainer: {
     flexDirection: 'row',
-    backgroundColor: '#f8f8f8',
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: colors.gray100,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
     justifyContent: 'space-between',
   },
   spreadStat: {
@@ -1198,145 +1170,133 @@ const styles = StyleSheet.create({
   spreadValue: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: colors.neutral,
   },
   spreadLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
+    ...typography.caption,
+    color: colors.gray500,
+    marginTop: spacing.xs,
     textAlign: 'center',
   },
   positiveMargin: {
-    color: '#0D6B3E',
+    color: colors.primary,
   },
   negativeMargin: {
-    color: '#F44336',
+    color: colors.error,
   },
   scoreExtremes: {
     flexDirection: 'row',
-    backgroundColor: '#f8f8f8',
-    borderRadius: 8,
-    marginTop: 8,
-    padding: 12,
+    backgroundColor: colors.gray100,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.sm,
+    padding: spacing.md,
   },
   extremeStat: {
     flex: 1,
     alignItems: 'center',
   },
   extremeLabel: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
   },
   extremeValue: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: 'bold',
-    color: '#333',
-    marginTop: 4,
+    color: colors.neutral,
+    marginTop: spacing.xs,
   },
   emptyStateContainer: {
-    padding: 20,
+    padding: spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f8f8f8',
-    borderRadius: 8,
+    backgroundColor: colors.gray100,
+    borderRadius: borderRadius.sm,
   },
   sectionDivider: {
     flexDirection: 'row',
     alignItems: 'center',
     marginVertical: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
   },
   dividerLine: {
     flex: 1,
     height: 2,
-    backgroundColor: '#ddd',
+    backgroundColor: colors.inputBorder,
     borderRadius: 1,
   },
   dividerText: {
-    paddingHorizontal: 12,
-    color: '#0D6B3E',
-    fontSize: 14,
+    ...typography.caption,
+    paddingHorizontal: spacing.md,
+    color: colors.primary,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   positiveValue: {
-    color: '#4CAF50',  // Green color for positive values
+    color: colors.primary,
   },
   negativeValue: {
-    color: '#F44336',  // Red color for negative values
+    color: colors.error,
   },
   streakContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   streakCard: {
     flex: 1,
-    padding: 16,
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    padding: spacing.lg,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
-    margin: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    margin: spacing.sm,
+    ...shadows.md,
   },
   streakIconBackground: {
-    marginBottom: 12,
-    padding: 12,
-    backgroundColor: '#f0f0f0',
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
     borderRadius: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-    elevation: 1,
+    ...shadows.sm,
   },
   streakValue: {
+    ...typography.stats,
     fontSize: 36,
-    fontWeight: '800',
-    color: '#0D6B3E',
+    color: colors.primary,
     marginVertical: 6,
   },
   streakLabel: {
-    fontSize: 12,
+    ...typography.caption,
     fontWeight: '600',
-    color: '#666',
+    color: colors.gray500,
     textAlign: 'center',
     letterSpacing: 0.7,
   },
   partnerListContainer: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    backgroundColor: colors.gray100,
+    borderRadius: borderRadius.md,
+    padding: spacing.lg,
+    ...shadows.sm,
     borderLeftWidth: 2,
-    borderLeftColor: '#0D6B3E',
+    borderLeftColor: colors.primary,
   },
   partnerHeader: {
     flexDirection: 'row',
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    marginBottom: 8,
+    borderBottomColor: colors.gray200,
+    marginBottom: spacing.sm,
   },
   partnerNameHeader: {
     flex: 3,
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     fontWeight: '600',
   },
   partnerStatHeader: {
     flex: 1,
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -1345,46 +1305,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: colors.surface,
   },
   partnerName: {
     flex: 3,
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '500',
-    color: '#333',
+    color: colors.neutral,
   },
   partnerMatches: {
     flex: 1,
-    fontSize: 14,
+    ...typography.bodySmall,
     fontWeight: '600',
-    color: '#666',
+    color: colors.gray500,
     textAlign: 'center',
   },
   partnerRecord: {
     flex: 1,
-    fontSize: 14,
+    ...typography.bodySmall,
     fontWeight: '600',
-    color: '#666',
+    color: colors.gray500,
     textAlign: 'center',
   },
   partnerWinRate: {
     flex: 1,
-    fontSize: 14,
+    ...typography.bodySmall,
     fontWeight: '700',
-    color: '#0D6B3E',
+    color: colors.primary,
     textAlign: 'center',
     paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.md,
     overflow: 'hidden',
   },
   morePartnersText: {
     textAlign: 'center',
-    color: '#666',
-    fontSize: 14,
-    marginTop: 12,
+    color: colors.gray500,
+    ...typography.bodySmall,
+    marginTop: spacing.md,
     fontWeight: '500',
   },
 });
 
-export default MyStatsScreen; 
+export default MyStatsScreen;

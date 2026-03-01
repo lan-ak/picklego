@@ -5,11 +5,14 @@ import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, MainTabParamList, Match, Game } from '../types';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
 import { format } from 'date-fns';
 import { Animated } from 'react-native';
 import Layout from '../components/Layout';
+import MatchCard from '../components/MatchCard';
+import PicklePete from '../components/PicklePete';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 
 type HomeScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Home'>,
@@ -18,11 +21,11 @@ type HomeScreenNavigationProp = CompositeNavigationProp<
 
 const OnboardingView = ({ onComplete }: { onComplete: () => void }) => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
-  
+
   return (
     <View style={styles.onboardingContainer}>
       <View style={styles.onboardingContent}>
-        <Ionicons name="tennisball-outline" size={80} color="#0D6B3E" />
+        <PicklePete pose="welcome" size="md" message="Let's track your pickleball journey!" />
         <Text style={styles.onboardingTitle}>Welcome to PickleGo!</Text>
         <Text style={styles.onboardingText}>
           Track your pickleball matches, players, and stats in one place.
@@ -30,13 +33,13 @@ const OnboardingView = ({ onComplete }: { onComplete: () => void }) => {
         <Text style={styles.onboardingSubtext}>
           Create an account to get started.
         </Text>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={styles.onboardingButton}
           onPress={() => navigation.navigate('Auth')}
         >
           <Text style={styles.onboardingButtonText}>Create Account</Text>
-          <Ionicons name="arrow-forward" size={20} color="#fff" />
+          <Icon name="arrow-right" size={20} color={colors.white} />
         </TouchableOpacity>
       </View>
     </View>
@@ -64,34 +67,14 @@ const HomeScreen = () => {
     return players.length === 0;
   };
 
-  // Format player names for display with "you" labeling
-  const formatPlayerNames = (match: Match) => {
-    if (!currentUser) return { team1: '', team2: '' };
-
-    const getTeamNames = (team: string[]) => {
-      return team
-        .map((playerId) => {
-          if (playerId === currentUser.id) return 'You';
-          const fullName = getPlayerName(playerId);
-          return formatPlayerNameWithInitial(fullName);
-        })
-        .join(' & ');
-    };
-
-    const team1 = getTeamNames(match.team1PlayerIds || []);
-    const team2 = getTeamNames(match.team2PlayerIds || []);
-
-    return { team1, team2 };
-  };
-
   // Helper function for formatting names with first name and last initial
   const formatPlayerNameWithInitial = (fullName: string) => {
     const parts = fullName.trim().split(' ');
     if (parts.length < 2) return fullName; // Return as is if no space found
-    
+
     const firstName = parts[0];
     const lastInitial = parts[parts.length - 1][0]; // First character of last name
-    
+
     return `${firstName} ${lastInitial}.`;
   };
 
@@ -145,7 +128,7 @@ const HomeScreen = () => {
   // Get recent matches for the user
   const recentMatches = useMemo(() => {
     if (!currentUser || !matches) return [];
-    
+
     return matches
       .filter(
         (match) =>
@@ -159,7 +142,7 @@ const HomeScreen = () => {
   // Get upcoming matches
   const nextMatch = useMemo(() => {
     if (!currentUser || !matches) return null;
-    
+
     const upcoming = matches
       .filter(
         (match) =>
@@ -167,7 +150,7 @@ const HomeScreen = () => {
           match.status === 'scheduled'
       )
       .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
-    
+
     return upcoming.length > 0 ? upcoming[0] : null;
   }, [currentUser, matches]);
 
@@ -197,8 +180,8 @@ const HomeScreen = () => {
   };
 
   return (
-    <Layout 
-      title="PickleGo" 
+    <Layout
+      title="PickleGo"
       showBackButton={false}
       isHomeScreen={true}
       rightComponent={
@@ -214,7 +197,7 @@ const HomeScreen = () => {
               style={styles.headerProfilePic}
             />
           ) : (
-            <Ionicons name="person-circle" size={32} color="#0D6B3E" />
+            <Icon name="circle-user" size={32} color={colors.primary} />
           )}
         </TouchableOpacity>
       }
@@ -224,45 +207,26 @@ const HomeScreen = () => {
           {/* Next Match Section */}
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="calendar-outline" size={24} color="#0D6B3E" />
+              <Icon name="calendar" size={24} color={colors.primary} />
               <Text style={styles.sectionTitle}>Next Match</Text>
             </View>
-            
+
             {nextMatch ? (
-              <TouchableOpacity
-                style={styles.nextMatchCard}
-                onPress={() => goToMatchDetails(nextMatch.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`Next match: ${formatPlayerNames(nextMatch).team1} vs ${formatPlayerNames(nextMatch).team2}, ${formatDate(nextMatch.scheduledDate)}`}
-                accessibilityHint="View match details"
-              >
-                <View style={styles.matchHeader}>
-                  <Text style={styles.matchDate}>{formatDate(nextMatch.scheduledDate)}</Text>
-                  <View style={styles.scheduledBadge}>
-                    <Text style={styles.scheduledText}>Scheduled</Text>
-                  </View>
-                </View>
-                <View style={styles.matchDetails}>
-                  <Text style={styles.playerNames}>
-                    {formatPlayerNames(nextMatch).team1}
-                  </Text>
-                  <Text style={styles.vsText}>vs</Text>
-                  <Text style={styles.playerNames}>
-                    {formatPlayerNames(nextMatch).team2}
-                  </Text>
-                </View>
-                <View style={styles.matchFooter}>
-                  <Ionicons name="location-outline" size={16} color="#666" />
-                  <Text style={styles.locationText}>
-                    {nextMatch.location || 'No location set'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              <>
+                <PicklePete pose="stopwatch" size="sm" message="Game time approaching!" />
+                <MatchCard
+                  match={nextMatch}
+                  currentUserId={currentUser?.id || ''}
+                  getPlayerName={getPlayerName}
+                  onPress={() => goToMatchDetails(nextMatch.id)}
+                  formatPlayerNameWithInitial={formatPlayerNameWithInitial}
+                />
+              </>
             ) : (
               <View style={styles.emptyStateCard}>
                 <Text style={styles.emptyStateText}>No upcoming matches scheduled</Text>
                 <TouchableOpacity
-                  style={[styles.actionButton, { backgroundColor: '#0D6B3E' }]}
+                  style={styles.actionButton}
                   onPress={() => navigation.navigate('AddMatch')}
                   accessibilityLabel="Schedule a Match"
                   accessibilityRole="button"
@@ -276,7 +240,7 @@ const HomeScreen = () => {
           {/* Quick Stats Section */}
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="stats-chart-outline" size={24} color="#0D6B3E" />
+              <Icon name="bar-chart-2" size={24} color={colors.primary} />
               <Text style={styles.sectionTitle}>Quick Stats</Text>
               <TouchableOpacity
                 style={styles.viewAllButton}
@@ -285,25 +249,25 @@ const HomeScreen = () => {
                 accessibilityRole="button"
               >
                 <Text style={styles.viewAllText}>View All</Text>
-                <Ionicons name="chevron-forward" size={14} color="#0D6B3E" />
+                <Icon name="chevron-right" size={14} color={colors.primary} />
               </TouchableOpacity>
             </View>
 
             <View style={styles.statsContainerCard}>
               <View style={styles.statItem} accessibilityLabel={`${userStats.totalMatches} Matches`}>
-                <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{userStats.totalMatches}</Text>
+                <Text style={[styles.statValue, { color: colors.primary }]}>{userStats.totalMatches}</Text>
                 <Text style={styles.statLabel}>Matches</Text>
               </View>
               <View style={styles.statItem} accessibilityLabel={`${userStats.wins} Wins`}>
-                <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{userStats.wins}</Text>
+                <Text style={[styles.statValue, { color: colors.primary }]}>{userStats.wins}</Text>
                 <Text style={styles.statLabel}>Wins</Text>
               </View>
               <View style={styles.statItem} accessibilityLabel={`${userStats.losses} Losses`}>
-                <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{userStats.losses}</Text>
+                <Text style={[styles.statValue, { color: colors.primary }]}>{userStats.losses}</Text>
                 <Text style={styles.statLabel}>Losses</Text>
               </View>
               <View style={styles.statItem} accessibilityLabel={`${userStats.winRate}% Win Rate`}>
-                <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{userStats.winRate}%</Text>
+                <Text style={[styles.statValue, { color: colors.primary }]}>{userStats.winRate}%</Text>
                 <Text style={styles.statLabel}>Win Rate</Text>
               </View>
             </View>
@@ -312,7 +276,7 @@ const HomeScreen = () => {
           {/* Recent Matches Section */}
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="time-outline" size={24} color="#0D6B3E" />
+              <Icon name="clock" size={24} color={colors.primary} />
               <Text style={styles.sectionTitle}>Recent Matches</Text>
               <TouchableOpacity
                 style={styles.viewAllButton}
@@ -321,57 +285,22 @@ const HomeScreen = () => {
                 accessibilityRole="button"
               >
                 <Text style={styles.viewAllText}>View All</Text>
-                <Ionicons name="chevron-forward" size={14} color="#0D6B3E" />
+                <Icon name="chevron-right" size={14} color={colors.primary} />
               </TouchableOpacity>
             </View>
-            
+
             {recentMatches.length > 0 ? (
               <View style={styles.matchesContainer}>
-                {recentMatches.map((match) => {
-                  const { team1, team2 } = formatPlayerNames(match);
-                  
-                  // Determine which team the user is on and check if they won
-                  const userTeam = match.team1PlayerIds.includes(currentUser?.id || '') ? 1 : 2;
-                  const isWinner = match.winnerTeam === userTeam;
-
-                  return (
-                    <TouchableOpacity
-                      key={match.id}
-                      style={[
-                        styles.matchCard,
-                        isWinner ? styles.winMatchCard : styles.lossMatchCard,
-                      ]}
-                      onPress={() => goToMatchDetails(match.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${team1} vs ${team2}, ${formatDate(match.scheduledDate)}, ${isWinner ? 'Won' : 'Lost'}`}
-                      accessibilityHint="View match details"
-                    >
-                      <View style={styles.matchHeader}>
-                        <Text style={styles.matchDate}>{formatDate(match.scheduledDate)}</Text>
-                        <View
-                          style={[
-                            styles.statusBadge,
-                            isWinner ? styles.winStatusBadge : styles.lossStatusBadge,
-                          ]}
-                        >
-                          <Text style={styles.statusText}>
-                            {isWinner ? 'Won' : 'Lost'}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.matchDetails}>
-                        <Text style={[styles.playerNames, isWinner ? styles.winText : styles.lossText]}>
-                          {team1} vs {team2}
-                        </Text>
-                        <Text style={styles.scoreText}>
-                          {match.games.length > 0
-                            ? match.games.map((game: Game) => `${game.team1Score}-${game.team2Score}`).join(', ')
-                            : 'No score'}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
+                {recentMatches.map((match) => (
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    currentUserId={currentUser?.id || ''}
+                    getPlayerName={getPlayerName}
+                    onPress={() => goToMatchDetails(match.id)}
+                    formatPlayerNameWithInitial={formatPlayerNameWithInitial}
+                  />
+                ))}
               </View>
             ) : (
               <View style={styles.emptyStateCard}>
@@ -399,8 +328,8 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    padding: 20,
-    paddingBottom: 24,
+    padding: spacing.xl,
+    paddingBottom: spacing.xxl,
     justifyContent: 'space-between',
   },
   logoHeader: {
@@ -408,135 +337,117 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   logoImage: {
     width: 40,
     height: 40,
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   logoText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#0D6B3E', // Green color from the logo
+    ...typography.h2,
+    color: colors.primary,
   },
   profilePhotoContainer: {
     position: 'absolute',
-    top: 16,
-    right: 16,
+    top: spacing.lg,
+    right: spacing.lg,
     zIndex: 10,
   },
   profilePhoto: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: borderRadius.xl,
     borderWidth: 2,
-    borderColor: '#0D6B3E', // Updated to match logo color
+    borderColor: colors.primary,
   },
   headerContainer: {
-    backgroundColor: '#fff',
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    borderRadius: borderRadius.md,
+    ...shadows.md,
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#0D6B3E',
+    ...typography.h2,
+    color: colors.primary,
   },
   // Onboarding styles
   onboardingContainer: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: spacing.xxl,
   },
   onboardingContent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
     padding: 30,
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
     width: '100%',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    ...shadows.lg,
   },
   onboardingTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#0D6B3E',
-    marginTop: 16,
-    marginBottom: 20,
+    ...typography.h1,
+    color: colors.primary,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xl,
     textAlign: 'center',
   },
   onboardingText: {
+    ...typography.bodyLarge,
     fontSize: 18,
-    color: '#333',
+    color: colors.neutral,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
     lineHeight: 26,
   },
   onboardingSubtext: {
-    fontSize: 16,
-    color: '#666',
+    ...typography.bodyLarge,
+    color: colors.gray500,
     textAlign: 'center',
     marginBottom: 30,
     lineHeight: 22,
   },
   onboardingButton: {
-    backgroundColor: '#0D6B3E',
-    paddingHorizontal: 24,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xxl,
     paddingVertical: 14,
-    borderRadius: 30,
+    borderRadius: borderRadius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
   },
   onboardingButtonText: {
-    color: '#fff',
+    ...typography.button,
+    color: colors.white,
     fontSize: 18,
-    fontWeight: '600',
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   // Section styles
   sectionContainer: {
     flex: 1,
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#0D6B3E',
-    marginLeft: 8,
+    ...typography.h3,
+    color: colors.primary,
+    marginLeft: spacing.sm,
   },
   statsContainerCard: {
     flexDirection: 'row',
-    backgroundColor: 'white',
-    borderRadius: 15,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xxl,
+    ...shadows.md,
     flex: 1,
   },
   statItem: {
@@ -544,157 +455,130 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#4A80F0',
+    ...typography.stats,
+    color: colors.primary,
   },
   statLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
+    ...typography.bodySmall,
+    color: colors.gray500,
+    marginTop: spacing.xs,
   },
   viewAllButton: {
-    backgroundColor: '#E3F2FD',
-    paddingHorizontal: 12,
+    backgroundColor: colors.primaryOverlay,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     flexDirection: 'row',
     alignItems: 'center',
   },
   viewAllText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#0D6B3E', // Updated to match logo color
-    marginRight: 4,
+    ...typography.bodySmall,
+    color: colors.primary,
+    marginRight: spacing.xs,
   },
   emptyStateCard: {
-    backgroundColor: 'white',
-    borderRadius: 15,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
     padding: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...shadows.md,
     minHeight: 150,
   },
   emptyStateText: {
+    ...typography.bodyLarge,
     fontSize: 18,
-    color: '#666',
-    marginBottom: 20,
+    color: colors.gray500,
+    marginBottom: spacing.xl,
     textAlign: 'center',
   },
   actionButton: {
-    backgroundColor: '#0D6B3E',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xxl,
   },
   actionButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
+    ...typography.button,
+    color: colors.white,
   },
   matchesContainer: {
     flex: 1,
-  },
-  matchCard: {
-    backgroundColor: 'white',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    borderLeftWidth: 4,
-  },
-  winMatchCard: {
-    borderLeftColor: '#4CD964',
-  },
-  lossMatchCard: {
-    borderLeftColor: '#FF3B30',
   },
   matchHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   matchDate: {
-    fontSize: 16,
-    color: '#666',
+    ...typography.bodyLarge,
+    color: colors.gray500,
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.md,
   },
   winStatusBadge: {
-    backgroundColor: 'rgba(76, 217, 100, 0.2)',
+    backgroundColor: colors.winOverlay,
   },
   lossStatusBadge: {
-    backgroundColor: 'rgba(255, 59, 48, 0.2)',
+    backgroundColor: colors.lossOverlay,
   },
   statusText: {
-    fontSize: 12,
+    ...typography.caption,
     fontWeight: 'bold',
   },
   winText: {
-    color: '#4CD964',
+    color: colors.win,
   },
   lossText: {
-    color: '#FF3B30',
+    color: colors.loss,
   },
   matchDetails: {
     marginBottom: 5,
   },
   playerNames: {
+    ...typography.bodyLarge,
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   scoreText: {
-    fontSize: 16,
-    color: '#666',
+    ...typography.scoreDisplay,
+    color: colors.gray500,
   },
   locationText: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     marginTop: 5,
   },
   nextMatchCard: {
-    backgroundColor: 'white',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
+    ...shadows.sm,
     borderLeftWidth: 4,
-    borderLeftColor: '#4A80F0',
+    borderLeftColor: colors.secondary,
   },
   scheduledBadge: {
-    backgroundColor: 'rgba(74, 128, 240, 0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    backgroundColor: colors.secondaryOverlay,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.md,
   },
   scheduledText: {
-    fontSize: 12,
+    ...typography.caption,
     fontWeight: 'bold',
-    color: '#4A80F0',
+    color: colors.secondary,
   },
   vsText: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: 'bold',
-    color: '#666',
-    marginHorizontal: 8,
+    color: colors.gray500,
+    marginHorizontal: spacing.sm,
   },
   matchFooter: {
     flexDirection: 'row',
@@ -702,15 +586,15 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   profileButton: {
-    padding: 4,
+    padding: spacing.xs,
   },
   headerProfilePic: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#0D6B3E',
+    borderColor: colors.primary,
   },
 });
 
-export default HomeScreen; 
+export default HomeScreen;

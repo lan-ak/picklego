@@ -16,9 +16,12 @@ import {
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../types';
 import { useData } from '../context/DataContext';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import Layout from '../components/Layout';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import PicklePete from '../components/PicklePete';
+import { useToast } from '../context/ToastContext';
 
 type CompleteMatchRouteProp = RouteProp<RootStackParamList, 'CompleteMatch'>;
 
@@ -32,8 +35,9 @@ const CompleteMatchScreen = () => {
   const route = useRoute<CompleteMatchRouteProp>();
   const navigation = useNavigation();
   const { matches, players, updateMatch, invitePlayer, addPlayer } = useData();
+  const { showToast } = useToast();
   const match = matches.find(m => m.id === route.params.matchId);
-  
+
   // Initialize match state
   const [gameScores, setGameScores] = useState<GameScore[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -42,18 +46,18 @@ const CompleteMatchScreen = () => {
   const [sendInvite, setSendInvite] = useState(true);
   const [inviteMethod, setInviteMethod] = useState<'email' | 'sms'>('email');
   const [phoneNumber, setPhoneNumber] = useState('');
-  
+
   useEffect(() => {
     if (match) {
       // Initialize game scores
       setGameScores(
-        Array(match.numberOfGames || 0).fill(null).map(() => ({ 
-          team1Score: '', 
-          team2Score: '', 
-          winner: null 
+        Array(match.numberOfGames || 0).fill(null).map(() => ({
+          team1Score: '',
+          team2Score: '',
+          winner: null
         }))
       );
-      
+
       // Log match info for debugging
       console.log('Match loaded:', {
         id: match.id,
@@ -68,7 +72,7 @@ const CompleteMatchScreen = () => {
     return (
       <Layout>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Match not found</Text>
+          <PicklePete pose="error" size="sm" message="Match not found" />
         </View>
       </Layout>
     );
@@ -90,14 +94,14 @@ const CompleteMatchScreen = () => {
   const handleGameWinnerSelect = (gameIndex: number, winner: 'team1' | 'team2') => {
     const newScores = [...gameScores];
     const currentGame = newScores[gameIndex];
-    
+
     newScores[gameIndex] = {
       ...currentGame,
       winner,
       team1Score: winner === 'team1' ? match.pointsToWin.toString() : '',
       team2Score: winner === 'team2' ? match.pointsToWin.toString() : ''
     };
-    
+
     setGameScores(newScores);
   };
 
@@ -244,12 +248,12 @@ const CompleteMatchScreen = () => {
         // Send SMS invitation
         const message = `Hi ${newPlayerName}, you've been invited to join PickleGo! Download the app to track your pickleball matches and stats.`;
         const url = `sms:${phoneNumber}?body=${encodeURIComponent(message)}`;
-        
+
         const canOpen = await Linking.canOpenURL(url);
         if (canOpen) {
           await Linking.openURL(url);
           Alert.alert(
-            'Success', 
+            'Success',
             `${newPlayerName} has been added. A text message has been prepared to send.`,
             [{ text: 'OK' }]
           );
@@ -268,10 +272,10 @@ const CompleteMatchScreen = () => {
         }
 
         const invitedPlayer = await invitePlayer(newPlayerName.trim(), newPlayerEmail.trim());
-        
+
         if (invitedPlayer) {
           Alert.alert(
-            'Success', 
+            'Success',
             `${newPlayerName} has been added and invited. They will receive an email to join the app.`,
             [{ text: 'OK' }]
           );
@@ -290,7 +294,7 @@ const CompleteMatchScreen = () => {
         setNewPlayerEmail('');
         setPhoneNumber('');
         setShowInviteModal(false);
-        Alert.alert('Success', `${newPlayerName} has been added.`);
+        showToast(`${newPlayerName} has been added.`, 'success');
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to add player');
@@ -311,15 +315,17 @@ const CompleteMatchScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: '#0D6B3E' }]}>Invite Player</Text>
+              <Text style={styles.modalTitle}>Invite Player</Text>
               <TouchableOpacity
                 style={styles.closeButton}
                 onPress={() => setShowInviteModal(false)}
               >
-                <Ionicons name="close" size={24} color="#0D6B3E" />
+                <Icon name="x" size={24} color={colors.primary} />
               </TouchableOpacity>
             </View>
-            
+
+            <PicklePete pose="invite" size="sm" message="Bring a friend to the court!" />
+
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Player Name</Text>
               <TextInput
@@ -330,7 +336,7 @@ const CompleteMatchScreen = () => {
                 autoFocus
               />
             </View>
-            
+
             <View style={styles.inviteMethodContainer}>
               <Text style={styles.inputLabel}>Invite Method</Text>
               <View style={styles.inviteMethodButtons}>
@@ -345,10 +351,10 @@ const CompleteMatchScreen = () => {
                   accessibilityState={{ selected: inviteMethod === 'email' }}
                   accessibilityHint="Select email as the invite method"
                 >
-                  <Ionicons
+                  <Icon
                     name="mail"
                     size={18}
-                    color={inviteMethod === 'email' ? '#fff' : '#0D6B3E'}
+                    color={inviteMethod === 'email' ? colors.white : colors.primary}
                   />
                   <Text
                     style={[
@@ -371,10 +377,10 @@ const CompleteMatchScreen = () => {
                   accessibilityState={{ selected: inviteMethod === 'sms' }}
                   accessibilityHint="Select SMS as the invite method"
                 >
-                  <Ionicons
-                    name="chatbubble"
+                  <Icon
+                    name="message-circle"
                     size={18}
-                    color={inviteMethod === 'sms' ? '#fff' : '#0D6B3E'}
+                    color={inviteMethod === 'sms' ? colors.white : colors.primary}
                   />
                   <Text
                     style={[
@@ -387,7 +393,7 @@ const CompleteMatchScreen = () => {
                 </TouchableOpacity>
               </View>
             </View>
-            
+
             {inviteMethod === 'email' ? (
               <>
                 <View style={styles.switchContainer}>
@@ -395,11 +401,11 @@ const CompleteMatchScreen = () => {
                   <Switch
                     value={sendInvite}
                     onValueChange={setSendInvite}
-                    trackColor={{ false: "#767577", true: "#0D6B3E" }}
+                    trackColor={{ false: "#767577", true: colors.primary }}
                     thumbColor={sendInvite ? "#f4f3f4" : "#f4f3f4"}
                   />
                 </View>
-                
+
                 {sendInvite && (
                   <View style={styles.inputContainer}>
                     <Text style={styles.inputLabel}>Email Address</Text>
@@ -426,7 +432,7 @@ const CompleteMatchScreen = () => {
                 />
               </View>
             )}
-            
+
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.secondaryButton]}
@@ -434,7 +440,7 @@ const CompleteMatchScreen = () => {
               >
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={[styles.modalButton, styles.primaryButton]}
                 onPress={handleInvitePlayer}
@@ -454,20 +460,20 @@ const CompleteMatchScreen = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <ScrollView 
+        <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
         >
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="trophy" size={24} color="#0D6B3E" />
+              <Icon name="trophy" size={24} color={colors.primary} />
               <Text style={styles.sectionTitle}>Game Scores</Text>
             </View>
-            
+
             {gameScores.map((game, index) => (
               <View key={index} style={styles.gameScoreContainer}>
                 <Text style={styles.gameNumber}>Game {index + 1}</Text>
-                
+
                 <View style={styles.winnerSelector}>
                   <Text style={styles.winnerLabel}>Select Winner:</Text>
                   <View style={styles.winnerButtons}>
@@ -510,7 +516,7 @@ const CompleteMatchScreen = () => {
                     </TouchableOpacity>
                   </View>
                 </View>
-                
+
                 <View style={styles.scoreInputRow}>
                   <View style={styles.teamScoreContainer}>
                     <Text style={styles.teamName}>{getTeamNames(1)}</Text>
@@ -547,7 +553,7 @@ const CompleteMatchScreen = () => {
             </Text>
           </View>
         </ScrollView>
-        
+
         <View style={styles.footer}>
           <TouchableOpacity
             style={[styles.button, styles.secondaryButton]}
@@ -556,7 +562,7 @@ const CompleteMatchScreen = () => {
             accessibilityRole="button"
             accessibilityHint="Go back without completing the match"
           >
-            <Ionicons name="arrow-back" size={20} color="#666" />
+            <Icon name="arrow-left" size={20} color={colors.gray500} />
             <Text style={styles.secondaryButtonText}>Cancel</Text>
           </TouchableOpacity>
 
@@ -567,12 +573,12 @@ const CompleteMatchScreen = () => {
             accessibilityRole="button"
             accessibilityHint="Submit the scores and complete the match"
           >
-            <Ionicons name="checkmark-circle" size={20} color="#fff" />
+            <Icon name="check-circle" size={20} color={colors.white} />
             <Text style={styles.primaryButtonText}>Complete Match</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-      
+
       {renderInvitePlayerModal()}
     </Layout>
   );
@@ -586,45 +592,37 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: spacing.xxl,
   },
   section: {
-    backgroundColor: '#fff',
-    margin: 16,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: colors.white,
+    margin: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: borderRadius.md,
+    ...shadows.md,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0D6B3E',
-    marginLeft: 8,
+    ...typography.h3,
+    color: colors.primary,
+    marginLeft: spacing.sm,
   },
   gameScoreContainer: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 12,
-    padding: 12,
+    borderColor: colors.cardBorder,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
   },
   gameNumber: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '600',
-    color: '#0D6B3E',
-    marginBottom: 8,
+    color: colors.primary,
+    marginBottom: spacing.sm,
   },
   scoreInputRow: {
     flexDirection: 'row',
@@ -636,76 +634,71 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   teamName: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
+    ...typography.bodySmall,
+    color: colors.gray500,
+    marginBottom: spacing.xs,
     textAlign: 'center',
   },
   scoreInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
     width: 60,
     fontSize: 18,
     textAlign: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
   },
   scoreSeparator: {
-    fontSize: 16,
-    color: '#666',
-    marginHorizontal: 12,
+    ...typography.bodyLarge,
+    color: colors.gray500,
+    marginHorizontal: spacing.md,
     fontWeight: '600',
   },
   pointsToWinText: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
     fontStyle: 'italic',
   },
   footer: {
     flexDirection: 'row',
-    padding: 16,
-    backgroundColor: '#fff',
+    padding: spacing.lg,
+    backgroundColor: colors.white,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: colors.cardBorder,
     justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+    ...shadows.md,
   },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.sm,
     flex: 1,
-    marginHorizontal: 4,
+    marginHorizontal: spacing.xs,
   },
   primaryButton: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
   },
   primaryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-    marginLeft: 8,
+    ...typography.button,
+    color: colors.white,
+    marginLeft: spacing.sm,
   },
   secondaryButton: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.inputBorder,
   },
   secondaryButtonText: {
-    fontSize: 16,
+    ...typography.button,
     fontWeight: '500',
-    color: '#666',
-    marginLeft: 8,
+    color: colors.gray500,
+    marginLeft: spacing.sm,
   },
   errorContainer: {
     flex: 1,
@@ -713,77 +706,77 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   errorText: {
-    fontSize: 16,
-    color: '#f44336',
+    ...typography.bodyLarge,
+    color: colors.error,
     textAlign: 'center',
   },
   winnerSelector: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   winnerLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
+    ...typography.bodySmall,
+    color: colors.gray500,
+    marginBottom: spacing.xs,
   },
   winnerButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: spacing.sm,
   },
   winnerButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f8f8f8',
-    padding: 8,
-    borderRadius: 8,
+    backgroundColor: colors.gray100,
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: colors.cardBorder,
   },
   winnerButtonSelected: {
-    backgroundColor: '#0D6B3E',
-    borderColor: '#0D6B3E',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   winnerButtonText: {
-    fontSize: 14,
-    color: '#333',
+    ...typography.bodySmall,
+    color: colors.neutral,
     textAlign: 'center',
     flex: 1,
   },
   winnerButtonTextSelected: {
-    color: '#fff',
+    color: colors.white,
     fontWeight: '600',
   },
   inviteContainer: {
-    marginTop: 16,
-    marginBottom: 24,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xxl,
     alignItems: 'center',
   },
   inviteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.sm,
   },
   inviteButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    marginLeft: 8,
+    ...typography.button,
+    color: colors.white,
+    marginLeft: spacing.sm,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.backdrop,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    padding: spacing.xl,
     width: '100%',
     maxWidth: 500,
   },
@@ -791,82 +784,82 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    ...typography.h3,
+    color: colors.primary,
   },
   closeButton: {
-    padding: 4,
+    padding: spacing.xs,
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   inputLabel: {
-    fontSize: 16,
-    marginBottom: 8,
-    color: '#333',
+    ...typography.label,
+    marginBottom: spacing.sm,
+    color: colors.neutral,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
+    ...typography.bodyLarge,
   },
   switchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   switchLabel: {
-    fontSize: 16,
-    color: '#333',
+    ...typography.bodyLarge,
+    color: colors.neutral,
   },
   modalFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 24,
+    marginTop: spacing.xxl,
   },
   modalButton: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
+    padding: spacing.md,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
   },
   inviteMethodContainer: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   inviteMethodButtons: {
     flexDirection: 'row',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   methodButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: '#0D6B3E',
-    marginRight: 12,
+    borderColor: colors.primary,
+    marginRight: spacing.md,
     flex: 1,
   },
   activeMethodButton: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
   },
   methodButtonText: {
-    fontSize: 14,
+    ...typography.bodySmall,
     fontWeight: '500',
-    color: '#0D6B3E',
-    marginLeft: 8,
+    color: colors.primary,
+    marginLeft: spacing.sm,
   },
   activeMethodButtonText: {
-    color: '#fff',
+    color: colors.white,
   },
 });
 
-export default CompleteMatchScreen; 
+export default CompleteMatchScreen;

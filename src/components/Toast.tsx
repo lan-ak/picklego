@@ -1,13 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Animated, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 
 type ToastType = 'success' | 'error' | 'info';
-
-interface ToastMessage {
-  message: string;
-  type: ToastType;
-  duration?: number;
-}
 
 interface ToastProps {
   visible: boolean;
@@ -17,10 +12,10 @@ interface ToastProps {
   onDismiss: () => void;
 }
 
-const COLORS: Record<ToastType, string> = {
-  success: '#0D6B3E',
-  error: '#F44336',
-  info: '#1976D2',
+const TOAST_COLORS: Record<ToastType, string> = {
+  success: colors.success,
+  error: colors.error,
+  info: colors.info,
 };
 
 const Toast: React.FC<ToastProps> = ({ visible, message, type, duration = 3000, onDismiss }) => {
@@ -57,7 +52,7 @@ const Toast: React.FC<ToastProps> = ({ visible, message, type, duration = 3000, 
     <Animated.View
       style={[
         styles.container,
-        { backgroundColor: COLORS[type], transform: [{ translateY }] },
+        { backgroundColor: TOAST_COLORS[type], transform: [{ translateY }] },
       ]}
     >
       <TouchableOpacity onPress={dismiss} style={styles.content} activeOpacity={0.8}>
@@ -71,24 +66,19 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     top: 50,
-    left: 16,
-    right: 16,
-    borderRadius: 12,
+    left: spacing.lg,
+    right: spacing.lg,
+    borderRadius: borderRadius.md,
     zIndex: 9999,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    ...shadows.lg,
   },
   content: {
-    padding: 16,
+    padding: spacing.lg,
     alignItems: 'center',
   },
   text: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.bodyLarge,
+    color: colors.white,
     textAlign: 'center',
   },
 });

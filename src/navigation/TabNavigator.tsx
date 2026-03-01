@@ -1,8 +1,9 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import type { MainTabParamList } from '../types';
+import { colors, shadows } from '../theme';
 
 // Screen imports
 import HomeScreen from '../screens/HomeScreen';
@@ -19,8 +20,8 @@ const MainTabs = () => {
       screenOptions={({ navigation }) => ({
         headerShown: false,
         tabBarShowLabel: true,
-        tabBarActiveTintColor: '#0D6B3E',
-        tabBarInactiveTintColor: '#BBC3CE',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.tabInactive,
         tabBarStyle: styles.tabBar,
       })}
     >
@@ -29,7 +30,7 @@ const MainTabs = () => {
         component={HomeScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" color={color} size={size} />
+            <Icon name="home" color={color} size={size} />
           ),
         }}
       />
@@ -38,7 +39,7 @@ const MainTabs = () => {
         component={MatchesScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar" color={color} size={size} />
+            <Icon name="calendar" color={color} size={size} />
           ),
         }}
       />
@@ -50,12 +51,12 @@ const MainTabs = () => {
           tabBarIcon: ({ color, size }) => (
             <View style={styles.addButtonContainer}>
               <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: '#0D6B3E' }]}
+                style={styles.addButton}
                 onPress={() => navigation.navigate('AddMatch')}
                 accessibilityLabel="Create new match"
                 accessibilityRole="button"
               >
-                <Ionicons name="add" color="#FFFFFF" size={size} />
+                <Icon name="plus" color={colors.white} size={size} />
               </TouchableOpacity>
             </View>
           ),
@@ -67,7 +68,7 @@ const MainTabs = () => {
         options={{
           tabBarLabel: "My Stats",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart" color={color} size={size} />
+            <Icon name="bar-chart-2" color={color} size={size} />
           ),
         }}
       />
@@ -76,7 +77,7 @@ const MainTabs = () => {
         component={SettingsScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings" color={color} size={size} />
+            <Icon name="settings" color={color} size={size} />
           ),
         }}
       />
@@ -91,18 +92,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 60,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderRadius: 0,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
+    shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 5,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: colors.cardBorder,
   },
   addButtonContainer: {
     position: 'absolute',
@@ -112,21 +110,14 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   addButton: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.action, // Power Yellow FAB
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#0D6B3E',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
+    ...shadows.fab,
   },
 });
 
-export default MainTabs; 
+export default MainTabs;

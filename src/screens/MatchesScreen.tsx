@@ -1,11 +1,12 @@
 import React, { useLayoutEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
 import { format } from 'date-fns';
 import Layout from '../components/Layout';
 import { FooterButton } from '../components/FooterButton';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -31,7 +32,7 @@ const MatchesScreen = () => {
           onPress={() => navigation.navigate('AddMatch')}
           style={styles.headerButton}
         >
-          <Ionicons name="add-circle-outline" size={24} color="#0D6B3E" />
+          <Icon name="plus-circle" size={24} color={colors.primary} />
         </TouchableOpacity>
       ),
     });
@@ -42,17 +43,17 @@ const MatchesScreen = () => {
     switch (activeTab) {
       case 'all':
         return [...matches].sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
-      
+
       case 'upcoming':
         return matches
           .filter(match => match.status === 'scheduled')
           .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
-      
+
       case 'completed':
         return matches
           .filter(match => match.status === 'completed')
           .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
-      
+
       case 'won':
         return matches
           .filter(match => {
@@ -80,7 +81,7 @@ const MatchesScreen = () => {
             return !isUserWinner(match, currentUser.id);
           })
           .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
-      
+
       default:
         return matches;
     }
@@ -127,18 +128,18 @@ const MatchesScreen = () => {
   const formatPlayerNameWithInitial = (fullName: string) => {
     const parts = fullName.trim().split(' ');
     if (parts.length < 2) return fullName; // Return as is if no space found
-    
+
     const firstName = parts[0];
     const lastInitial = parts[parts.length - 1][0]; // First character of last name
-    
+
     return `${firstName} ${lastInitial}.`;
   };
 
   const renderTabs = () => (
     <View style={styles.tabsContainer}>
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false} 
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabsScrollContent}
       >
         <TouchableOpacity
@@ -199,7 +200,7 @@ const MatchesScreen = () => {
     const isUserMatch = userTeam !== null;
     const didUserWin = isUserMatch && match.status === 'completed' && isUserWinner(match, currentUser!.id);
     const didUserLose = isUserMatch && match.status === 'completed' && !isUserWinner(match, currentUser!.id);
-    
+
     return (
       <TouchableOpacity
         key={match.id}
@@ -227,19 +228,19 @@ const MatchesScreen = () => {
             ]}>
               {didUserWin && (
                 <>
-                  <Ionicons name="trophy" size={16} color="#0D6B3E" />
+                  <Icon name="trophy" size={16} color={colors.primary} />
                   <Text style={styles.winStatusText}>Won</Text>
                 </>
               )}
               {didUserLose && (
                 <>
-                  <Ionicons name="close-circle" size={16} color="#FF3B30" />
+                  <Icon name="x-circle" size={16} color={colors.loss} />
                   <Text style={styles.lossStatusText}>Lost</Text>
                 </>
               )}
               {!isUserMatch && (
                 <>
-                  <Ionicons name="checkmark-circle" size={16} color="#0D6B3E" />
+                  <Icon name="check-circle" size={16} color={colors.primary} />
                   <Text style={styles.statusText}>Completed</Text>
                 </>
               )}
@@ -279,7 +280,7 @@ const MatchesScreen = () => {
 
         {match.location && (
           <Text style={styles.matchLocation}>
-            <Ionicons name="location" size={14} color="#666" /> {match.location}
+            <Icon name="map-pin" size={14} color={colors.gray500} /> {match.location}
           </Text>
         )}
 
@@ -293,8 +294,8 @@ const MatchesScreen = () => {
   };
 
   return (
-    <Layout 
-      title="Matches" 
+    <Layout
+      title="Matches"
       showBackButton={true}
       rightComponent={
         <TouchableOpacity
@@ -303,7 +304,7 @@ const MatchesScreen = () => {
           accessibilityLabel="Add new match"
           accessibilityRole="button"
         >
-          <Ionicons name="add-circle-outline" size={24} color="#0D6B3E" />
+          <Icon name="plus-circle" size={24} color={colors.primary} />
         </TouchableOpacity>
       }
     >
@@ -312,7 +313,7 @@ const MatchesScreen = () => {
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
           {getFilteredMatches().length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="calendar-outline" size={60} color="#ccc" />
+              <Icon name="calendar" size={60} color={colors.gray300} />
               <Text style={styles.emptyStateText}>No matches found</Text>
               <TouchableOpacity
                 style={styles.addButton}
@@ -337,222 +338,201 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    padding: 16,
+    padding: spacing.lg,
     paddingTop: 60,
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.gray100,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2196F3',
+    ...typography.h1,
+    color: colors.secondary,
     textAlign: 'center',
   },
   tabsContainer: {
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    marginBottom: 8,
+    backgroundColor: colors.white,
+    ...shadows.sm,
+    marginBottom: spacing.sm,
   },
   tabsScrollContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   tab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderRadius: 20,
-    backgroundColor: '#f2f2f2',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    marginRight: spacing.sm,
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.gray100,
   },
   activeTab: {
     borderBottomWidth: 2,
-    borderBottomColor: '#0D6B3E',
+    borderBottomColor: colors.primary,
   },
   tabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#666',
+    ...typography.label,
+    color: colors.gray500,
   },
   activeTabText: {
-    color: '#0D6B3E',
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.primary,
   },
   scrollView: {
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: spacing.lg,
     paddingBottom: 100,
   },
   matchCard: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: spacing.lg,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.lg,
+    ...shadows.md,
   },
   winMatchCard: {
     borderLeftWidth: 4,
-    borderLeftColor: '#0D6B3E',
+    borderLeftColor: colors.primary,
   },
   lossMatchCard: {
     borderLeftWidth: 4,
-    borderLeftColor: '#FF3B30',
+    borderLeftColor: colors.loss,
   },
   matchHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   matchDate: {
-    fontSize: 15,
-    color: '#0D6B3E',
-    fontWeight: '500',
+    ...typography.label,
+    color: colors.primary,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: colors.winOverlay,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.md,
   },
   winStatusBadge: {
-    backgroundColor: 'rgba(76, 175, 80, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    marginLeft: 8,
+    backgroundColor: colors.winOverlay,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: spacing.xs,
+    marginLeft: spacing.sm,
     borderWidth: 1,
-    borderColor: '#0D6B3E',
+    borderColor: colors.primary,
   },
   lossStatusBadge: {
-    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+    backgroundColor: colors.lossOverlay,
   },
   statusText: {
-    fontSize: 12,
-    color: '#0D6B3E',
-    marginLeft: 4,
+    ...typography.caption,
+    color: colors.primary,
+    marginLeft: spacing.xs,
     fontWeight: '600',
   },
   winStatusText: {
-    color: '#0D6B3E',
+    ...typography.caption,
+    color: colors.primary,
     fontWeight: '600',
-    fontSize: 12,
   },
   lossStatusText: {
-    fontSize: 12,
-    color: '#FF3B30',
-    marginLeft: 4,
+    ...typography.caption,
+    color: colors.loss,
+    marginLeft: spacing.xs,
     fontWeight: '600',
   },
   matchType: {
-    fontSize: 15,
-    color: '#0D6B3E',
+    ...typography.label,
+    color: colors.primary,
     marginBottom: 10,
-    fontWeight: '500',
   },
   teamsContainer: {
-    marginVertical: 12,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    padding: 12,
+    marginVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
   },
   teamName: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#333',
+    color: colors.neutral,
     textAlign: 'center',
-    marginVertical: 4,
+    marginVertical: spacing.xs,
   },
   teamSeparator: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     textAlign: 'center',
-    marginVertical: 8,
+    marginVertical: spacing.sm,
     fontWeight: '500',
   },
   winningTeam: {
-    color: '#0D6B3E',
+    color: colors.primary,
     fontWeight: 'bold',
   },
   userTeam: {
     fontWeight: '700',
   },
   userWonTeam: {
-    color: '#0D6B3E',
+    color: colors.primary,
   },
   userLostTeam: {
-    color: '#FF3B30',
+    color: colors.loss,
   },
   matchLocation: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     marginTop: 10,
   },
   matchScore: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-    marginTop: 12,
+    ...typography.scoreDisplay,
+    color: colors.neutral,
+    marginTop: spacing.md,
     textAlign: 'center',
-    backgroundColor: '#f0f7f4',
-    paddingVertical: 8,
-    borderRadius: 8,
+    backgroundColor: colors.primaryOverlay,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
   },
   headerButton: {
-    padding: 8,
+    padding: spacing.sm,
   },
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 32,
+    padding: spacing.xxxl,
   },
   emptyStateText: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 16,
-    marginBottom: 24,
+    ...typography.bodyLarge,
+    color: colors.gray500,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xxl,
   },
   addButton: {
-    backgroundColor: '#0D6B3E',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.sm,
   },
   addButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
+    ...typography.button,
+    color: colors.white,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0D6B3E',
-    marginLeft: 8,
+    ...typography.h3,
+    color: colors.primary,
+    marginLeft: spacing.sm,
   },
   gameNumber: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '600',
-    color: '#0D6B3E',
-    marginBottom: 8,
+    color: colors.primary,
+    marginBottom: spacing.sm,
   },
   activeTabIndicator: {
     position: 'absolute',
@@ -560,19 +540,18 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 3,
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
   },
   playerNames: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
-    marginBottom: 4,
+    ...typography.bodyLarge,
+    color: colors.neutral,
+    marginBottom: spacing.xs,
   },
   scoreText: {
-    fontSize: 14,
-    color: '#0D6B3E',
+    ...typography.bodySmall,
+    color: colors.primary,
     fontWeight: '500',
   },
 });
 
-export default MatchesScreen; 
+export default MatchesScreen;

@@ -1,13 +1,15 @@
 import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView } from 'react-native';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
 import Layout from '../components/Layout';
 import type { Match, Game } from '../types';
 import { RootStackParamList } from '../types';
 import { format } from 'date-fns';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import PicklePete from '../components/PicklePete';
 
 type MatchDetailsRouteProp = RouteProp<RootStackParamList, 'MatchDetails'>;
 type MatchDetailsNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -22,7 +24,7 @@ const MatchDetailsScreen = () => {
     return (
       <Layout title="Match Details" showBackButton={true}>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Match not found</Text>
+          <PicklePete pose="error" size="sm" message="Match not found" />
         </View>
       </Layout>
     );
@@ -43,8 +45,8 @@ const MatchDetailsScreen = () => {
       'Are you sure you want to delete this match? This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
+        {
+          text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             await deleteMatch(match.id);
@@ -95,7 +97,7 @@ const MatchDetailsScreen = () => {
 
   const getMatchResult = () => {
     if (!currentUser || match.status !== 'completed') return null;
-    
+
     if (isUserInMatch()) {
       return isCurrentUserWinner(match) ? 'Win' : 'Loss';
     }
@@ -106,7 +108,7 @@ const MatchDetailsScreen = () => {
     const date = new Date(dateString);
     return format(date, 'MMMM d, yyyy');
   };
-  
+
   const formatMatchTime = (dateString: string) => {
     const date = new Date(dateString);
     return format(date, 'h:mm a');
@@ -114,7 +116,7 @@ const MatchDetailsScreen = () => {
 
   const getWinnerText = () => {
     if (!currentUser || match.status !== 'completed') return null;
-    
+
     if (isUserInMatch()) {
       return isCurrentUserWinner(match) ? 'You are the winner!' : 'You lost the match.';
     }
@@ -127,25 +129,25 @@ const MatchDetailsScreen = () => {
         {/* Match Header Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="calendar-outline" size={24} color="#0D6B3E" />
+            <Icon name="calendar" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Match Details</Text>
           </View>
-          
+
           <View style={styles.detailsRow}>
             <View style={styles.detailItem}>
-              <Ionicons name="calendar-outline" size={20} color="#0D6B3E" />
+              <Icon name="calendar" size={20} color={colors.primary} />
               <Text style={styles.detailText}>{formatMatchDate(match.scheduledDate)}</Text>
             </View>
-            
+
             <View style={styles.detailItem}>
-              <Ionicons name="time-outline" size={20} color="#0D6B3E" />
+              <Icon name="clock" size={20} color={colors.primary} />
               <Text style={styles.detailText}>{formatMatchTime(match.scheduledDate)}</Text>
             </View>
           </View>
 
           {match.location && (
             <View style={styles.detailItem}>
-              <Ionicons name="location-outline" size={20} color="#0D6B3E" />
+              <Icon name="map-pin" size={20} color={colors.primary} />
               <Text style={styles.detailText}>{match.location}</Text>
             </View>
           )}
@@ -156,19 +158,19 @@ const MatchDetailsScreen = () => {
                 {match.matchType === 'doubles' ? 'Doubles' : 'Singles'}
               </Text>
             </View>
-            
+
             <View style={styles.chipContainer}>
               <Text style={styles.chipText}>
                 {match.pointsToWin} pts
               </Text>
             </View>
-            
+
             <View style={styles.chipContainer}>
               <Text style={styles.chipText}>
                 Best of {match.numberOfGames}
               </Text>
             </View>
-            
+
             <View style={[styles.chipContainer, match.status === 'completed' ? styles.completedChip : match.status === 'expired' ? styles.expiredChip : styles.scheduledChip]}>
               <Text style={[styles.chipText, match.status === 'completed' ? styles.completedChipText : match.status === 'expired' ? styles.expiredChipText : styles.scheduledChipText]}>
                 {match.status === 'completed' ? 'Completed' : match.status === 'expired' ? 'Expired' : 'Scheduled'}
@@ -176,14 +178,14 @@ const MatchDetailsScreen = () => {
             </View>
           </View>
         </View>
-        
+
         {/* Teams Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="people" size={24} color="#0D6B3E" />
+            <Icon name="users" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Teams</Text>
           </View>
-          
+
           <View style={styles.teamsContainer}>
             <View
               style={[
@@ -212,15 +214,15 @@ const MatchDetailsScreen = () => {
             </View>
           </View>
         </View>
-        
+
         {/* Results Section - Only for completed matches */}
         {match.status === 'completed' && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="trophy" size={24} color="#0D6B3E" />
+              <Icon name="trophy" size={24} color={colors.primary} />
               <Text style={styles.sectionTitle}>Match Results</Text>
             </View>
-            
+
             <View style={styles.resultContent}>
               <Text style={styles.resultLabel}>Final Score</Text>
               {match.games.length > 0 ? (
@@ -232,15 +234,21 @@ const MatchDetailsScreen = () => {
               )}
 
               <Text style={styles.winnerText}>{getWinnerText()}</Text>
+              {isUserInMatch() && isCurrentUserWinner(match) && (
+                <PicklePete pose="win" size="sm" message="You won this one!" />
+              )}
+              {isUserInMatch() && !isCurrentUserWinner(match) && (
+                <PicklePete pose="loss" size="sm" message="Tough match! Next time!" />
+              )}
             </View>
           </View>
         )}
-        
+
         {/* Action Buttons - Different buttons for scheduled vs completed */}
         {match.status === 'scheduled' && isUserInMatch() && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="construct" size={24} color="#0D6B3E" />
+              <Icon name="wrench" size={24} color={colors.primary} />
               <Text style={styles.sectionTitle}>Actions</Text>
             </View>
 
@@ -252,7 +260,7 @@ const MatchDetailsScreen = () => {
                   accessibilityLabel="Edit match"
                   accessibilityRole="button"
                 >
-                  <Ionicons name="create-outline" size={20} color="#fff" />
+                  <Icon name="pencil" size={20} color={colors.white} />
                   <Text style={styles.buttonText}>Edit Match</Text>
                 </TouchableOpacity>
               )}
@@ -263,7 +271,7 @@ const MatchDetailsScreen = () => {
                 accessibilityLabel="Complete match"
                 accessibilityRole="button"
               >
-                <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+                <Icon name="check-circle" size={20} color={colors.white} />
                 <Text style={styles.buttonText}>Complete Match</Text>
               </TouchableOpacity>
             </View>
@@ -275,7 +283,7 @@ const MatchDetailsScreen = () => {
                 accessibilityLabel="Delete match"
                 accessibilityRole="button"
               >
-                <Ionicons name="trash-outline" size={20} color="#fff" />
+                <Icon name="trash" size={20} color={colors.white} />
                 <Text style={styles.buttonText}>Delete Match</Text>
               </TouchableOpacity>
             )}
@@ -291,7 +299,7 @@ const MatchDetailsScreen = () => {
               accessibilityLabel="Delete match"
               accessibilityRole="button"
             >
-              <Ionicons name="trash-outline" size={20} color="#fff" />
+              <Icon name="trash" size={20} color={colors.white} />
               <Text style={styles.buttonText}>Delete Match</Text>
             </TouchableOpacity>
           </View>
@@ -304,96 +312,88 @@ const MatchDetailsScreen = () => {
 const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: colors.surface,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: spacing.xxl,
   },
   section: {
-    backgroundColor: '#fff',
-    margin: 16,
-    marginBottom: 8,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: colors.white,
+    margin: spacing.lg,
+    marginBottom: spacing.sm,
+    padding: spacing.lg,
+    borderRadius: borderRadius.md,
+    ...shadows.md,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    paddingBottom: 8,
+    borderBottomColor: colors.surface,
+    paddingBottom: spacing.sm,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0D6B3E',
-    marginLeft: 8,
+    ...typography.h3,
+    color: colors.primary,
+    marginLeft: spacing.sm,
   },
   errorContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   errorText: {
-    fontSize: 16,
-    color: '#f44336',
+    ...typography.bodyLarge,
+    color: colors.error,
     textAlign: 'center',
   },
   detailsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   detailText: {
-    fontSize: 16,
-    color: '#333',
-    marginLeft: 8,
+    ...typography.bodyLarge,
+    color: colors.neutral,
+    marginLeft: spacing.sm,
   },
   matchTypeContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 8,
-    gap: 8,
+    marginTop: spacing.sm,
+    gap: spacing.sm,
   },
   chipContainer: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: colors.surface,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.lg,
+    marginRight: spacing.sm,
+    marginBottom: spacing.sm,
   },
   chipText: {
-    fontSize: 14,
-    color: '#333',
+    ...typography.bodySmall,
+    color: colors.neutral,
   },
   completedChip: {
-    backgroundColor: '#E8F5E9',
+    backgroundColor: colors.winOverlay,
     borderWidth: 1,
     borderColor: '#81C784',
   },
   scheduledChip: {
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.secondaryOverlay,
     borderWidth: 1,
     borderColor: '#90CAF9',
   },
   expiredChip: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: colors.actionOverlay,
     borderWidth: 1,
     borderColor: '#FFB74D',
   },
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
     color: '#388E3C',
   },
   scheduledChipText: {
-    color: '#1976D2',
+    color: colors.secondary,
   },
   expiredChipText: {
     color: '#E65100',
@@ -413,98 +413,96 @@ const styles = StyleSheet.create({
   },
   teamCard: {
     flex: 1,
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    padding: spacing.lg,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: colors.cardBorder,
   },
   teamLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+    ...typography.bodySmall,
+    color: colors.gray500,
+    marginBottom: spacing.sm,
     textAlign: 'center',
   },
   playerNames: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '600',
-    color: '#333',
+    color: colors.neutral,
     textAlign: 'center',
   },
   vsContainer: {
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     justifyContent: 'center',
   },
   vsText: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '600',
-    color: '#999',
+    color: colors.gray400,
   },
   resultContent: {
     alignItems: 'center',
-    padding: 16,
+    padding: spacing.lg,
   },
   resultLabel: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 8,
+    ...typography.bodyLarge,
+    color: colors.gray500,
+    marginBottom: spacing.sm,
   },
   scoreText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#0D6B3E',
-    marginBottom: 16,
+    ...typography.scoreDisplay,
+    color: colors.primary,
+    marginBottom: spacing.lg,
   },
   winnerText: {
+    ...typography.h3,
     fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    color: colors.neutral,
     textAlign: 'center',
   },
   actionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
-    gap: 12,
+    marginBottom: spacing.lg,
+    gap: spacing.md,
   },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginBottom: 8,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.sm,
     flex: 1,
   },
   buttonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 16,
-    marginLeft: 8,
+    ...typography.button,
+    color: colors.white,
+    marginLeft: spacing.sm,
   },
   editButton: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
   },
   completeButton: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
   },
   deleteButton: {
-    backgroundColor: '#F44336',
+    backgroundColor: colors.error,
   },
   footer: {
-    padding: 16,
+    padding: spacing.lg,
   },
   winnerTeam: {
-    backgroundColor: '#E8F5E9',
+    backgroundColor: colors.winOverlay,
     borderWidth: 1,
     borderColor: '#81C784',
   },
   loserTeam: {
-    backgroundColor: '#FFEBEE',
+    backgroundColor: colors.lossOverlay,
     borderWidth: 1,
     borderColor: '#E57373',
   },
 });
 
-export default MatchDetailsScreen; 
+export default MatchDetailsScreen;

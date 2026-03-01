@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import Layout from '../components/Layout';
+import { colors, typography, spacing } from '../theme';
 
 const PrivacyPolicyScreen: React.FC = () => {
   return (
@@ -8,20 +9,20 @@ const PrivacyPolicyScreen: React.FC = () => {
       <ScrollView style={styles.container}>
         <View style={styles.contentContainer}>
           <Text style={styles.effectiveDate}>Effective Date: March 17, 2025</Text>
-          
+
           <Text style={styles.sectionTitle}>Introduction</Text>
           <Text style={styles.paragraph}>
-            Welcome to PickleGo ("we," "our," or "us"). We respect your privacy and are committed to protecting your personal information. 
-            This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile 
+            Welcome to PickleGo ("we," "our," or "us"). We respect your privacy and are committed to protecting your personal information.
+            This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile
             application PickleGo (the "App").
           </Text>
           <Text style={styles.paragraph}>
-            Please read this Privacy Policy carefully. By using the App, you agree to the collection and use of information in 
+            Please read this Privacy Policy carefully. By using the App, you agree to the collection and use of information in
             accordance with this policy.
           </Text>
 
           <Text style={styles.sectionTitle}>Information We Collect</Text>
-          
+
           <Text style={styles.subSectionTitle}>Information You Provide to Us</Text>
           <Text style={styles.paragraph}>
             • <Text style={styles.bold}>Account Information</Text>: When you create an account, we collect your name, email address, phone number, and profile picture.
@@ -77,7 +78,7 @@ const PrivacyPolicyScreen: React.FC = () => {
 
           <Text style={styles.sectionTitle}>Data Security</Text>
           <Text style={styles.paragraph}>
-            We implement appropriate technical and organizational measures to protect your personal information from unauthorized access, 
+            We implement appropriate technical and organizational measures to protect your personal information from unauthorized access,
             disclosure, alteration, and destruction.
           </Text>
 
@@ -102,7 +103,7 @@ const PrivacyPolicyScreen: React.FC = () => {
 
           <Text style={styles.sectionTitle}>Changes to This Privacy Policy</Text>
           <Text style={styles.paragraph}>
-            We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on 
+            We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on
             this page and updating the "Effective Date."
           </Text>
 
@@ -120,47 +121,48 @@ const PrivacyPolicyScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: colors.surface,
   },
   contentContainer: {
-    padding: 20,
+    padding: spacing.xl,
     paddingBottom: 40,
   },
   effectiveDate: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 20,
+    ...typography.bodySmall,
+    color: colors.gray500,
+    marginBottom: spacing.xl,
     fontStyle: 'italic',
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0D6B3E',
-    marginTop: 24,
-    marginBottom: 12,
+    ...typography.h3,
+    color: colors.primary,
+    marginTop: spacing.xxl,
+    marginBottom: spacing.md,
   },
   subSectionTitle: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '600',
-    color: '#333',
-    marginTop: 12,
-    marginBottom: 8,
+    color: colors.neutral,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
   paragraph: {
+    ...typography.bodySmall,
     fontSize: 15,
     lineHeight: 22,
-    color: '#333',
-    marginBottom: 12,
+    color: colors.neutral,
+    marginBottom: spacing.md,
   },
   bold: {
     fontWeight: '600',
   },
   contactInfo: {
+    ...typography.bodySmall,
     fontSize: 15,
-    color: '#0D6B3E',
-    marginTop: 4,
+    color: colors.primary,
+    marginTop: spacing.xs,
     fontWeight: '600',
   },
 });
 
-export default PrivacyPolicyScreen; 
+export default PrivacyPolicyScreen;

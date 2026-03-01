@@ -1,27 +1,30 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  Image, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
   TextInput,
   Alert,
   Modal,
   Platform,
   FlatList
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon, IconName } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Player } from '../types';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { useToast } from '../context/ToastContext';
+import PicklePete from '../components/PicklePete';
 
 type SettingItem = {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
   label: string;
   onPress?: () => void;
   danger?: boolean;
@@ -42,7 +45,8 @@ const SettingsScreen: React.FC = () => {
   const [showInvitedPlayers, setShowInvitedPlayers] = useState(false);
   const [showManagePlayers, setShowManagePlayers] = useState(false);
   const navigation = useNavigation<SettingsScreenNavigationProp>();
-  
+  const { showToast } = useToast();
+
   const handleEditProfile = () => {
     navigation.navigate('EditProfile');
   };
@@ -68,7 +72,7 @@ const SettingsScreen: React.FC = () => {
         await updatePlayer(currentUser.id, {
           profilePic: result.assets[0].uri
         });
-        Alert.alert('Success', 'Profile picture updated successfully');
+        showToast('Profile picture updated successfully', 'success');
       } catch (error) {
         Alert.alert('Error', 'Failed to update profile picture');
       }
@@ -90,10 +94,10 @@ const SettingsScreen: React.FC = () => {
     }
 
     const invitedPlayer = await invitePlayer(inviteName.trim(), inviteEmail.trim());
-    
+
     if (invitedPlayer) {
       Alert.alert(
-        'Success', 
+        'Success',
         `${inviteName} has been invited. They can now join the app using this email address.`,
         [{ text: 'OK', onPress: () => {
           setInviteName('');
@@ -116,13 +120,13 @@ const SettingsScreen: React.FC = () => {
       `Are you sure you want to remove ${player.name} from your contacts?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove', 
+        {
+          text: 'Remove',
           style: 'destructive',
           onPress: async () => {
             const success = await removePlayer(player.id);
             if (success) {
-              Alert.alert('Success', `${player.name} has been removed from your contacts.`);
+              showToast(`${player.name} has been removed from your contacts.`, 'success');
             } else {
               Alert.alert('Error', 'Failed to remove player. You cannot remove yourself.');
             }
@@ -139,12 +143,12 @@ const SettingsScreen: React.FC = () => {
       'This will add sample players and matches to help you see how the app looks with data. Continue?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Insert Data', 
+        {
+          text: 'Insert Data',
           onPress: async () => {
             const success = await insertDummyData();
             if (success) {
-              Alert.alert('Success', 'Dummy data has been added successfully. You are now logged in as John Smith.');
+              showToast('Dummy data has been added successfully. You are now logged in as John Smith.', 'success');
             } else {
               Alert.alert('Error', 'Failed to insert dummy data.');
             }
@@ -159,7 +163,7 @@ const SettingsScreen: React.FC = () => {
       title: 'Account',
       items: [
         {
-          icon: 'person-circle',
+          icon: 'circle-user',
           label: 'Edit Profile',
           onPress: handleEditProfile,
         },
@@ -169,12 +173,12 @@ const SettingsScreen: React.FC = () => {
           onPress: () => setShowInviteModal(true),
         },
         {
-          icon: 'people',
+          icon: 'users',
           label: 'Manage Players',
           onPress: () => setShowManagePlayers(true),
         },
         {
-          icon: 'person-add',
+          icon: 'user-plus',
           label: 'View Invited Players',
           onPress: () => setShowInvitedPlayers(true),
         },
@@ -183,13 +187,13 @@ const SettingsScreen: React.FC = () => {
     {
       title: 'Preferences',
       items: [
-        { 
-          icon: 'notifications-outline', 
+        {
+          icon: 'bell',
           label: 'Notifications',
           onPress: () => Alert.alert('Coming Soon', 'Notification settings will be available in a future update.')
         },
-        { 
-          icon: 'color-palette-outline', 
+        {
+          icon: 'palette',
           label: 'Appearance',
           onPress: () => Alert.alert('Coming Soon', 'Appearance settings will be available in a future update.')
         },
@@ -199,17 +203,17 @@ const SettingsScreen: React.FC = () => {
       title: 'Data',
       items: [
         {
-          icon: 'cloud-download-outline',
+          icon: 'cloud-download',
           label: 'Export Data',
           onPress: () => Alert.alert('Coming Soon', 'Data export will be available in a future update.')
         },
         ...(__DEV__ ? [{
-          icon: 'add-circle-outline' as keyof typeof Ionicons.glyphMap,
+          icon: 'plus-circle' as IconName,
           label: 'Insert Dummy Data',
           onPress: handleInsertDummyData,
         }] : []),
         {
-          icon: 'refresh-outline',
+          icon: 'refresh-cw',
           label: 'Reset All Data',
           onPress: () => {
             Alert.alert(
@@ -217,13 +221,13 @@ const SettingsScreen: React.FC = () => {
               'Are you sure you want to reset all data? This will delete all matches, players, and settings. This action cannot be undone.',
               [
                 { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'Reset', 
+                {
+                  text: 'Reset',
                   style: 'destructive',
                   onPress: async () => {
                     const success = await resetAllData();
                     if (success) {
-                      Alert.alert('Success', 'All data has been reset.');
+                      showToast('All data has been reset.', 'success');
                     } else {
                       Alert.alert('Error', 'Failed to reset data.');
                     }
@@ -239,18 +243,18 @@ const SettingsScreen: React.FC = () => {
     {
       title: 'About',
       items: [
-        { 
-          icon: 'information-circle-outline', 
+        {
+          icon: 'info',
           label: 'About PickleGo',
           onPress: () => Alert.alert('PickleGo', 'Version 1.0.0\n\nTrack your pickleball matches and stats.')
         },
-        { 
-          icon: 'document-text-outline', 
+        {
+          icon: 'file-text',
           label: 'Privacy Policy',
           onPress: () => navigation.navigate('PrivacyPolicy'),
         },
-        { 
-          icon: 'help-circle-outline', 
+        {
+          icon: 'help-circle',
           label: 'Help & Support',
           onPress: () => Alert.alert('Help & Support', 'For help and support, please contact us at support@picklego.app')
         },
@@ -260,7 +264,7 @@ const SettingsScreen: React.FC = () => {
       title: 'Account Actions',
       items: [
         {
-          icon: 'log-out-outline',
+          icon: 'log-out',
           label: 'Sign Out',
           onPress: async () => {
             Alert.alert(
@@ -305,14 +309,12 @@ const SettingsScreen: React.FC = () => {
               style={styles.closeButton}
               onPress={() => setShowInviteModal(false)}
             >
-              <Ionicons name="close" size={24} color="#0D6B3E" />
+              <Icon name="x" size={24} color={colors.primary} />
             </TouchableOpacity>
           </View>
-          
-          <Text style={{ fontSize: 16, color: '#666', marginBottom: 20 }}>
-            Invite a player to join the app. They will receive an invitation and be able to claim their match history.
-          </Text>
-          
+
+          <PicklePete pose="invite" size="sm" message="Invite someone to play!" />
+
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Player Name</Text>
             <TextInput
@@ -322,7 +324,7 @@ const SettingsScreen: React.FC = () => {
               placeholder="Enter player's name"
             />
           </View>
-          
+
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Email Address</Text>
             <TextInput
@@ -334,18 +336,18 @@ const SettingsScreen: React.FC = () => {
               autoCapitalize="none"
             />
           </View>
-          
-          <TouchableOpacity 
-            style={{ 
-              backgroundColor: '#0D6B3E',
-              borderRadius: 8,
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: colors.primary,
+              borderRadius: borderRadius.sm,
               padding: 15,
               alignItems: 'center',
               marginTop: 10
             }}
             onPress={handleInvitePlayer}
           >
-            <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Send Invitation</Text>
+            <Text style={{ ...typography.button, color: colors.white }}>Send Invitation</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -368,10 +370,10 @@ const SettingsScreen: React.FC = () => {
               style={styles.closeButton}
               onPress={() => setShowInvitedPlayers(false)}
             >
-              <Ionicons name="close" size={24} color="#0D6B3E" />
+              <Icon name="x" size={24} color={colors.primary} />
             </TouchableOpacity>
           </View>
-          
+
           {invitedPlayers.length > 0 ? (
             <FlatList
               data={invitedPlayers}
@@ -406,7 +408,7 @@ const SettingsScreen: React.FC = () => {
   const renderManagePlayersModal = () => {
     // Filter out the current user from the list
     const otherPlayers = players.filter(player => !currentUser || player.id !== currentUser.id);
-    
+
     return (
       <Modal
         animationType="slide"
@@ -422,10 +424,10 @@ const SettingsScreen: React.FC = () => {
                 style={styles.closeButton}
                 onPress={() => setShowManagePlayers(false)}
               >
-                <Ionicons name="close" size={24} color="#0D6B3E" />
+                <Icon name="x" size={24} color={colors.primary} />
               </TouchableOpacity>
             </View>
-            
+
             {otherPlayers.length > 0 ? (
               <FlatList
                 data={otherPlayers}
@@ -449,7 +451,7 @@ const SettingsScreen: React.FC = () => {
                       style={styles.removePlayerButton}
                       onPress={() => handleRemovePlayer(item)}
                     >
-                      <Ionicons name="trash-outline" size={20} color="#ff3b30" />
+                      <Icon name="trash" size={20} color={colors.error} />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -478,27 +480,27 @@ const SettingsScreen: React.FC = () => {
             accessibilityRole="button"
           >
             {currentUser?.profilePic ? (
-              <Image 
-                source={{ uri: currentUser.profilePic }} 
-                style={styles.profilePic} 
+              <Image
+                source={{ uri: currentUser.profilePic }}
+                style={styles.profilePic}
               />
             ) : (
               <View style={styles.profilePicPlaceholder}>
-                <Ionicons name="person" size={40} color="#666" />
+                <Icon name="user" size={40} color={colors.gray500} />
               </View>
             )}
             <View style={styles.editProfilePicButton}>
-              <Ionicons name="camera" size={16} color="#fff" />
+              <Icon name="camera" size={16} color={colors.white} />
             </View>
           </TouchableOpacity>
-          
+
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{currentUser?.name || 'Player'}</Text>
             <View style={styles.ratingContainer}>
-              <Ionicons name="star" size={18} color="#FFD700" />
+              <Icon name="star" size={18} color={colors.action} />
               <Text style={styles.ratingText}>{currentUser?.rating?.toFixed(1) || '3.5'}</Text>
             </View>
-            
+
             <TouchableOpacity
               style={styles.editProfileButton}
               onPress={handleEditProfile}
@@ -523,10 +525,10 @@ const SettingsScreen: React.FC = () => {
                 accessibilityLabel={item.label}
               >
                 <View style={styles.settingItemLeft}>
-                  <Ionicons
+                  <Icon
                     name={item.icon}
                     size={24}
-                    color={item.danger ? '#ff3b30' : '#0D6B3E'}
+                    color={item.danger ? colors.error : colors.primary}
                   />
                   <Text
                     style={[
@@ -537,7 +539,7 @@ const SettingsScreen: React.FC = () => {
                     {item.label}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#bbb" />
+                <Icon name="chevron-right" size={20} color={colors.gray300} />
               </TouchableOpacity>
             ))}
           </View>
@@ -557,18 +559,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   profileSection: {
-    backgroundColor: '#fff',
-    margin: 16,
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: colors.white,
+    margin: spacing.lg,
+    padding: spacing.xl,
+    borderRadius: borderRadius.md,
+    ...shadows.md,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -584,7 +579,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -592,7 +587,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
     width: 28,
     height: 28,
     borderRadius: 14,
@@ -601,12 +596,11 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     flex: 1,
-    marginLeft: 16,
+    marginLeft: spacing.lg,
   },
   profileName: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
+    ...typography.h3,
+    color: colors.neutral,
     marginBottom: 6,
   },
   ratingContainer: {
@@ -615,78 +609,70 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   ratingText: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '600',
-    color: '#555',
-    marginLeft: 4,
+    color: colors.gray500,
+    marginLeft: spacing.xs,
   },
   editProfileButton: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 12,
+    backgroundColor: colors.primaryOverlay,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: borderRadius.xl,
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: '#0D6B3E',
+    borderColor: colors.primary,
   },
   editProfileButtonText: {
-    color: '#0D6B3E',
+    ...typography.label,
+    color: colors.primary,
     fontWeight: '600',
-    fontSize: 14,
   },
   settingSection: {
-    backgroundColor: '#fff',
-    margin: 16,
-    marginBottom: 8,
-    borderRadius: 12,
+    backgroundColor: colors.white,
+    margin: spacing.lg,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.md,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    ...shadows.md,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
-    padding: 16,
-    paddingBottom: 8,
+    ...typography.label,
+    color: colors.gray500,
+    padding: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: colors.cardBorder,
   },
   settingItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   settingItemText: {
-    fontSize: 16,
-    marginLeft: 12,
-    color: '#333',
+    ...typography.bodyLarge,
+    marginLeft: spacing.md,
+    color: colors.neutral,
   },
   dangerText: {
-    color: '#FF3B30',
+    color: colors.error,
     fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.backdrop,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.xxl,
     paddingVertical: 40,
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: colors.white,
     borderRadius: 15,
     padding: 14,
     width: '85%',
@@ -702,22 +688,21 @@ const styles = StyleSheet.create({
     padding: 5,
   },
   modalDescription: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 20,
+    ...typography.bodyLarge,
+    color: colors.gray500,
+    marginBottom: spacing.xl,
     lineHeight: 22,
   },
   inviteButton: {
-    backgroundColor: '#0D6B3E',
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.sm,
     padding: 15,
     alignItems: 'center',
     marginTop: 10,
   },
   inviteButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
   invitedPlayersList: {
     maxHeight: 300,
@@ -728,19 +713,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.cardBorder,
   },
   invitedPlayerInfo: {
     flex: 1,
   },
   invitedPlayerName: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '500',
-    color: '#333',
+    color: colors.neutral,
   },
   invitedPlayerEmail: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
     marginTop: 2,
   },
   invitedPlayerStatus: {
@@ -748,34 +733,34 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     overflow: 'hidden',
   },
   pendingStatus: {
-    backgroundColor: '#FFF9C4',
-    color: '#F57C00',
+    backgroundColor: colors.actionOverlay,
+    color: colors.warning,
   },
   claimedStatus: {
-    backgroundColor: '#E8F5E9',
-    color: '#4CAF50',
+    backgroundColor: colors.primaryOverlay,
+    color: colors.primary,
   },
   noInvitesText: {
-    fontSize: 16,
-    color: '#666',
+    ...typography.bodyLarge,
+    color: colors.gray500,
     textAlign: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   playerList: {
-    paddingBottom: 20,
+    paddingBottom: spacing.xl,
   },
   playerListItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.cardBorder,
   },
   playerInfo: {
     flexDirection: 'row',
@@ -786,82 +771,79 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    marginRight: 12,
+    marginRight: spacing.md,
   },
   playerAvatarPlaceholder: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: spacing.md,
   },
   playerAvatarText: {
-    color: '#fff',
+    color: colors.white,
     fontSize: 18,
     fontWeight: 'bold',
   },
   playerName: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '500',
-    color: '#333',
+    color: colors.neutral,
   },
   playerEmail: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
   },
   removePlayerButton: {
-    padding: 8,
+    padding: spacing.sm,
   },
   emptyState: {
-    padding: 20,
+    padding: spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyStateText: {
-    fontSize: 16,
-    color: '#666',
+    ...typography.bodyLarge,
+    color: colors.gray500,
     textAlign: 'center',
   },
   modalTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#0D6B3E',
+    ...typography.h3,
+    color: colors.primary,
   },
   inputContainer: {
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   inputLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#333',
+    ...typography.label,
+    color: colors.neutral,
     marginBottom: 2,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
     padding: 7,
     fontSize: 13,
   },
   pendingText: {
-    fontSize: 14,
+    ...typography.bodySmall,
     fontWeight: '500',
-    color: '#F57C00',
+    color: colors.warning,
   },
   saveButton: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
     marginTop: 14,
   },
   saveButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
 });
 
-export default SettingsScreen; 
+export default SettingsScreen;

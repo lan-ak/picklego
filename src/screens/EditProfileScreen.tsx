@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  Image, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
   TextInput,
   Alert,
   Platform
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Player } from '../types';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { useToast } from '../context/ToastContext';
 
 type EditProfileScreenRouteProp = RouteProp<RootStackParamList, 'EditProfile'>;
 type EditProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -25,7 +27,8 @@ const EditProfileScreen: React.FC = () => {
   const { currentUser, updatePlayer } = useData();
   const navigation = useNavigation<EditProfileScreenNavigationProp>();
   const route = useRoute<EditProfileScreenRouteProp>();
-  
+  const { showToast } = useToast();
+
   const [tempName, setTempName] = useState('');
   const [tempRating, setTempRating] = useState('');
   const [tempEmail, setTempEmail] = useState('');
@@ -46,7 +49,7 @@ const EditProfileScreen: React.FC = () => {
 
   const handleSaveProfile = async () => {
     if (!currentUser) return;
-    
+
     if (!tempName.trim()) {
       Alert.alert('Error', 'Name cannot be empty');
       return;
@@ -100,9 +103,8 @@ const EditProfileScreen: React.FC = () => {
       if (tempPassword) updates.password = tempPassword;
 
       await updatePlayer(currentUser.id, updates);
-      Alert.alert('Success', 'Profile updated successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      showToast('Profile updated successfully', 'success');
+      navigation.goBack();
     } catch (error) {
       Alert.alert('Error', 'Failed to update profile');
     }
@@ -129,7 +131,7 @@ const EditProfileScreen: React.FC = () => {
         await updatePlayer(currentUser.id, {
           profilePic: result.assets[0].uri
         });
-        Alert.alert('Success', 'Profile picture updated successfully');
+        showToast('Profile picture updated successfully', 'success');
       } catch (error) {
         Alert.alert('Error', 'Failed to update profile picture');
       }
@@ -141,13 +143,13 @@ const EditProfileScreen: React.FC = () => {
       <ScrollView style={styles.container}>
         <View style={styles.profilePicEditContainer}>
           {currentUser?.profilePic ? (
-            <Image 
-              source={{ uri: currentUser.profilePic }} 
-              style={styles.profilePicLarge} 
+            <Image
+              source={{ uri: currentUser.profilePic }}
+              style={styles.profilePicLarge}
             />
           ) : (
             <View style={styles.profilePicPlaceholderLarge}>
-              <Ionicons name="person" size={50} color="#666" />
+              <Icon name="user" size={50} color={colors.gray500} />
             </View>
           )}
           <TouchableOpacity
@@ -157,15 +159,15 @@ const EditProfileScreen: React.FC = () => {
             accessibilityRole="button"
             accessibilityHint="Opens the photo library to select a new profile picture"
           >
-            <Ionicons name="camera" size={18} color="#fff" />
+            <Icon name="camera" size={18} color={colors.white} />
             <Text style={styles.changePhotoText}>Change Photo</Text>
           </TouchableOpacity>
         </View>
-        
+
         <View style={styles.formContainer}>
           <View style={styles.formSection}>
             <Text style={styles.sectionTitle}>Personal Information</Text>
-            
+
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Name</Text>
               <TextInput
@@ -177,7 +179,7 @@ const EditProfileScreen: React.FC = () => {
                 accessibilityHint="Enter your display name"
               />
             </View>
-            
+
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Email</Text>
               <TextInput
@@ -191,7 +193,7 @@ const EditProfileScreen: React.FC = () => {
                 accessibilityHint="Enter your email address"
               />
             </View>
-            
+
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Phone Number</Text>
               <TextInput
@@ -204,7 +206,7 @@ const EditProfileScreen: React.FC = () => {
                 accessibilityHint="Enter your phone number"
               />
             </View>
-            
+
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Rating (1.0 - 5.0)</Text>
               <TextInput
@@ -218,10 +220,10 @@ const EditProfileScreen: React.FC = () => {
               />
             </View>
           </View>
-          
+
           <View style={styles.formSection}>
             <Text style={styles.sectionTitle}>Change Password</Text>
-            
+
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>New Password</Text>
               <View style={styles.passwordInputContainer}>
@@ -240,15 +242,15 @@ const EditProfileScreen: React.FC = () => {
                   accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                   accessibilityRole="button"
                 >
-                  <Ionicons
+                  <Icon
                     name={showPassword ? "eye-off" : "eye"}
                     size={24}
-                    color="#666"
+                    color={colors.gray500}
                   />
                 </TouchableOpacity>
               </View>
             </View>
-            
+
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Confirm Password</Text>
               <TextInput
@@ -261,13 +263,13 @@ const EditProfileScreen: React.FC = () => {
                 accessibilityHint="Re-enter your new password to confirm"
               />
             </View>
-            
+
             <Text style={styles.passwordHint}>
               Leave password fields empty if you don't want to change it
             </Text>
           </View>
         </View>
-        
+
         <TouchableOpacity
           style={styles.saveButton}
           onPress={handleSaveProfile}
@@ -285,113 +287,106 @@ const EditProfileScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
+    backgroundColor: colors.surface,
   },
   profilePicEditContainer: {
     alignItems: 'center',
-    marginVertical: 24,
+    marginVertical: spacing.xxl,
   },
   profilePicLarge: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   profilePicPlaceholderLarge: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   changePhotoButton: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.xl,
   },
   changePhotoText: {
-    color: '#fff',
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
     fontSize: 14,
-    marginLeft: 8,
+    marginLeft: spacing.sm,
   },
   formContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
   },
   formSection: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    ...shadows.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0D6B3E',
-    marginBottom: 16,
+    ...typography.h3,
+    color: colors.primary,
+    marginBottom: spacing.lg,
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   inputLabel: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#333',
+    ...typography.label,
+    color: colors.neutral,
     marginBottom: 6,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: '#fff',
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
+    ...typography.bodyLarge,
+    backgroundColor: colors.white,
   },
   passwordInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    backgroundColor: '#fff',
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.white,
   },
   passwordInput: {
     flex: 1,
-    padding: 12,
-    fontSize: 16,
+    padding: spacing.md,
+    ...typography.bodyLarge,
   },
   passwordVisibilityButton: {
-    padding: 12,
+    padding: spacing.md,
   },
   passwordHint: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 8,
+    ...typography.bodySmall,
+    color: colors.gray500,
+    marginTop: spacing.sm,
     fontStyle: 'italic',
   },
   saveButton: {
-    backgroundColor: '#0D6B3E',
-    paddingVertical: 16,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.lg,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
-    margin: 16,
-    marginTop: 8,
+    margin: spacing.lg,
+    marginTop: spacing.sm,
   },
   saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
 });
 
-export default EditProfileScreen; 
+export default EditProfileScreen;

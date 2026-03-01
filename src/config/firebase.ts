@@ -18,8 +18,7 @@ import {
   collection,
   query,
   where,
-  getDocs,
-  orderBy
+  getDocs
 } from 'firebase/firestore';
 import { Player, Match } from '../types';
 
@@ -151,13 +150,20 @@ export const getMatchesForPlayer = async (playerId: string): Promise<Match[]> =>
   try {
     const q = query(
       collection(db, 'matches'),
-      where('allPlayerIds', 'array-contains', playerId),
-      orderBy('scheduledDate', 'desc')
+      where('allPlayerIds', 'array-contains', playerId)
     );
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => doc.data() as Match);
   } catch (error: any) {
     throw new Error('Failed to get matches for player: ' + error.message);
+  }
+};
+
+export const deletePlayerDocument = async (playerId: string) => {
+  try {
+    await deleteDoc(doc(db, 'players', playerId));
+  } catch (error: any) {
+    throw new Error('Failed to delete player document: ' + error.message);
   }
 };
 

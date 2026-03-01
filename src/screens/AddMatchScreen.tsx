@@ -15,8 +15,9 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,12 +33,12 @@ const AddMatchScreen = () => {
   const navigation = useNavigation<AddMatchScreenNavigationProp>();
   const route = useRoute();
   const { players, addMatch, addPlayer, invitePlayer, currentUser, matches, updateMatch } = useData();
-  
+
   // Check if we're editing an existing match
   const isEditing = route.params && 'isEditing' in route.params ? route.params.isEditing : false;
   const matchId = route.params && 'matchId' in route.params ? route.params.matchId : undefined;
   const existingMatch = matchId ? matches.find(m => m.id === matchId) : null;
-  
+
   const [date, setDate] = useState(existingMatch ? new Date(existingMatch.scheduledDate) : new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -110,19 +111,19 @@ const AddMatchScreen = () => {
 
   const togglePlayerTeamSelection = (playerId: string) => {
     if (currentUser && playerId === currentUser.id) return; // Prevent deselecting current user
-    
+
     // Remove from team 1 if already there
     if (team1Players.includes(playerId)) {
       setTeam1Players(prev => prev.filter(id => id !== playerId));
       return;
     }
-    
+
     // Remove from team 2 if already there
     if (team2Players.includes(playerId)) {
       setTeam2Players(prev => prev.filter(id => id !== playerId));
       return;
     }
-    
+
     // Add to the selected team
     if (selectedTeam === 1) {
       const maxPlayersPerTeam = isDoubles ? 2 : 1;
@@ -139,7 +140,7 @@ const AddMatchScreen = () => {
         Alert.alert('Team Full', `You can only add ${maxPlayersPerTeam} player${maxPlayersPerTeam > 1 ? 's' : ''} to each team in ${isDoubles ? 'doubles' : 'singles'} mode.`);
       }
     }
-    
+
     // Close the dropdown after selection
     setShowPlayerDropdown(false);
     setSelectedTeam(null);
@@ -152,7 +153,7 @@ const AddMatchScreen = () => {
   };
 
   const getFilteredPlayers = () => {
-    return players.filter(player => 
+    return players.filter(player =>
       player.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
       !team1Players.includes(player.id) &&
       !team2Players.includes(player.id)
@@ -203,9 +204,9 @@ const AddMatchScreen = () => {
         } else if (selectedTeam === 2 && team2Players.length < maxPlayersPerTeam) {
           setTeam2Players(prev => [...prev, newPlayer.id]);
         }
-        
+
         // Reopen the player dropdown if the team isn't full yet
-        if ((selectedTeam === 1 && team1Players.length + 1 < maxPlayersPerTeam) || 
+        if ((selectedTeam === 1 && team1Players.length + 1 < maxPlayersPerTeam) ||
             (selectedTeam === 2 && team2Players.length + 1 < maxPlayersPerTeam)) {
           setShowPlayerDropdown(true);
         } else {
@@ -237,7 +238,7 @@ const AddMatchScreen = () => {
     if (!numberOfGames || isNaN(parseInt(numberOfGames)) || parseInt(numberOfGames) < 1) {
       errors.push('Please enter a valid number of games');
     }
-    
+
     // Check if number of games is even
     if (numberOfGames && !isNaN(parseInt(numberOfGames)) && parseInt(numberOfGames) % 2 === 0) {
       errors.push('Number of games should be odd to prevent draws');
@@ -248,7 +249,7 @@ const AddMatchScreen = () => {
 
   const handleScheduleMatch = async (isInstantMatch = false) => {
     const errors = validateMatchSettings();
-    
+
     // Only validate date for scheduled matches, not instant matches
     if (!isInstantMatch && date < new Date()) {
       errors.push('Please select a future date and time');
@@ -386,7 +387,7 @@ const AddMatchScreen = () => {
     return (
       <View style={styles.onboardingContainer}>
         <View style={styles.onboardingContent}>
-          <Ionicons name="tennisball-outline" size={80} color="#0D6B3E" />
+          <Icon name="circle-dot" size={80} color={colors.primary} />
           <Text style={styles.onboardingTitle}>Welcome to PickleGo!</Text>
           <Text style={styles.onboardingText}>
             Track your pickleball matches, players, and stats in one place.
@@ -394,13 +395,13 @@ const AddMatchScreen = () => {
           <Text style={styles.onboardingSubtext}>
             Create a profile to get started.
           </Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.onboardingButton}
             onPress={onCreateProfile}
           >
             <Text style={styles.onboardingButtonText}>Create Profile</Text>
-            <Ionicons name="arrow-forward" size={20} color="#fff" />
+            <Icon name="arrow-right" size={20} color={colors.white} />
           </TouchableOpacity>
         </View>
       </View>
@@ -422,15 +423,15 @@ const AddMatchScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: '#0D6B3E' }]}>Add New Player</Text>
+              <Text style={styles.modalTitle}>Add New Player</Text>
               <TouchableOpacity
                 style={styles.closeButton}
                 onPress={() => setShowAddPlayerModal(false)}
               >
-                <Ionicons name="close" size={24} color="#0D6B3E" />
+                <Icon name="x" size={24} color={colors.primary} />
               </TouchableOpacity>
             </View>
-            
+
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Player Name</Text>
               <TextInput
@@ -443,17 +444,17 @@ const AddMatchScreen = () => {
                 accessibilityHint="Enter the new player's name"
               />
             </View>
-            
+
             <View style={styles.switchContainer}>
               <Text style={styles.switchLabel}>Send email invitation</Text>
               <Switch
                 value={sendInvite}
                 onValueChange={setSendInvite}
-                trackColor={{ false: "#767577", true: "#0D6B3E" }}
+                trackColor={{ false: "#767577", true: colors.primary }}
                 thumbColor={sendInvite ? "#f4f3f4" : "#f4f3f4"}
               />
             </View>
-            
+
             {sendInvite && (
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Email Address (optional)</Text>
@@ -469,7 +470,7 @@ const AddMatchScreen = () => {
                 />
               </View>
             )}
-            
+
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton]}
@@ -481,7 +482,7 @@ const AddMatchScreen = () => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalButton, styles.addButton, { backgroundColor: '#0D6B3E' }]}
+                style={[styles.modalButton, styles.addButton]}
                 onPress={handleAddPlayer}
                 accessibilityLabel="Add Player"
                 accessibilityRole="button"
@@ -514,12 +515,12 @@ const AddMatchScreen = () => {
               style={styles.closeButton}
               onPress={() => setShowPlayerDropdown(false)}
             >
-              <Ionicons name="close" size={24} color="#0D6B3E" />
+              <Icon name="x" size={24} color={colors.primary} />
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.searchContainer}>
-            <Ionicons name="search" size={20} color="#0D6B3E" style={styles.searchIcon} />
+            <Icon name="search" size={20} color={colors.primary} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
               value={searchQuery}
@@ -530,7 +531,7 @@ const AddMatchScreen = () => {
               accessibilityHint="Type to filter the player list"
             />
           </View>
-          
+
           <FlatList
             data={getFilteredPlayers()}
             keyExtractor={(item) => item.id}
@@ -542,7 +543,7 @@ const AddMatchScreen = () => {
                 accessibilityRole="button"
               >
                 <Text style={styles.playerName}>{item.name}</Text>
-                <Ionicons name="add-circle" size={24} color="#0D6B3E" />
+                <Icon name="plus-circle" size={24} color={colors.primary} />
               </TouchableOpacity>
             )}
             ListEmptyComponent={
@@ -573,10 +574,10 @@ const AddMatchScreen = () => {
   const renderTeamSelection = () => (
     <View style={styles.section}>
       <View style={styles.sectionTitleRow}>
-        <Ionicons name="people" size={24} color="#0D6B3E" />
+        <Icon name="users" size={24} color={colors.primary} />
         <Text style={styles.sectionTitle}>Select Players</Text>
       </View>
-      
+
       <View style={styles.teamContainer}>
         <Text style={styles.teamLabel}>{getTeamLabel(1)}</Text>
         <View style={styles.selectedPlayersContainer}>
@@ -591,7 +592,7 @@ const AddMatchScreen = () => {
                   accessibilityLabel={`Remove ${player?.name || 'Unknown'} from Team 1`}
                   accessibilityRole="button"
                 >
-                  <Ionicons name="close-circle" size={18} color="#0D6B3E" />
+                  <Icon name="x-circle" size={18} color={colors.primary} />
                 </TouchableOpacity>
               </View>
             );
@@ -605,15 +606,15 @@ const AddMatchScreen = () => {
               accessibilityRole="button"
               accessibilityHint="Opens player selection for Team 1"
             >
-              <Ionicons name="add-circle" size={20} color="#0D6B3E" />
+              <Icon name="plus-circle" size={20} color={colors.primary} />
               <Text style={styles.addPlayerButtonText}>Add</Text>
             </TouchableOpacity>
           )}
         </View>
       </View>
-      
+
       <View style={styles.teamSeparator} />
-      
+
       <View style={styles.teamContainer}>
         <Text style={styles.teamLabel}>{getTeamLabel(2)}</Text>
         <View style={styles.selectedPlayersContainer}>
@@ -628,7 +629,7 @@ const AddMatchScreen = () => {
                   accessibilityLabel={`Remove ${player?.name || 'Unknown'} from Team 2`}
                   accessibilityRole="button"
                 >
-                  <Ionicons name="close-circle" size={18} color="#0D6B3E" />
+                  <Icon name="x-circle" size={18} color={colors.primary} />
                 </TouchableOpacity>
               </View>
             );
@@ -642,7 +643,7 @@ const AddMatchScreen = () => {
               accessibilityRole="button"
               accessibilityHint="Opens player selection for Team 2"
             >
-              <Ionicons name="add-circle" size={20} color="#0D6B3E" />
+              <Icon name="plus-circle" size={20} color={colors.primary} />
               <Text style={styles.addPlayerButtonText}>Add</Text>
             </TouchableOpacity>
           )}
@@ -653,14 +654,14 @@ const AddMatchScreen = () => {
 
   return (
     <Layout title={isEditing ? "Edit Match" : "New Match"}>
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="settings" size={24} color="#0D6B3E" />
+            <Icon name="settings" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Game Settings</Text>
           </View>
 
@@ -741,10 +742,10 @@ const AddMatchScreen = () => {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="calendar" size={24} color="#0D6B3E" />
+            <Icon name="calendar" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Date & Time</Text>
           </View>
-          
+
           <View style={styles.dateTimeContainer}>
             <TouchableOpacity
               style={styles.dateButton}
@@ -753,7 +754,7 @@ const AddMatchScreen = () => {
               accessibilityRole="button"
               accessibilityHint="Opens date picker to change the match date"
             >
-              <Ionicons name="calendar-outline" size={20} color="#0D6B3E" />
+              <Icon name="calendar" size={20} color={colors.primary} />
               <Text style={styles.dateButtonText}>
                 {date.toLocaleDateString()}
               </Text>
@@ -766,7 +767,7 @@ const AddMatchScreen = () => {
               accessibilityRole="button"
               accessibilityHint="Opens time picker to change the match time"
             >
-              <Ionicons name="time-outline" size={20} color="#0D6B3E" />
+              <Icon name="clock" size={20} color={colors.primary} />
               <Text style={styles.dateButtonText}>
                 {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </Text>
@@ -776,7 +777,7 @@ const AddMatchScreen = () => {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="location" size={24} color="#0D6B3E" />
+            <Icon name="map-pin" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Location</Text>
           </View>
           <TextInput
@@ -790,12 +791,12 @@ const AddMatchScreen = () => {
             accessibilityHint="Enter the location where the match will be played"
             onSubmitEditing={() => {
               const maxPlayersPerTeam = isDoubles ? 2 : 1;
-              const isFormValid = 
-                team1Players.length === maxPlayersPerTeam && 
-                team2Players.length === maxPlayersPerTeam && 
-                pointsToWin.trim() !== '' && 
+              const isFormValid =
+                team1Players.length === maxPlayersPerTeam &&
+                team2Players.length === maxPlayersPerTeam &&
+                pointsToWin.trim() !== '' &&
                 numberOfGames.trim() !== '';
-              
+
               if (isFormValid) {
                 handleScheduleMatch(false);
               }
@@ -812,7 +813,7 @@ const AddMatchScreen = () => {
             accessibilityRole="button"
             accessibilityHint={isEditing ? "Save the edited match details" : "Schedule the match for the selected date and time"}
           >
-            <Ionicons name={isEditing ? "save" : "calendar"} size={24} color="#fff" />
+            <Icon name={isEditing ? "save" : "calendar"} size={24} color={colors.white} />
             <Text style={styles.scheduleButtonText}>
               {isEditing ? "Save Changes" : "Schedule Game"}
             </Text>
@@ -827,7 +828,7 @@ const AddMatchScreen = () => {
               accessibilityRole="button"
               accessibilityHint="Create an instant match and start playing immediately"
             >
-              <Ionicons name="play" size={24} color="#fff" />
+              <Icon name="play" size={24} color={colors.white} />
               <Text style={styles.playNowButtonText}>Play Game Now</Text>
             </TouchableOpacity>
           )}
@@ -848,28 +849,20 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   section: {
-    backgroundColor: '#fff',
-    margin: 16,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: colors.white,
+    margin: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: borderRadius.md,
+    ...shadows.md,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#0D6B3E',
+    ...typography.h3,
+    color: colors.primary,
     marginLeft: 10,
     textAlign: 'center',
   },
@@ -877,39 +870,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   settingLabel: {
-    fontSize: 16,
-    color: '#333',
+    ...typography.bodyLarge,
+    color: colors.neutral,
   },
   typeSelector: {
     flexDirection: 'row',
-    borderRadius: 8,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: '#0D6B3E',
+    borderColor: colors.primary,
     overflow: 'hidden',
   },
   typeButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#fff',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.white,
   },
   typeButtonSelected: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
   },
   typeButtonText: {
-    color: '#0D6B3E',
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.primary,
   },
   typeButtonTextSelected: {
-    color: '#fff',
+    color: colors.white,
   },
   numberInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
     width: 60,
     textAlign: 'center',
@@ -922,215 +915,207 @@ const styles = StyleSheet.create({
   dateButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f8f8',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: borderRadius.sm,
     flex: 0.48,
   },
   dateButtonText: {
-    marginLeft: 8,
-    fontSize: 16,
-    color: '#333',
+    ...typography.bodyLarge,
+    marginLeft: spacing.sm,
+    color: colors.neutral,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
     fontSize: 16,
   },
   teamsContainer: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   teamSection: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   teamLabel: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#0D6B3E',
-    marginBottom: 12,
+    color: colors.primary,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   selectedPlayers: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.sm,
   },
   playerChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 12,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: 16,
-    gap: 8,
+    borderRadius: borderRadius.lg,
+    gap: spacing.sm,
   },
   currentUserChip: {
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.secondaryOverlay,
     borderWidth: 1,
-    borderColor: '#2196F3',
+    borderColor: colors.secondary,
   },
   playerChipText: {
-    fontSize: 14,
-    color: '#333',
+    ...typography.bodySmall,
+    color: colors.neutral,
   },
   teamDivider: {
     alignItems: 'center',
-    marginVertical: 8,
+    marginVertical: spacing.sm,
   },
   vsText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#666',
+    color: colors.gray500,
   },
   availablePlayers: {
-    marginTop: 16,
+    marginTop: spacing.lg,
   },
   availablePlayersLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+    ...typography.bodySmall,
+    color: colors.gray500,
+    marginBottom: spacing.sm,
   },
   playerGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.sm,
   },
   playerButton: {
-    backgroundColor: '#f8f8f8',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: colors.gray100,
     minWidth: '48%',
     flexGrow: 1,
   },
   playerButtonText: {
-    fontSize: 14,
-    color: '#333',
+    ...typography.bodySmall,
+    color: colors.neutral,
     textAlign: 'center',
   },
   addPlayerButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#f0f8f2',
-    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.primaryOverlay,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
-    borderColor: '#0D6B3E',
-    margin: 4,
+    borderColor: colors.primary,
+    margin: spacing.xs,
   },
   addPlayerButtonText: {
-    fontSize: 14,
-    color: '#0D6B3E',
-    marginLeft: 4,
+    ...typography.label,
+    color: colors.primary,
+    marginLeft: spacing.xs,
     fontWeight: '600',
   },
   buttonsContainer: {
-    margin: 16,
-    marginTop: 24,
-    gap: 16,
+    margin: spacing.lg,
+    marginTop: spacing.xxl,
+    gap: spacing.lg,
   },
   scheduleButton: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
     paddingVertical: 14,
-    borderRadius: 8,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   playNowButton: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.action,
     paddingVertical: 14,
-    borderRadius: 8,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   scheduleButtonText: {
-    color: '#fff',
+    ...typography.button,
+    color: colors.white,
     fontSize: 18,
-    fontWeight: '700',
-    marginLeft: 12,
+    marginLeft: spacing.md,
   },
   playNowButtonText: {
-    color: '#fff',
+    ...typography.button,
+    color: colors.white,
     fontSize: 18,
-    fontWeight: '700',
-    marginLeft: 12,
+    marginLeft: spacing.md,
   },
   onboardingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   onboardingContent: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
     padding: 30,
     alignItems: 'center',
     width: '100%',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 10,
+    ...shadows.lg,
   },
   onboardingTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: 20,
-    marginBottom: 16,
+    ...typography.h2,
+    color: colors.neutral,
+    marginTop: spacing.xl,
+    marginBottom: spacing.lg,
     textAlign: 'center',
   },
   onboardingText: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 12,
+    ...typography.bodyLarge,
+    color: colors.gray500,
+    marginBottom: spacing.md,
     textAlign: 'center',
     lineHeight: 24,
   },
   onboardingSubtext: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 12,
+    ...typography.bodyLarge,
+    color: colors.gray500,
+    marginBottom: spacing.md,
     textAlign: 'center',
     lineHeight: 24,
   },
   onboardingButton: {
-    backgroundColor: '#0D6B3E',
-    paddingHorizontal: 24,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xxl,
     paddingVertical: 14,
-    borderRadius: 30,
+    borderRadius: borderRadius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
   },
   onboardingButtonText: {
-    color: '#fff',
+    ...typography.button,
+    color: colors.white,
     fontSize: 18,
-    fontWeight: '600',
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.backdrop,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 15,
-    padding: 20,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
     width: '100%',
     maxWidth: 500,
     maxHeight: '80%',
@@ -1142,9 +1127,8 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
+    ...typography.h2,
+    color: colors.primary,
   },
   closeButton: {
     padding: 5,
@@ -1153,9 +1137,8 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   inputLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
+    ...typography.label,
+    color: colors.neutral,
     marginBottom: 5,
   },
   switchContainer: {
@@ -1165,54 +1148,52 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   switchLabel: {
-    fontSize: 16,
-    color: '#333',
+    ...typography.bodyLarge,
+    color: colors.neutral,
   },
   helperText: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
+    ...typography.caption,
+    color: colors.gray500,
+    marginTop: spacing.xs,
   },
   modalFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
+    marginTop: spacing.xl,
   },
   modalButton: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
+    padding: spacing.md,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
   },
   cancelButton: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surface,
   },
   cancelButtonText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: '500',
+    ...typography.button,
+    color: colors.gray500,
   },
   addButton: {
-    backgroundColor: '#0D6B3E',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.sm,
   },
   addButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    marginBottom: 16,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.lg,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   searchInput: {
     flex: 1,
@@ -1226,33 +1207,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.gray100,
   },
   playerName: {
-    fontSize: 16,
-    color: '#333',
+    ...typography.bodyLarge,
+    color: colors.neutral,
   },
   emptyListContainer: {
-    padding: 20,
+    padding: spacing.xl,
     alignItems: 'center',
   },
   emptyListText: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 16,
+    ...typography.bodyLarge,
+    color: colors.gray500,
+    marginBottom: spacing.lg,
   },
   addNewPlayerButton: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.sm,
   },
   addNewPlayerButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
   selectedPlayersContainer: {
     flexDirection: 'row',
@@ -1265,43 +1246,43 @@ const styles = StyleSheet.create({
   selectedPlayerChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F5E9',
-    borderRadius: 20,
+    backgroundColor: colors.primaryOverlay,
+    borderRadius: borderRadius.xl,
     paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    marginBottom: 8,
+    paddingHorizontal: spacing.md,
+    marginRight: spacing.sm,
+    marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: '#0D6B3E',
+    borderColor: colors.primary,
   },
   selectedPlayerName: {
-    fontSize: 14,
-    color: '#333',
-    marginRight: 4,
+    ...typography.bodySmall,
+    color: colors.neutral,
+    marginRight: spacing.xs,
   },
   removePlayerButton: {
     padding: 2,
   },
   addPlayerText: {
-    fontSize: 14,
-    color: '#0D6B3E',
-    marginLeft: 4,
+    ...typography.bodySmall,
+    color: colors.primary,
+    marginLeft: spacing.xs,
   },
   teamSeparator: {
     height: 1,
-    backgroundColor: '#E0E0E0',
-    marginVertical: 20,
+    backgroundColor: colors.cardBorder,
+    marginVertical: spacing.xl,
   },
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xxl,
     justifyContent: 'center',
   },
   teamContainer: {
-    marginVertical: 16,
+    marginVertical: spacing.lg,
     alignItems: 'center',
   },
 });
 
-export default AddMatchScreen; 
+export default AddMatchScreen;

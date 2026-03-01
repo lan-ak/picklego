@@ -41,14 +41,15 @@
         {
           "ios": {
             "deploymentTarget": "15.1",
-            "newArchEnabled": true
+            "useFrameworks": "static"
           },
           "android": {
             "newArchEnabled": true
           }
         }
       ],
-      "@react-native-firebase/app"
+      "@react-native-firebase/app",
+      "expo-font"
     ],
     "extra": {
       "eas": {

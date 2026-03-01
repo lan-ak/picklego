@@ -15,16 +15,20 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
 import { sendPasswordReset } from '../config/firebase';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { useToast } from '../context/ToastContext';
+import PicklePete from '../components/PicklePete';
 
 type AuthScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const AuthScreen = () => {
   const navigation = useNavigation<AuthScreenNavigationProp>();
   const { addPlayer, isEmailAvailable, setCurrentUser, signIn } = useData();
-  
+  const { showToast } = useToast();
+
   const [isLogin, setIsLogin] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -34,7 +38,7 @@ const AuthScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
-  
+
   const handleToggleMode = () => {
     setIsLogin(!isLogin);
     // Clear form fields when switching modes
@@ -43,48 +47,48 @@ const AuthScreen = () => {
     setPassword('');
     setConfirmPassword('');
   };
-  
+
   const handleSignUp = async () => {
     // Validate fields
     if (!name.trim()) {
       Alert.alert('Error', 'Please enter your name');
       return;
     }
-    
+
     if (!email.trim()) {
       Alert.alert('Error', 'Please enter your email');
       return;
     }
-    
+
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
-    
+
     if (!password) {
       Alert.alert('Error', 'Please enter a password');
       return;
     }
-    
+
     if (password.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters long');
       return;
     }
-    
+
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
-    
+
     // Check if email is available
     const emailAvailable = await isEmailAvailable(email);
     if (!emailAvailable) {
       Alert.alert('Error', 'This email is already registered');
       return;
     }
-    
+
     setIsLoading(true);
     try {
       // Create new player with Firebase authentication
@@ -93,7 +97,7 @@ const AuthScreen = () => {
         email: email.trim(),
         password: password,
       });
-      
+
       // Navigate to main app
       navigation.navigate('MainTabs', { screen: 'Home' });
     } catch (error: any) {
@@ -102,18 +106,18 @@ const AuthScreen = () => {
       setIsLoading(false);
     }
   };
-  
+
   const handleLogin = async () => {
     if (!email.trim() || !password) {
       Alert.alert('Error', 'Please enter both email and password');
       return;
     }
-    
+
     setIsLoading(true);
     try {
       // Sign in with Firebase
       await signIn(email.trim(), password);
-      
+
       // Navigate to main app
       navigation.navigate('MainTabs', { screen: 'Home' });
     } catch (error: any) {
@@ -130,11 +134,11 @@ const AuthScreen = () => {
     }
     try {
       await sendPasswordReset(resetEmail.trim());
-      Alert.alert('Email Sent', 'If an account exists with this email, a password reset link has been sent.');
+      showToast('If an account exists with this email, a password reset link has been sent.', 'success');
       setShowForgotPassword(false);
       setResetEmail('');
     } catch (error) {
-      Alert.alert('Email Sent', 'If an account exists with this email, a password reset link has been sent.');
+      showToast('If an account exists with this email, a password reset link has been sent.', 'success');
       setShowForgotPassword(false);
       setResetEmail('');
     }
@@ -147,11 +151,11 @@ const AuthScreen = () => {
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.logoContainer}>
-          <Ionicons name="tennisball-outline" size={80} color="#0D6B3E" />
+          <PicklePete pose="welcome" size="sm" message="Let's play!" />
           <Text style={styles.appName}>PickleGo</Text>
           <Text style={styles.tagline}>Track your pickleball matches and stats</Text>
         </View>
-        
+
         <View style={styles.formContainer}>
           <View style={styles.tabContainer}>
             <TouchableOpacity
@@ -178,7 +182,7 @@ const AuthScreen = () => {
               </Text>
             </TouchableOpacity>
           </View>
-          
+
           {!isLogin && (
             <>
               <View style={styles.inputContainer}>
@@ -194,7 +198,7 @@ const AuthScreen = () => {
               </View>
             </>
           )}
-          
+
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Email</Text>
             <TextInput
@@ -208,7 +212,7 @@ const AuthScreen = () => {
               accessibilityHint="Enter your email address"
             />
           </View>
-          
+
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Password</Text>
             <View style={styles.passwordContainer}>
@@ -227,10 +231,10 @@ const AuthScreen = () => {
                 accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                 accessibilityRole="button"
               >
-                <Ionicons
+                <Icon
                   name={showPassword ? 'eye-off' : 'eye'}
                   size={24}
-                  color="#666"
+                  color={colors.gray500}
                 />
               </TouchableOpacity>
             </View>
@@ -299,7 +303,7 @@ const AuthScreen = () => {
               </View>
             </View>
           )}
-          
+
           <TouchableOpacity
             style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
             onPress={isLogin ? handleLogin : handleSignUp}
@@ -309,14 +313,14 @@ const AuthScreen = () => {
             accessibilityState={{ disabled: isLoading }}
           >
             {isLoading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.white} />
             ) : (
               <Text style={styles.submitButtonText}>
                 {isLogin ? 'Login' : 'Create Account'}
               </Text>
             )}
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={styles.toggleButton}
             onPress={handleToggleMode}
@@ -336,11 +340,11 @@ const AuthScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 20,
+    padding: spacing.xl,
     justifyContent: 'center',
   },
   logoContainer: {
@@ -348,35 +352,27 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   appName: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#0D6B3E',
+    ...typography.h1,
+    color: colors.primary,
     marginTop: 10,
   },
   tagline: {
-    fontSize: 16,
-    color: '#666',
+    ...typography.bodyLarge,
+    color: colors.gray500,
     marginTop: 5,
   },
   formContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    padding: spacing.xl,
+    ...shadows.md,
   },
   tabContainer: {
     flexDirection: 'row',
-    marginBottom: 20,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
-    padding: 4,
+    marginBottom: spacing.xl,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.surface,
+    padding: spacing.xs,
   },
   tabButton: {
     flex: 1,
@@ -385,106 +381,104 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   activeTab: {
-    backgroundColor: '#0D6B3E',
+    backgroundColor: colors.primary,
   },
   inactiveTab: {
     backgroundColor: 'transparent',
   },
   tabText: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.button,
   },
   activeTabText: {
-    color: '#fff',
+    color: colors.white,
   },
   inactiveTabText: {
-    color: '#666',
+    color: colors.gray500,
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   inputLabel: {
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 8,
+    ...typography.label,
+    color: colors.neutral,
+    marginBottom: spacing.sm,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
     fontSize: 16,
   },
   passwordContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingRight: 12,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    paddingRight: spacing.md,
   },
   eyeIcon: {
-    padding: 8,
+    padding: spacing.sm,
   },
   submitButton: {
-    backgroundColor: '#0D6B3E',
-    padding: 16,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    padding: spacing.lg,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: spacing.xl,
   },
   submitButtonDisabled: {
     opacity: 0.7,
   },
   submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
   toggleButton: {
-    marginTop: 16,
+    marginTop: spacing.lg,
     alignItems: 'center',
   },
   toggleButtonText: {
-    color: '#0D6B3E',
-    fontSize: 14,
+    ...typography.bodySmall,
+    color: colors.primary,
   },
   forgotPasswordButton: {
     alignSelf: 'flex-end',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   forgotPasswordText: {
-    color: '#0D6B3E',
-    fontSize: 14,
+    ...typography.bodySmall,
+    color: colors.primary,
   },
   forgotPasswordContainer: {
-    marginBottom: 16,
-    padding: 12,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.inputBorder,
   },
   resetButton: {
-    backgroundColor: '#0D6B3E',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: spacing.md,
   },
   resetButtonText: {
-    color: '#fff',
+    ...typography.button,
+    color: colors.white,
     fontSize: 14,
-    fontWeight: '600',
   },
   cancelButton: {
     marginTop: 10,
     alignItems: 'center',
   },
   cancelButtonText: {
-    color: '#666',
-    fontSize: 14,
+    ...typography.bodySmall,
+    color: colors.gray500,
   },
 });
 
-export default AuthScreen; 
+export default AuthScreen;

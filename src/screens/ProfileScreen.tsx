@@ -10,13 +10,15 @@ import {
   Alert,
   Platform
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Player } from '../types';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { useToast } from '../context/ToastContext';
 
 const ProfileSetupView = () => {
   const { addPlayer, setCurrentUser } = useData();
@@ -26,42 +28,42 @@ const ProfileSetupView = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [rating, setRating] = useState('3.5');
-  
+
   const handleCreateProfile = async () => {
     // Validate fields
     if (!name.trim()) {
       Alert.alert('Error', 'Please enter your name');
       return;
     }
-    
+
     if (!email.trim()) {
       Alert.alert('Error', 'Please enter your email');
       return;
     }
-    
+
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
-    
+
     if (!password.trim()) {
       Alert.alert('Error', 'Please enter a password');
       return;
     }
-    
+
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
-    
+
     const ratingNum = parseFloat(rating);
     if (isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
       Alert.alert('Error', 'Rating must be between 1.0 and 5.0');
       return;
     }
-    
+
     try {
       await addPlayer({
         name: name.trim(),
@@ -78,7 +80,7 @@ const ProfileSetupView = () => {
           gameLosses: 0
         }
       });
-      
+
       // Navigate back to home after creating profile
       Alert.alert(
         'Profile Created',
@@ -94,16 +96,16 @@ const ProfileSetupView = () => {
       Alert.alert('Error', 'Failed to create profile');
     }
   };
-  
+
   return (
     <View style={styles.setupContainer}>
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.setupContent}>
-          <Image 
-            source={require('../assets/logo.png')} 
+          <Image
+            source={require('../assets/logo.png')}
             style={styles.logoImage}
             resizeMode="contain"
           />
@@ -111,7 +113,7 @@ const ProfileSetupView = () => {
           <Text style={styles.setupSubtitle}>
             Set up your profile to get started with PickleGo.
           </Text>
-          
+
           <View style={styles.setupForm}>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Full Name</Text>
@@ -124,7 +126,7 @@ const ProfileSetupView = () => {
                 autoFocus
               />
             </View>
-            
+
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Email</Text>
               <TextInput
@@ -137,7 +139,7 @@ const ProfileSetupView = () => {
                 autoCapitalize="none"
               />
             </View>
-            
+
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Password</Text>
               <TextInput
@@ -149,7 +151,7 @@ const ProfileSetupView = () => {
                 secureTextEntry
               />
             </View>
-            
+
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Confirm Password</Text>
               <TextInput
@@ -161,7 +163,7 @@ const ProfileSetupView = () => {
                 secureTextEntry
               />
             </View>
-            
+
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Your Skill Rating (1.0-5.0)</Text>
               <TextInput
@@ -173,8 +175,8 @@ const ProfileSetupView = () => {
                 returnKeyType="done"
               />
             </View>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={styles.setupButton}
               onPress={handleCreateProfile}
             >
@@ -189,6 +191,7 @@ const ProfileSetupView = () => {
 
 const ProfileScreen = () => {
   const { currentUser, updatePlayer, isEmailAvailable } = useData();
+  const { showToast } = useToast();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(currentUser?.name || '');
   const [email, setEmail] = useState(currentUser?.email || '');
@@ -225,7 +228,7 @@ const ProfileScreen = () => {
   const isValidPhoneNumber = (phone: string) => {
     // Allow empty phone number
     if (!phone) return true;
-    
+
     // Basic validation for phone numbers
     const phoneRegex = /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/;
     return phoneRegex.test(phone);
@@ -234,7 +237,7 @@ const ProfileScreen = () => {
   // Save profile changes
   const handleSaveProfile = async () => {
     if (!currentUser) return;
-    
+
     // Basic validation
     if (!name.trim()) {
       Alert.alert('Error', 'Name cannot be empty');
@@ -246,7 +249,7 @@ const ProfileScreen = () => {
         Alert.alert('Error', 'Please enter a valid email address');
         return;
       }
-      
+
       const isAvailable = await isEmailAvailable(email);
       if (!isAvailable) {
         Alert.alert('Error', 'Email is already in use by another account');
@@ -265,7 +268,7 @@ const ProfileScreen = () => {
         Alert.alert('Error', 'Password must be at least 6 characters');
         return;
       }
-      
+
       if (password !== confirmPassword) {
         Alert.alert('Error', 'Passwords do not match');
         return;
@@ -292,7 +295,7 @@ const ProfileScreen = () => {
 
       await updatePlayer(currentUser.id, updates);
       setEditing(false);
-      Alert.alert('Success', 'Profile updated successfully');
+      showToast('Profile updated successfully', 'success');
     } catch (error) {
       Alert.alert('Error', 'Failed to update profile');
     }
@@ -320,7 +323,7 @@ const ProfileScreen = () => {
         await updatePlayer(currentUser.id, {
           profilePic: result.assets[0].uri
         });
-        Alert.alert('Success', 'Profile picture updated successfully');
+        showToast('Profile picture updated successfully', 'success');
       } catch (error) {
         Alert.alert('Error', 'Failed to update profile picture');
       }
@@ -337,8 +340,8 @@ const ProfileScreen = () => {
     }
 
     const stats = currentUser.stats;
-    const winPercentage = stats.totalMatches > 0 
-      ? ((stats.wins / stats.totalMatches) * 100).toFixed(1) 
+    const winPercentage = stats.totalMatches > 0
+      ? ((stats.wins / stats.totalMatches) * 100).toFixed(1)
       : '0.0';
 
     return (
@@ -370,17 +373,17 @@ const ProfileScreen = () => {
           {/* Profile Picture */}
           <TouchableOpacity style={styles.profilePicContainer} onPress={handlePickImage}>
             {currentUser.profilePic ? (
-              <Image 
-                source={{ uri: currentUser.profilePic }} 
-                style={styles.profilePic} 
+              <Image
+                source={{ uri: currentUser.profilePic }}
+                style={styles.profilePic}
               />
             ) : (
               <View style={styles.profilePicPlaceholder}>
-                <Ionicons name="person" size={60} color="#0D6B3E" />
+                <Icon name="user" size={60} color={colors.primary} />
               </View>
             )}
             <View style={styles.editPicButton}>
-              <Ionicons name="camera" size={16} color="#fff" />
+              <Icon name="camera" size={16} color={colors.white} />
             </View>
           </TouchableOpacity>
 
@@ -432,7 +435,7 @@ const ProfileScreen = () => {
               </View>
 
               {!showPasswordFields ? (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.passwordToggle}
                   onPress={() => setShowPasswordFields(true)}
                 >
@@ -462,7 +465,7 @@ const ProfileScreen = () => {
                     />
                   </View>
 
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.passwordToggle}
                     onPress={() => setShowPasswordFields(false)}
                   >
@@ -511,7 +514,7 @@ const ProfileScreen = () => {
               <View style={styles.infoItem}>
                 <Text style={styles.infoLabel}>Rating</Text>
                 <View style={styles.ratingContainer}>
-                  <Ionicons name="star" size={18} color="#FFD700" />
+                  <Icon name="star" size={18} color={colors.action} />
                   <Text style={styles.ratingText}>
                     {currentUser.rating ? currentUser.rating.toFixed(1) : "3.5"}
                   </Text>
@@ -519,10 +522,10 @@ const ProfileScreen = () => {
               </View>
 
               <TouchableOpacity
-                style={[styles.editButton, { backgroundColor: '#0D6B3E' }]}
+                style={styles.editButton}
                 onPress={handleEditProfile}
               >
-                <Ionicons name="create-outline" size={18} color="#fff" />
+                <Icon name="pencil" size={18} color={colors.white} />
                 <Text style={styles.editButtonText}>Edit Profile</Text>
               </TouchableOpacity>
             </View>
@@ -530,8 +533,8 @@ const ProfileScreen = () => {
         </View>
 
         <View style={styles.statsSection}>
-          <Text style={[styles.sectionTitle, { color: '#0D6B3E' }]}>Player Statistics</Text>
-          
+          <Text style={styles.sectionTitle}>Player Statistics</Text>
+
           {renderStats()}
         </View>
       </ScrollView>
@@ -547,36 +550,28 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    padding: 16,
-    paddingTop: Platform.OS === 'ios' ? 60 : 20,
+    padding: spacing.lg,
+    paddingTop: Platform.OS === 'ios' ? 60 : spacing.xl,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    backgroundColor: '#fff',
+    borderBottomColor: colors.cardBorder,
+    backgroundColor: colors.white,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2196F3',
+    ...typography.h1,
+    color: colors.secondary,
   },
   profileSection: {
-    backgroundColor: '#fff',
-    margin: 16,
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: colors.white,
+    margin: spacing.lg,
+    padding: spacing.xl,
+    borderRadius: borderRadius.md,
+    ...shadows.md,
     alignItems: 'center',
   },
   profilePicContainer: {
     position: 'relative',
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   profilePic: {
     width: 120,
@@ -587,7 +582,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -595,138 +590,127 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: '#2196F3',
+    backgroundColor: colors.secondary,
     width: 36,
     height: 36,
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
-    borderColor: '#fff',
+    borderColor: colors.white,
   },
   formContainer: {
-    padding: 16,
+    padding: spacing.lg,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   inputLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
-    marginBottom: 8,
+    ...typography.label,
+    color: colors.neutral,
+    marginBottom: spacing.sm,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
     padding: 14,
-    fontSize: 16,
+    ...typography.bodyLarge,
   },
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
+    marginTop: spacing.xl,
   },
   button: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 5,
   },
   saveButton: {
-    backgroundColor: '#4A80F0',
+    backgroundColor: colors.secondary,
   },
   saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
   cancelButton: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.inputBorder,
   },
   cancelButtonText: {
-    color: '#333',
-    fontSize: 16,
+    ...typography.button,
+    color: colors.neutral,
   },
   passwordToggle: {
     alignItems: 'center',
     padding: 10,
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   passwordToggleText: {
-    color: '#4A80F0',
-    fontSize: 16,
+    ...typography.bodyLarge,
+    color: colors.secondary,
     fontWeight: '500',
   },
   infoContainer: {
-    padding: 16,
+    padding: spacing.lg,
   },
   infoItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.cardBorder,
   },
   infoLabel: {
-    fontSize: 16,
-    color: '#666',
+    ...typography.bodyLarge,
+    color: colors.gray500,
   },
   infoValue: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '500',
-    color: '#333',
+    color: colors.neutral,
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   ratingText: {
-    fontSize: 16,
+    ...typography.bodyLarge,
     fontWeight: '500',
     marginLeft: 5,
-    color: '#333',
+    color: colors.neutral,
   },
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0D6B3E',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 16,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
+    marginTop: spacing.lg,
   },
   editButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
+    ...typography.button,
+    color: colors.white,
+    marginLeft: spacing.sm,
   },
   statsSection: {
-    backgroundColor: '#fff',
-    margin: 16,
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: colors.white,
+    margin: spacing.lg,
+    padding: spacing.xl,
+    borderRadius: borderRadius.md,
+    ...shadows.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 16,
+    ...typography.h3,
+    color: colors.primary,
+    marginBottom: spacing.lg,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -735,21 +719,20 @@ const styles = StyleSheet.create({
   },
   statItem: {
     width: '48%',
-    backgroundColor: '#f8f8f8',
-    padding: 16,
-    borderRadius: 8,
+    backgroundColor: colors.gray100,
+    padding: spacing.lg,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2196F3',
-    marginBottom: 8,
+    ...typography.stats,
+    color: colors.secondary,
+    marginBottom: spacing.sm,
   },
   statLabel: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.gray500,
   },
   errorContainer: {
     flex: 1,
@@ -757,79 +740,74 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   errorText: {
+    ...typography.h3,
     fontSize: 18,
-    color: '#F44336',
+    color: colors.error,
     textAlign: 'center',
   },
   setupContainer: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surface,
   },
   scrollContent: {
     flexGrow: 1,
     paddingVertical: 40,
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.xxl,
     justifyContent: 'center',
   },
   setupContent: {
-    backgroundColor: '#fff',
-    padding: 24,
-    borderRadius: 16,
+    backgroundColor: colors.white,
+    padding: spacing.xxl,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
     width: '100%',
     maxWidth: 500,
     alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    ...shadows.lg,
   },
   logoImage: {
     width: 120,
     height: 120,
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   setupTitle: {
+    ...typography.h1,
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#0D6B3E', // Green color from the logo
+    color: colors.primary,
     marginBottom: 10,
     textAlign: 'center',
   },
   setupSubtitle: {
-    fontSize: 16,
-    color: '#666',
+    ...typography.bodyLarge,
+    color: colors.gray500,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xxl,
     lineHeight: 22,
   },
   setupForm: {
     width: '100%',
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.sm,
   },
   setupButton: {
-    backgroundColor: '#0D6B3E', // Green color from the logo
-    paddingVertical: 16,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.lg,
+    borderRadius: borderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 24,
-    marginBottom: 16,
+    marginTop: spacing.xxl,
+    marginBottom: spacing.lg,
   },
   setupButtonText: {
-    color: '#fff',
+    ...typography.button,
+    color: colors.white,
     fontSize: 18,
-    fontWeight: '600',
   },
   noStatsText: {
+    ...typography.h3,
     fontSize: 18,
-    color: '#666',
+    color: colors.gray500,
     textAlign: 'center',
   },
 });
 
-export default ProfileScreen; 
+export default ProfileScreen;

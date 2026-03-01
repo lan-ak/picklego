@@ -1,25 +1,26 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon, IconName } from './Icon';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 
 type FooterButtonProps = {
   onPress: () => void;
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: IconName;
   label: string;
 };
 
-export const FooterButton: React.FC<FooterButtonProps> = ({ 
-  onPress, 
-  icon = 'add',
-  label 
+export const FooterButton: React.FC<FooterButtonProps> = ({
+  onPress,
+  icon = 'plus',
+  label
 }) => {
   return (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.button}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {icon && <Ionicons name={icon} size={24} color="#fff" />}
+      {icon && <Icon name={icon} size={24} color={colors.white} />}
       <Text style={styles.text}>{label}</Text>
     </TouchableOpacity>
   );
@@ -27,26 +28,19 @@ export const FooterButton: React.FC<FooterButtonProps> = ({
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#2196F3',
+    backgroundColor: colors.secondary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
-    marginHorizontal: 4,
+    padding: spacing.lg,
+    borderRadius: borderRadius.md,
+    ...shadows.lg,
+    marginHorizontal: spacing.xs,
   },
   text: {
-    color: '#fff',
+    ...typography.button,
+    color: colors.white,
     fontSize: 18,
-    fontWeight: '700',
-    marginLeft: 12,
+    marginLeft: spacing.md,
   },
-}); 
+});

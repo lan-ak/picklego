@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Match, Player, DataContextType } from '../types';
+import { Match, Game, LegacyMatch, Player, PlayerStats, DataContextType } from '../types';
+import { calculatePlayerStats } from '../utils/statsCalculator';
 import {
   signUpWithEmail,
   signInWithEmail,
@@ -13,6 +14,7 @@ import {
   createMatchDocument,
   updateMatchDocument,
   deleteMatchDocument,
+  deletePlayerDocument,
   getMatchesForPlayer,
   sendPasswordReset
 } from '../config/firebase';
@@ -102,6 +104,97 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [matches.length]);
 
+  // Claim a placeholder profile created before the user signed up.
+  // When Player A creates a match and adds Player B by email before B has
+  // an account, a placeholder player doc is stored with pendingClaim: true.
+  // Once B signs up / signs in with that email we transfer the match history
+  // from the placeholder to the real user and delete the placeholder doc.
+  const claimPlaceholderProfile = async (
+    realUid: string,
+    realName: string,
+    email: string,
+  ) => {
+    try {
+      const placeholder = await getPlayerByEmail(email);
+
+      if (!placeholder || !placeholder.pendingClaim || placeholder.id === realUid) {
+        return; // nothing to claim
+      }
+
+      const placeholderId = placeholder.id;
+
+      // 1. Fetch every match that references the placeholder
+      const placeholderMatches = await getMatchesForPlayer(placeholderId);
+
+      // 2. Re-point each match from the placeholder ID to the real UID
+      for (const match of placeholderMatches) {
+        const replaceId = (ids: string[]) =>
+          ids.map(id => (id === placeholderId ? realUid : id));
+
+        const replaceName = (ids: string[], names: string[]) =>
+          ids.map((id, i) => (id === placeholderId ? realName : names[i]));
+
+        const updatedFields: Partial<Match> = {
+          allPlayerIds: replaceId(match.allPlayerIds),
+          team1PlayerIds: replaceId(match.team1PlayerIds),
+          team2PlayerIds: replaceId(match.team2PlayerIds),
+          team1PlayerNames: replaceName(match.team1PlayerIds, match.team1PlayerNames),
+          team2PlayerNames: replaceName(match.team2PlayerIds, match.team2PlayerNames),
+        };
+
+        await updateMatchDocument(match.id, updatedFields);
+
+        // Also update local state so the UI reflects the change immediately
+        setMatches(prev =>
+          prev.map(m =>
+            m.id === match.id ? { ...m, ...updatedFields } : m,
+          ),
+        );
+      }
+
+      // 3. Merge any stats from the placeholder into the real player doc
+      if (placeholder.stats && placeholder.stats.totalMatches > 0) {
+        const realPlayer = await getPlayerDocument(realUid);
+        if (realPlayer) {
+          const mergedStats: PlayerStats = {
+            totalMatches: (realPlayer.stats?.totalMatches ?? 0) + placeholder.stats.totalMatches,
+            wins: (realPlayer.stats?.wins ?? 0) + placeholder.stats.wins,
+            losses: (realPlayer.stats?.losses ?? 0) + placeholder.stats.losses,
+            winPercentage: 0,
+            totalGames: (realPlayer.stats?.totalGames ?? 0) + (placeholder.stats.totalGames ?? 0),
+            gameWins: (realPlayer.stats?.gameWins ?? 0) + (placeholder.stats.gameWins ?? 0),
+            gameLosses: (realPlayer.stats?.gameLosses ?? 0) + (placeholder.stats.gameLosses ?? 0),
+          };
+          mergedStats.winPercentage =
+            mergedStats.totalMatches > 0
+              ? Math.round((mergedStats.wins / mergedStats.totalMatches) * 1000) / 10
+              : 0;
+
+          await updatePlayerDocument(realUid, { stats: mergedStats });
+
+          setPlayers(prev =>
+            prev.map(p => (p.id === realUid ? { ...p, stats: mergedStats } : p)),
+          );
+          setCurrentUser(prev =>
+            prev && prev.id === realUid ? { ...prev, stats: mergedStats } : prev,
+          );
+        }
+      }
+
+      // 4. Delete the placeholder player document from Firestore
+      await deletePlayerDocument(placeholderId);
+
+      // 5. Remove the placeholder from local state
+      setPlayers(prev => prev.filter(p => p.id !== placeholderId));
+
+      console.log(
+        `Claimed placeholder profile ${placeholderId} for user ${realUid}`,
+      );
+    } catch (error) {
+      console.error('Error claiming placeholder profile:', error);
+    }
+  };
+
   // Initialize Firebase auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(async (firebaseUser) => {
@@ -129,6 +222,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch (error) {
             console.error('Error loading matches from Firestore:', error);
           }
+
+          // Migrate legacy AsyncStorage matches to Firestore
+          await migrateLocalMatchesToFirestore(firebaseUser.uid);
+
+          // After loading the player doc and matches, check for a placeholder
+          // profile that should be claimed by this user.
+          if (firebaseUser.email) {
+            await claimPlaceholderProfile(
+              firebaseUser.uid,
+              playerDoc.name,
+              firebaseUser.email,
+            );
+          }
         }
       } else {
         setCurrentUser(null);
@@ -137,6 +243,135 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => unsubscribe();
   }, []);
+
+  // Migrate legacy AsyncStorage matches to Firestore on first sign-in
+  const migrateLocalMatchesToFirestore = async (currentUserId: string) => {
+    try {
+      const alreadyMigrated = await AsyncStorage.getItem('matchesMigrated');
+      if (alreadyMigrated === 'true') return;
+
+      const storedMatches = await AsyncStorage.getItem('matches');
+      if (!storedMatches) {
+        await AsyncStorage.setItem('matchesMigrated', 'true');
+        return;
+      }
+
+      const parsedMatches: any[] = JSON.parse(storedMatches);
+      if (!Array.isArray(parsedMatches) || parsedMatches.length === 0) {
+        await AsyncStorage.setItem('matchesMigrated', 'true');
+        return;
+      }
+
+      const migratedMatches: Match[] = [];
+
+      for (const raw of parsedMatches) {
+        // Detect if this is a LegacyMatch by checking for legacy-only fields
+        const isLegacy = 'isDoubles' in raw || ('teams' in raw && !('matchType' in raw));
+
+        if (isLegacy) {
+          const legacy = raw as LegacyMatch;
+          const now = Date.now();
+
+          const team1Ids = legacy.teams?.team1 ?? [];
+          const team2Ids = legacy.teams?.team2 ?? [];
+          const allPlayerIds = [...team1Ids, ...team2Ids];
+
+          // Parse score into games array
+          const games: Game[] = [];
+          if (legacy.score) {
+            if (typeof legacy.score === 'string') {
+              // Format: "11-9"
+              const parts = legacy.score.split('-').map(s => parseInt(s.trim(), 10));
+              if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                const team1Score = parts[0];
+                const team2Score = parts[1];
+                games.push({
+                  team1Score,
+                  team2Score,
+                  winnerTeam: team1Score > team2Score ? 1 : 2,
+                });
+              }
+            } else if (typeof legacy.score === 'object' && legacy.score !== null) {
+              const team1Score = typeof legacy.score.team1 === 'string'
+                ? parseInt(legacy.score.team1, 10)
+                : legacy.score.team1;
+              const team2Score = typeof legacy.score.team2 === 'string'
+                ? parseInt(legacy.score.team2, 10)
+                : legacy.score.team2;
+              if (!isNaN(team1Score) && !isNaN(team2Score)) {
+                games.push({
+                  team1Score,
+                  team2Score,
+                  winnerTeam: team1Score > team2Score ? 1 : 2,
+                });
+              }
+            }
+          }
+
+          // Determine winnerTeam
+          let winnerTeam: 1 | 2 | null = null;
+          if (legacy.winner != null) {
+            if (typeof legacy.winner === 'number' && (legacy.winner === 1 || legacy.winner === 2)) {
+              winnerTeam = legacy.winner;
+            } else if (Array.isArray(legacy.winner)) {
+              const winnerArr = legacy.winner as string[];
+              const matchesTeam1 =
+                winnerArr.length === team1Ids.length &&
+                winnerArr.every(id => team1Ids.includes(id));
+              const matchesTeam2 =
+                winnerArr.length === team2Ids.length &&
+                winnerArr.every(id => team2Ids.includes(id));
+              if (matchesTeam1) {
+                winnerTeam = 1;
+              } else if (matchesTeam2) {
+                winnerTeam = 2;
+              }
+            }
+          }
+
+          const migratedMatch: Match = {
+            id: legacy.id,
+            createdBy: currentUserId,
+            createdAt: now,
+            lastModifiedAt: now,
+            lastModifiedBy: currentUserId,
+            matchType: legacy.isDoubles ? 'doubles' : 'singles',
+            pointsToWin: legacy.pointsToWin,
+            numberOfGames: legacy.numberOfGames,
+            scheduledDate: legacy.date,
+            location: legacy.location,
+            status: legacy.status === 'completed' ? 'completed' : 'scheduled',
+            team1PlayerIds: team1Ids,
+            team2PlayerIds: team2Ids,
+            team1PlayerNames: team1Ids.map(id => getPlayerName(id)),
+            team2PlayerNames: team2Ids.map(id => getPlayerName(id)),
+            games,
+            winnerTeam,
+            allPlayerIds,
+          };
+
+          migratedMatches.push(migratedMatch);
+        } else {
+          // Already in new schema — just push through to Firestore
+          migratedMatches.push(raw as Match);
+        }
+      }
+
+      // Write each migrated match to Firestore
+      for (const match of migratedMatches) {
+        try {
+          await createMatchDocument(match);
+        } catch (error) {
+          console.error(`Error migrating match ${match.id} to Firestore:`, error);
+        }
+      }
+
+      await AsyncStorage.setItem('matchesMigrated', 'true');
+      console.log(`Migration complete: ${migratedMatches.length} match(es) migrated to Firestore.`);
+    } catch (error) {
+      console.error('Error during match migration:', error);
+    }
+  };
 
   const addMatch = async (matchData: Omit<Match, 'id' | 'createdAt' | 'lastModifiedAt' | 'lastModifiedBy'>): Promise<Match> => {
     const now = Date.now();
@@ -183,6 +418,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     } catch (error) {
       console.error('Error updating match in Firestore:', error);
+    }
+
+    // Recalculate stats when a match is completed or a completed match is edited
+    if (updates.status === 'completed' || (matchToUpdate.status === 'completed' && (updates.games || updates.winnerTeam))) {
+      const updatedMatches = matches.map(m => m.id === matchId ? updatedMatch : m);
+      await recalculateStatsForPlayers(updatedMatch.allPlayerIds, updatedMatches);
     }
   };
 
@@ -248,6 +489,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deleteMatch = async (matchId: string) => {
+    const matchToDelete = matches.find(m => m.id === matchId);
     setMatches(prev => prev.filter(match => match.id !== matchId));
 
     // Delete from Firestore
@@ -255,6 +497,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await deleteMatchDocument(matchId);
     } catch (error) {
       console.error('Error deleting match from Firestore:', error);
+    }
+
+    // Recalculate stats for all players in a deleted completed match
+    if (matchToDelete && matchToDelete.status === 'completed') {
+      const remainingMatches = matches.filter(m => m.id !== matchId);
+      await recalculateStatsForPlayers(matchToDelete.allPlayerIds, remainingMatches);
     }
   };
 
@@ -273,6 +521,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error: any) {
       throw new Error(error.message);
+    }
+  };
+
+  const recalculateStatsForPlayers = async (playerIds: string[], currentMatches: Match[]) => {
+    for (const playerId of playerIds) {
+      const derived = calculatePlayerStats(currentMatches, playerId);
+      const statsUpdate: PlayerStats = {
+        totalMatches: derived.overall.totalMatches,
+        wins: derived.overall.wins,
+        losses: derived.overall.losses,
+        winPercentage: derived.overall.winPercentage,
+        totalGames: derived.overall.totalGames,
+        gameWins: derived.overall.gameWins,
+        gameLosses: derived.overall.gameLosses,
+        currentWinStreak: derived.overall.currentWinStreak,
+        bestWinStreak: derived.overall.bestWinStreak,
+      };
+      try {
+        await updatePlayerDocument(playerId, { stats: statsUpdate });
+      } catch (error) {
+        console.error(`Error updating stats for player ${playerId}:`, error);
+      }
+      setPlayers(prev => prev.map(p =>
+        p.id === playerId ? { ...p, stats: statsUpdate } : p
+      ));
+      if (currentUser?.id === playerId) {
+        setCurrentUser(prev => prev ? { ...prev, stats: statsUpdate } : prev);
+      }
     }
   };
 
