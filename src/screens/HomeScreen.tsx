@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, MainTabParamList, Match } from '../types';
+import { RootStackParamList, MainTabParamList, Match, Game } from '../types';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
 import { format } from 'date-fns';
@@ -78,8 +78,8 @@ const HomeScreen = () => {
         .join(' & ');
     };
 
-    const team1 = getTeamNames(match.teams?.team1 || []);
-    const team2 = getTeamNames(match.teams?.team2 || []);
+    const team1 = getTeamNames(match.team1PlayerIds || []);
+    const team2 = getTeamNames(match.team2PlayerIds || []);
 
     return { team1, team2 };
   };
@@ -119,48 +119,14 @@ const HomeScreen = () => {
     matches
       .filter(match => match.status === 'completed')
       .forEach(match => {
-        // Get all player IDs involved in the match
-        const playerIds = match.teams 
-          ? [...match.teams.team1, ...match.teams.team2] 
-          : match.players;
-        
         // Skip if current user is not in this match
-        if (!playerIds.includes(currentUser.id)) return;
+        if (!match.allPlayerIds.includes(currentUser.id)) return;
 
-        // Determine if player won the match
-        const isWinner = (() => {
-          if (!match.winner) return false;
-          
-          if (Array.isArray(match.winner)) {
-            return match.winner.includes(currentUser.id);
-          } else if (typeof match.winner === 'number') {
-            // Check which team the user is on
-            const userTeam = (() => {
-              if (match.teams) {
-                if (match.teams.team1.includes(currentUser.id)) return 1;
-                if (match.teams.team2.includes(currentUser.id)) return 2;
-              } else {
-                // For older format
-                const playerIndex = match.players.indexOf(currentUser.id);
-                if (playerIndex === -1) return null;
-                
-                // For singles: player 0 is team 1, player 1 is team 2
-                if (!match.isDoubles) {
-                  return playerIndex === 0 ? 1 : 2;
-                }
-                
-                // For doubles: first half is team 1, second half is team 2
-                const midPoint = Math.floor(match.players.length / 2);
-                return playerIndex < midPoint ? 1 : 2;
-              }
-              return null;
-            })();
-            
-            return userTeam === match.winner;
-          }
-          
-          return false;
-        })();
+        // Determine which team the user is on
+        const userTeam = match.team1PlayerIds.includes(currentUser.id) ? 1 : 2;
+
+        // Check if user's team won
+        const isWinner = match.winnerTeam === userTeam;
 
         // Update stats
         totalMatches++;
@@ -183,10 +149,10 @@ const HomeScreen = () => {
     return matches
       .filter(
         (match) =>
-          (match.teams?.team1?.includes(currentUser.id) || match.teams?.team2?.includes(currentUser.id)) &&
+          match.allPlayerIds.includes(currentUser.id) &&
           match.status === 'completed'
       )
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime())
       .slice(0, 3); // Show only the last 3 matches
   }, [currentUser, matches]);
 
@@ -197,11 +163,10 @@ const HomeScreen = () => {
     const upcoming = matches
       .filter(
         (match) =>
-          (match.teams?.team1?.includes(currentUser.id) || 
-           match.teams?.team2?.includes(currentUser.id)) &&
+          match.allPlayerIds.includes(currentUser.id) &&
           match.status === 'scheduled'
       )
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
     
     return upcoming.length > 0 ? upcoming[0] : null;
   }, [currentUser, matches]);
@@ -237,11 +202,16 @@ const HomeScreen = () => {
       showBackButton={false}
       isHomeScreen={true}
       rightComponent={
-        <TouchableOpacity onPress={navigateToProfile} style={styles.profileButton}>
+        <TouchableOpacity
+          onPress={navigateToProfile}
+          style={styles.profileButton}
+          accessibilityLabel="View profile"
+          accessibilityRole="button"
+        >
           {currentUser?.profilePic ? (
-            <Image 
-              source={{ uri: currentUser.profilePic }} 
-              style={styles.headerProfilePic} 
+            <Image
+              source={{ uri: currentUser.profilePic }}
+              style={styles.headerProfilePic}
             />
           ) : (
             <Ionicons name="person-circle" size={32} color="#0D6B3E" />
@@ -262,9 +232,12 @@ const HomeScreen = () => {
               <TouchableOpacity
                 style={styles.nextMatchCard}
                 onPress={() => goToMatchDetails(nextMatch.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Next match: ${formatPlayerNames(nextMatch).team1} vs ${formatPlayerNames(nextMatch).team2}, ${formatDate(nextMatch.scheduledDate)}`}
+                accessibilityHint="View match details"
               >
                 <View style={styles.matchHeader}>
-                  <Text style={styles.matchDate}>{formatDate(nextMatch.date)}</Text>
+                  <Text style={styles.matchDate}>{formatDate(nextMatch.scheduledDate)}</Text>
                   <View style={styles.scheduledBadge}>
                     <Text style={styles.scheduledText}>Scheduled</Text>
                   </View>
@@ -291,6 +264,8 @@ const HomeScreen = () => {
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: '#0D6B3E' }]}
                   onPress={() => navigation.navigate('AddMatch')}
+                  accessibilityLabel="Schedule a Match"
+                  accessibilityRole="button"
                 >
                   <Text style={styles.actionButtonText}>Schedule a Match</Text>
                 </TouchableOpacity>
@@ -306,26 +281,28 @@ const HomeScreen = () => {
               <TouchableOpacity
                 style={styles.viewAllButton}
                 onPress={viewAllStats}
+                accessibilityLabel="View all stats"
+                accessibilityRole="button"
               >
                 <Text style={styles.viewAllText}>View All</Text>
                 <Ionicons name="chevron-forward" size={14} color="#0D6B3E" />
               </TouchableOpacity>
             </View>
-            
+
             <View style={styles.statsContainerCard}>
-              <View style={styles.statItem}>
+              <View style={styles.statItem} accessibilityLabel={`${userStats.totalMatches} Matches`}>
                 <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{userStats.totalMatches}</Text>
                 <Text style={styles.statLabel}>Matches</Text>
               </View>
-              <View style={styles.statItem}>
+              <View style={styles.statItem} accessibilityLabel={`${userStats.wins} Wins`}>
                 <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{userStats.wins}</Text>
                 <Text style={styles.statLabel}>Wins</Text>
               </View>
-              <View style={styles.statItem}>
+              <View style={styles.statItem} accessibilityLabel={`${userStats.losses} Losses`}>
                 <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{userStats.losses}</Text>
                 <Text style={styles.statLabel}>Losses</Text>
               </View>
-              <View style={styles.statItem}>
+              <View style={styles.statItem} accessibilityLabel={`${userStats.winRate}% Win Rate`}>
                 <Text style={[styles.statValue, { color: '#0D6B3E' }]}>{userStats.winRate}%</Text>
                 <Text style={styles.statLabel}>Win Rate</Text>
               </View>
@@ -340,6 +317,8 @@ const HomeScreen = () => {
               <TouchableOpacity
                 style={styles.viewAllButton}
                 onPress={() => navigation.navigate('Matches')}
+                accessibilityLabel="View all matches"
+                accessibilityRole="button"
               >
                 <Text style={styles.viewAllText}>View All</Text>
                 <Ionicons name="chevron-forward" size={14} color="#0D6B3E" />
@@ -351,23 +330,9 @@ const HomeScreen = () => {
                 {recentMatches.map((match) => {
                   const { team1, team2 } = formatPlayerNames(match);
                   
-                  // Determine which team the user is on
-                  let userTeam = 0;
-                  if (match.teams?.team1?.includes(currentUser?.id || '')) {
-                    userTeam = 1;
-                  } else if (match.teams?.team2?.includes(currentUser?.id || '')) {
-                    userTeam = 2;
-                  }
-                  
-                  // Check if user's team won
-                  let isWinner = false;
-                  if (typeof match.winner === 'number' && userTeam > 0) {
-                    isWinner = match.winner === userTeam;
-                  } else if (Array.isArray(match.winner) && currentUser) {
-                    isWinner = match.winner.includes(currentUser.id);
-                  } else if (typeof match.winner === 'string' && currentUser) {
-                    isWinner = match.winner === currentUser.id;
-                  }
+                  // Determine which team the user is on and check if they won
+                  const userTeam = match.team1PlayerIds.includes(currentUser?.id || '') ? 1 : 2;
+                  const isWinner = match.winnerTeam === userTeam;
 
                   return (
                     <TouchableOpacity
@@ -377,9 +342,12 @@ const HomeScreen = () => {
                         isWinner ? styles.winMatchCard : styles.lossMatchCard,
                       ]}
                       onPress={() => goToMatchDetails(match.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${team1} vs ${team2}, ${formatDate(match.scheduledDate)}, ${isWinner ? 'Won' : 'Lost'}`}
+                      accessibilityHint="View match details"
                     >
                       <View style={styles.matchHeader}>
-                        <Text style={styles.matchDate}>{formatDate(match.date)}</Text>
+                        <Text style={styles.matchDate}>{formatDate(match.scheduledDate)}</Text>
                         <View
                           style={[
                             styles.statusBadge,
@@ -396,12 +364,9 @@ const HomeScreen = () => {
                           {team1} vs {team2}
                         </Text>
                         <Text style={styles.scoreText}>
-                          {match.score ? (
-                            typeof match.score === 'object' && match.score !== null && 
-                            'team1' in match.score && 'team2' in match.score ? 
-                              `${match.score['team1']} - ${match.score['team2']}` 
-                              : String(match.score)
-                          ) : 'No score'}
+                          {match.games.length > 0
+                            ? match.games.map((game: Game) => `${game.team1Score}-${game.team2Score}`).join(', ')
+                            : 'No score'}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -414,6 +379,8 @@ const HomeScreen = () => {
                 <TouchableOpacity
                   style={styles.actionButton}
                   onPress={() => navigation.navigate('AddMatch')}
+                  accessibilityLabel="New Match"
+                  accessibilityRole="button"
                 >
                   <Text style={styles.actionButtonText}>New Match</Text>
                 </TouchableOpacity>

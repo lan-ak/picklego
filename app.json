@@ -18,17 +18,43 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.akinyemi.picklego"
+      "bundleIdentifier": "com.akinyemi.picklego",
+      "googleServicesFile": "./ios/PickleGo/GoogleService-Info.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.akinyemi.picklego"
+      "package": "com.akinyemi.picklego",
+      "googleServicesFile": "./android/app/google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1",
+            "newArchEnabled": true
+          },
+          "android": {
+            "newArchEnabled": true
+          }
+        }
+      ],
+      "@react-native-firebase/app"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5ab7653e-2d17-4fb1-9f19-ad2c2c5bc710"
+      }
+    },
+    "owner": "lanre-25"
   }
 }

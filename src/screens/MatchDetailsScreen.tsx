@@ -4,7 +4,7 @@ import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
 import Layout from '../components/Layout';
-import type { Match } from '../types';
+import type { Match, Game } from '../types';
 import { RootStackParamList } from '../types';
 import { format } from 'date-fns';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -57,30 +57,13 @@ const MatchDetailsScreen = () => {
 
   const getTeamNames = (teamNumber: 1 | 2) => {
     try {
-      // For matches without teams property (old format)
-      if (!match.teams) {
-        if (!match.isDoubles) {
-          // For singles, first player is team 1, second player is team 2
-          const playerIndex = teamNumber === 1 ? 0 : 1;
-          const playerId = match.players[playerIndex];
-          const playerName = getPlayerName(playerId);
-          
-          return playerName;
-        } else {
-          // For doubles, split players array in half
-          const midPoint = Math.floor(match.players.length / 2);
-          const playerIds = teamNumber === 1 
-            ? match.players.slice(0, midPoint)
-            : match.players.slice(midPoint);
-          
-          return playerIds.map(id => getPlayerName(id)).join(' & ');
-        }
+      const playerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
+
+      if (match.matchType !== 'doubles') {
+        return getPlayerName(playerIds[0]);
       }
-      
-      // For matches with teams property (new format)
-      const teamPlayers = teamNumber === 1 ? match.teams.team1 : match.teams.team2;
-      
-      return teamPlayers.map(id => getPlayerName(id)).join(' & ');
+
+      return playerIds.map(id => getPlayerName(id)).join(' & ');
     } catch (error) {
       console.error('Error in getTeamNames:', error);
       return `Team ${teamNumber}`;
@@ -89,64 +72,25 @@ const MatchDetailsScreen = () => {
 
   const isUserInMatch = () => {
     if (!currentUser) return false;
-    
-    if (match.teams) {
-      return match.teams.team1.includes(currentUser.id) || match.teams.team2.includes(currentUser.id);
-    } else {
-      return match.players.includes(currentUser.id);
-    }
+    return match.allPlayerIds.includes(currentUser.id);
   };
 
   const getUserTeamNumber = useCallback((userId: string, match: Match): number | null => {
-    if (match.teams) {
-      if (match.teams.team1.includes(userId)) return 1;
-      if (match.teams.team2.includes(userId)) return 2;
-      return null;
-    } else {
-      // For older format
-      const playerIndex = match.players.indexOf(userId);
-      if (playerIndex === -1) return null;
-      
-      // For singles: player 0 is team 1, player 1 is team 2
-      if (!match.isDoubles) {
-        return playerIndex === 0 ? 1 : 2;
-      }
-      
-      // For doubles: first half is team 1, second half is team 2
-      const midPoint = Math.floor(match.players.length / 2);
-      return playerIndex < midPoint ? 1 : 2;
-    }
+    if (match.team1PlayerIds.includes(userId)) return 1;
+    if (match.team2PlayerIds.includes(userId)) return 2;
+    return null;
   }, []);
 
   const isCurrentUserWinner = useCallback((match: Match): boolean => {
-    if (!match.winner) return false;
+    if (!match.winnerTeam) return false;
     if (!currentUser) return false;
-    
-    if (Array.isArray(match.winner)) {
-      return match.winner.includes(currentUser.id);
-    } else if (typeof match.winner === 'number') {
-      const userTeam = getUserTeamNumber(currentUser.id, match);
-      return userTeam === match.winner;
-    }
-    
-    return false;
+
+    const userTeam = getUserTeamNumber(currentUser.id, match);
+    return match.winnerTeam === userTeam;
   }, [currentUser, getUserTeamNumber]);
 
   const isTeam1Winner = useCallback((match: Match): boolean => {
-    if (!match.winner) return false;
-    
-    if (Array.isArray(match.winner)) {
-      // If winner is an array of player IDs, check if all team1 players are winners
-      if (!match.teams) return false;
-      
-      const winnerSet = new Set(match.winner);
-      return match.teams.team1.every(playerId => winnerSet.has(playerId));
-    } else if (typeof match.winner === 'number') {
-      // If winner is a team number, check if it's team 1
-      return match.winner === 1;
-    }
-    
-    return false;
+    return match.winnerTeam === 1;
   }, []);
 
   const getMatchResult = () => {
@@ -177,17 +121,6 @@ const MatchDetailsScreen = () => {
     return null;
   };
 
-  // Add this function to parse game scores
-  const parseGameScores = (scoreString: string) => {
-    if (!scoreString) return [];
-    
-    return scoreString.split(', ').map((gameScore, index) => {
-      const [team1Score, team2Score] = gameScore.split('-').map(Number);
-      const winner = team1Score > team2Score ? 1 : 2;
-      return { team1Score, team2Score, winner, gameNumber: index + 1 };
-    });
-  };
-
   return (
     <Layout title="Match Details" showBackButton={true}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -201,12 +134,12 @@ const MatchDetailsScreen = () => {
           <View style={styles.detailsRow}>
             <View style={styles.detailItem}>
               <Ionicons name="calendar-outline" size={20} color="#0D6B3E" />
-              <Text style={styles.detailText}>{formatMatchDate(match.date)}</Text>
+              <Text style={styles.detailText}>{formatMatchDate(match.scheduledDate)}</Text>
             </View>
             
             <View style={styles.detailItem}>
               <Ionicons name="time-outline" size={20} color="#0D6B3E" />
-              <Text style={styles.detailText}>{formatMatchTime(match.date)}</Text>
+              <Text style={styles.detailText}>{formatMatchTime(match.scheduledDate)}</Text>
             </View>
           </View>
 
@@ -220,7 +153,7 @@ const MatchDetailsScreen = () => {
           <View style={styles.matchTypeContainer}>
             <View style={styles.chipContainer}>
               <Text style={styles.chipText}>
-                {match.isDoubles ? 'Doubles' : 'Singles'}
+                {match.matchType === 'doubles' ? 'Doubles' : 'Singles'}
               </Text>
             </View>
             
@@ -236,9 +169,9 @@ const MatchDetailsScreen = () => {
               </Text>
             </View>
             
-            <View style={[styles.chipContainer, match.status === 'completed' ? styles.completedChip : styles.scheduledChip]}>
-              <Text style={[styles.chipText, match.status === 'completed' ? styles.completedChipText : styles.scheduledChipText]}>
-                {match.status === 'completed' ? 'Completed' : 'Scheduled'}
+            <View style={[styles.chipContainer, match.status === 'completed' ? styles.completedChip : match.status === 'expired' ? styles.expiredChip : styles.scheduledChip]}>
+              <Text style={[styles.chipText, match.status === 'completed' ? styles.completedChipText : match.status === 'expired' ? styles.expiredChipText : styles.scheduledChipText]}>
+                {match.status === 'completed' ? 'Completed' : match.status === 'expired' ? 'Expired' : 'Scheduled'}
               </Text>
             </View>
           </View>
@@ -252,22 +185,28 @@ const MatchDetailsScreen = () => {
           </View>
           
           <View style={styles.teamsContainer}>
-            <View style={[
-              styles.teamCard, 
-              match.status === 'completed' && (isTeam1Winner(match) ? styles.winnerTeam : styles.loserTeam)
-            ]}>
+            <View
+              style={[
+                styles.teamCard,
+                match.status === 'completed' && (isTeam1Winner(match) ? styles.winnerTeam : styles.loserTeam)
+              ]}
+              accessibilityLabel={`Team 1: ${getTeamNames(1)}${match.status === 'completed' && isTeam1Winner(match) ? ', Winner' : ''}`}
+            >
               <Text style={styles.teamLabel}>Team 1</Text>
               <Text style={styles.playerNames}>{getTeamNames(1)}</Text>
             </View>
-            
+
             <View style={styles.vsContainer}>
               <Text style={styles.vsText}>VS</Text>
             </View>
-            
-            <View style={[
-              styles.teamCard, 
-              match.status === 'completed' && (!isTeam1Winner(match) ? styles.winnerTeam : styles.loserTeam)
-            ]}>
+
+            <View
+              style={[
+                styles.teamCard,
+                match.status === 'completed' && (!isTeam1Winner(match) ? styles.winnerTeam : styles.loserTeam)
+              ]}
+              accessibilityLabel={`Team 2: ${getTeamNames(2)}${match.status === 'completed' && !isTeam1Winner(match) ? ', Winner' : ''}`}
+            >
               <Text style={styles.teamLabel}>Team 2</Text>
               <Text style={styles.playerNames}>{getTeamNames(2)}</Text>
             </View>
@@ -284,14 +223,14 @@ const MatchDetailsScreen = () => {
             
             <View style={styles.resultContent}>
               <Text style={styles.resultLabel}>Final Score</Text>
-              {typeof match.score === 'object' && match.score !== null ? (
+              {match.games.length > 0 ? (
                 <Text style={styles.scoreText}>
-                  {match.score.team1} - {match.score.team2}
+                  {match.games.map(g => `${g.team1Score}-${g.team2Score}`).join(', ')}
                 </Text>
               ) : (
-                <Text style={styles.scoreText}>{match.score || 'No score recorded'}</Text>
+                <Text style={styles.scoreText}>No score recorded</Text>
               )}
-              
+
               <Text style={styles.winnerText}>{getWinnerText()}</Text>
             </View>
           </View>
@@ -304,29 +243,37 @@ const MatchDetailsScreen = () => {
               <Ionicons name="construct" size={24} color="#0D6B3E" />
               <Text style={styles.sectionTitle}>Actions</Text>
             </View>
-            
+
             <View style={styles.actionButtons}>
-              <TouchableOpacity 
-                style={[styles.button, styles.editButton]}
-                onPress={handleEditMatch}
-              >
-                <Ionicons name="create-outline" size={20} color="#fff" />
-                <Text style={styles.buttonText}>Edit Match</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
+              {currentUser?.id === match.createdBy && (
+                <TouchableOpacity
+                  style={[styles.button, styles.editButton]}
+                  onPress={handleEditMatch}
+                  accessibilityLabel="Edit match"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="create-outline" size={20} color="#fff" />
+                  <Text style={styles.buttonText}>Edit Match</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
                 style={[styles.button, styles.completeButton]}
                 onPress={handleCompleteMatch}
+                accessibilityLabel="Complete match"
+                accessibilityRole="button"
               >
                 <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
                 <Text style={styles.buttonText}>Complete Match</Text>
               </TouchableOpacity>
             </View>
-            
-            {isUserInMatch() && (
+
+            {currentUser?.id === match.createdBy && (
               <TouchableOpacity
                 style={[styles.button, styles.deleteButton]}
                 onPress={handleDeleteMatch}
+                accessibilityLabel="Delete match"
+                accessibilityRole="button"
               >
                 <Ionicons name="trash-outline" size={20} color="#fff" />
                 <Text style={styles.buttonText}>Delete Match</Text>
@@ -334,13 +281,15 @@ const MatchDetailsScreen = () => {
             )}
           </View>
         )}
-        
+
         {/* Simple Delete button for completed matches */}
-        {match.status === 'completed' && isUserInMatch() && (
+        {match.status === 'completed' && currentUser?.id === match.createdBy && (
           <View style={styles.footer}>
             <TouchableOpacity
               style={[styles.button, styles.deleteButton]}
               onPress={handleDeleteMatch}
+              accessibilityLabel="Delete match"
+              accessibilityRole="button"
             >
               <Ionicons name="trash-outline" size={20} color="#fff" />
               <Text style={styles.buttonText}>Delete Match</Text>
@@ -443,11 +392,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#90CAF9',
   },
+  expiredChip: {
+    backgroundColor: '#FFF3E0',
+    borderWidth: 1,
+    borderColor: '#FFB74D',
+  },
   completedChipText: {
     color: '#388E3C',
   },
   scheduledChipText: {
     color: '#1976D2',
+  },
+  expiredChipText: {
+    color: '#E65100',
   },
   teamsContainer: {
     flexDirection: 'row',

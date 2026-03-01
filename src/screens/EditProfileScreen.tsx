@@ -150,9 +150,12 @@ const EditProfileScreen: React.FC = () => {
               <Ionicons name="person" size={50} color="#666" />
             </View>
           )}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.changePhotoButton}
             onPress={handlePickImage}
+            accessibilityLabel="Change profile photo"
+            accessibilityRole="button"
+            accessibilityHint="Opens the photo library to select a new profile picture"
           >
             <Ionicons name="camera" size={18} color="#fff" />
             <Text style={styles.changePhotoText}>Change Photo</Text>
@@ -170,6 +173,8 @@ const EditProfileScreen: React.FC = () => {
                 value={tempName}
                 onChangeText={setTempName}
                 placeholder="Your name"
+                accessibilityLabel="Name"
+                accessibilityHint="Enter your display name"
               />
             </View>
             
@@ -182,6 +187,8 @@ const EditProfileScreen: React.FC = () => {
                 placeholder="Your email address"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                accessibilityLabel="Email address"
+                accessibilityHint="Enter your email address"
               />
             </View>
             
@@ -193,6 +200,8 @@ const EditProfileScreen: React.FC = () => {
                 onChangeText={setTempPhone}
                 placeholder="Your phone number"
                 keyboardType="phone-pad"
+                accessibilityLabel="Phone number"
+                accessibilityHint="Enter your phone number"
               />
             </View>
             
@@ -204,6 +213,8 @@ const EditProfileScreen: React.FC = () => {
                 onChangeText={setTempRating}
                 placeholder="Your rating"
                 keyboardType="decimal-pad"
+                accessibilityLabel="Player rating"
+                accessibilityHint="Enter your skill rating between 1.0 and 5.0"
               />
             </View>
           </View>
@@ -220,15 +231,19 @@ const EditProfileScreen: React.FC = () => {
                   onChangeText={setTempPassword}
                   placeholder="Enter new password"
                   secureTextEntry={!showPassword}
+                  accessibilityLabel="New password"
+                  accessibilityHint="Enter a new password, minimum 6 characters"
                 />
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.passwordVisibilityButton}
                   onPress={() => setShowPassword(!showPassword)}
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  accessibilityRole="button"
                 >
-                  <Ionicons 
-                    name={showPassword ? "eye-off" : "eye"} 
-                    size={24} 
-                    color="#666" 
+                  <Ionicons
+                    name={showPassword ? "eye-off" : "eye"}
+                    size={24}
+                    color="#666"
                   />
                 </TouchableOpacity>
               </View>
@@ -242,6 +257,8 @@ const EditProfileScreen: React.FC = () => {
                 onChangeText={setTempConfirmPassword}
                 placeholder="Confirm new password"
                 secureTextEntry={!showPassword}
+                accessibilityLabel="Confirm new password"
+                accessibilityHint="Re-enter your new password to confirm"
               />
             </View>
             
@@ -251,9 +268,12 @@ const EditProfileScreen: React.FC = () => {
           </View>
         </View>
         
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.saveButton}
           onPress={handleSaveProfile}
+          accessibilityLabel="Save profile changes"
+          accessibilityRole="button"
+          accessibilityHint="Saves all profile changes and returns to the previous screen"
         >
           <Text style={styles.saveButtonText}>Save Changes</Text>
         </TouchableOpacity>

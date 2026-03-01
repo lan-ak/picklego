@@ -1,15 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Match, Player, DataContextType, PlayerStats } from '../types';
-import { 
-  signUpWithEmail, 
-  signInWithEmail, 
-  signOut, 
+import { Match, Player, DataContextType } from '../types';
+import {
+  signUpWithEmail,
+  signInWithEmail,
+  signOut,
   onAuthStateChanged,
   createPlayerDocument,
   updatePlayerDocument,
   getPlayerDocument,
-  getPlayerByEmail
+  getPlayerByEmail,
+  createMatchDocument,
+  updateMatchDocument,
+  deleteMatchDocument,
+  getMatchesForPlayer,
+  sendPasswordReset
 } from '../config/firebase';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -67,6 +72,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     saveData();
   }, [matches, players, deletedPlayers, currentUser]);
 
+  // Check for stale/expired matches
+  useEffect(() => {
+    const now = new Date();
+    const staleThreshold = 24 * 60 * 60 * 1000; // 24 hours
+
+    const expiredMatches = matches.filter(match => {
+      if (match.status !== 'scheduled') return false;
+      const scheduledTime = new Date(match.scheduledDate).getTime();
+      return now.getTime() - scheduledTime > staleThreshold;
+    });
+
+    if (expiredMatches.length > 0) {
+      setMatches(prev => prev.map(match => {
+        if (expiredMatches.some(e => e.id === match.id)) {
+          return { ...match, status: 'expired' as const };
+        }
+        return match;
+      }));
+
+      // Update expired status in Firestore
+      expiredMatches.forEach(async (match) => {
+        try {
+          await updateMatchDocument(match.id, { status: 'expired' });
+        } catch (error) {
+          console.error('Error marking match as expired in Firestore:', error);
+        }
+      });
+    }
+  }, [matches.length]);
+
   // Initialize Firebase auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(async (firebaseUser) => {
@@ -79,6 +114,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const filtered = prev.filter(p => p.id !== playerDoc.id);
             return [...filtered, playerDoc];
           });
+
+          // Load matches from Firestore
+          try {
+            const firestoreMatches = await getMatchesForPlayer(firebaseUser.uid);
+            if (firestoreMatches.length > 0) {
+              setMatches(prev => {
+                // Merge: Firestore matches take precedence, keep local-only matches
+                const firestoreIds = new Set(firestoreMatches.map(m => m.id));
+                const localOnly = prev.filter(m => !firestoreIds.has(m.id));
+                return [...firestoreMatches, ...localOnly];
+              });
+            }
+          } catch (error) {
+            console.error('Error loading matches from Firestore:', error);
+          }
         }
       } else {
         setCurrentUser(null);
@@ -88,155 +138,70 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  const addMatch = async (matchData: Omit<Match, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
-    const newMatch = {
+  const addMatch = async (matchData: Omit<Match, 'id' | 'createdAt' | 'lastModifiedAt' | 'lastModifiedBy'>): Promise<Match> => {
+    const now = Date.now();
+    const newMatch: Match = {
       ...matchData,
-      id: Date.now().toString(),
+      id: now.toString(),
+      createdAt: now,
+      lastModifiedAt: now,
+      lastModifiedBy: matchData.createdBy,
     };
     setMatches(prev => [...prev, newMatch]);
+
+    // Persist to Firestore
+    try {
+      await createMatchDocument(newMatch);
+    } catch (error) {
+      console.error('Error saving match to Firestore:', error);
+    }
+
+    return newMatch;
   };
 
   const updateMatch = async (matchId: string, updates: Partial<Match>): Promise<void> => {
     const matchToUpdate = matches.find(m => m.id === matchId);
     if (!matchToUpdate) return;
 
-    const updatedMatch = { ...matchToUpdate, ...updates };
-    
-    setMatches(prev => prev.map(match => 
+    const updatedMatch: Match = {
+      ...matchToUpdate,
+      ...updates,
+      lastModifiedAt: Date.now(),
+      lastModifiedBy: currentUser?.id || matchToUpdate.lastModifiedBy,
+    };
+
+    setMatches(prev => prev.map(match =>
       match.id === matchId ? updatedMatch : match
     ));
-    
-    if (updates.status === 'completed' && updates.score) {
-      const gameScores = parseGameScores(updates.score.toString());
-      
-      if (updates.winner) {
-        const winnerIds = Array.isArray(updates.winner) 
-          ? updates.winner 
-          : typeof updates.winner === 'number'
-            ? (updates.winner === 1 ? updatedMatch.teams?.team1 : updatedMatch.teams?.team2) || []
-            : [updates.winner];
-        
-        // Update match stats for winners
-        winnerIds.forEach(playerId => {
-          const player = players.find(p => p.id === playerId);
-          if (player) {
-            const currentStats = player.stats || {
-              totalMatches: 0,
-              wins: 0,
-              losses: 0,
-              winPercentage: 0,
-              totalGames: 0,
-              gameWins: 0,
-              gameLosses: 0
-            };
-            
-            updatePlayer(playerId, {
-              stats: {
-                totalMatches: currentStats.totalMatches + 1,
-                wins: currentStats.wins + 1,
-                losses: currentStats.losses,
-                winPercentage: ((currentStats.wins + 1) / (currentStats.totalMatches + 1)) * 100,
-                totalGames: currentStats.totalGames,
-                gameWins: currentStats.gameWins,
-                gameLosses: currentStats.gameLosses
-              }
-            });
-          }
-        });
-        
-        const allPlayerIds = updatedMatch.teams
-          ? [...updatedMatch.teams.team1, ...updatedMatch.teams.team2]
-          : updatedMatch.players;
-        
-        // Update match stats for losers
-        allPlayerIds
-          .filter(id => !winnerIds.includes(id))
-          .forEach(playerId => {
-            const player = players.find(p => p.id === playerId);
-            if (player) {
-              const currentStats = player.stats || {
-                totalMatches: 0,
-                wins: 0,
-                losses: 0,
-                winPercentage: 0,
-                totalGames: 0,
-                gameWins: 0,
-                gameLosses: 0
-              };
-              
-              updatePlayer(playerId, {
-                stats: {
-                  totalMatches: currentStats.totalMatches + 1,
-                  wins: currentStats.wins,
-                  losses: currentStats.losses + 1,
-                  winPercentage: (currentStats.wins / (currentStats.totalMatches + 1)) * 100,
-                  totalGames: currentStats.totalGames,
-                  gameWins: currentStats.gameWins,
-                  gameLosses: currentStats.gameLosses
-                }
-              });
-            }
-          });
-      }
+
+    // Persist to Firestore
+    try {
+      await updateMatchDocument(matchId, {
+        ...updates,
+        lastModifiedAt: updatedMatch.lastModifiedAt,
+        lastModifiedBy: updatedMatch.lastModifiedBy,
+      });
+    } catch (error) {
+      console.error('Error updating match in Firestore:', error);
     }
   };
 
-  const updatePlayerGameStats = (playerId: string, isWin: boolean): void => {
-    setPlayers(prev => prev.map(player => {
-      if (player.id === playerId) {
-        const currentStats = player.stats || {
-          totalMatches: 0,
-          wins: 0,
-          losses: 0,
-          winPercentage: 0,
-          totalGames: 0,
-          gameWins: 0,
-          gameLosses: 0
-        };
-        
-        const updatedStats: PlayerStats = {
-          ...currentStats,
-          totalGames: (currentStats.totalGames || 0) + 1,
-          gameWins: (currentStats.gameWins || 0) + (isWin ? 1 : 0),
-          gameLosses: (currentStats.gameLosses || 0) + (isWin ? 0 : 1)
-        };
-        
-        // Update the current user if needed
-        if (currentUser && currentUser.id === playerId) {
-          setCurrentUser({
-            ...currentUser,
-            stats: updatedStats
-          });
-        }
-        
-        return {
-          ...player,
-          stats: updatedStats
-        };
-      }
-      return player;
-    }));
-  };
-
-  // Helper function to parse game scores
-  const parseGameScores = (scoreString: string) => {
-    if (!scoreString) return [];
-    
-    return scoreString.split(', ').map(gameScore => {
-      const [team1Score, team2Score] = gameScore.split('-').map(Number);
-      return { team1Score, team2Score };
-    });
-  };
-
-  const addPlayer = async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> => {
+  const addPlayer = async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>): Promise<Player> => {
     try {
-      // Create Firebase auth user
-      const firebaseUser = await signUpWithEmail(playerData.email, playerData.password);
-      
-      // Create player in Firestore
+      let playerId: string;
+
+      if (playerData.email && playerData.password) {
+        // Create Firebase auth user for players with credentials
+        const firebaseUser = await signUpWithEmail(playerData.email, playerData.password);
+        playerId = firebaseUser.uid;
+      } else {
+        // Generate a local ID for invited/placeholder players
+        playerId = Date.now().toString();
+      }
+
       const newPlayer: Player = {
         ...playerData,
-        id: firebaseUser.uid,
+        id: playerId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         stats: {
@@ -252,7 +217,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await createPlayerDocument(newPlayer);
       setPlayers(prev => [...prev, newPlayer]);
-      setCurrentUser(newPlayer);
+
+      // Only set as current user for auth signups
+      if (playerData.email && playerData.password) {
+        setCurrentUser(newPlayer);
+      }
+
+      return newPlayer;
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -261,14 +232,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const getUpcomingMatch = () => {
     const now = new Date();
     return matches
-      .filter(match => match.status === 'scheduled' && new Date(match.date) > now)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0] || null;
+      .filter(match => match.status === 'scheduled' && new Date(match.scheduledDate) > now)
+      .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime())[0] || null;
   };
 
   const getRecentMatches = (limit = 5) => {
     return matches
       .filter(match => match.status === 'completed')
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime())
       .slice(0, limit);
   };
 
@@ -278,6 +249,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteMatch = async (matchId: string) => {
     setMatches(prev => prev.filter(match => match.id !== matchId));
+
+    // Delete from Firestore
+    try {
+      await deleteMatchDocument(matchId);
+    } catch (error) {
+      console.error('Error deleting match from Firestore:', error);
+    }
   };
 
   const updatePlayer = async (playerId: string, data: Partial<Player>) => {
@@ -300,18 +278,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetAllData = async () => {
     try {
+      // Delete user's matches from Firestore
+      if (currentUser) {
+        const userMatches = matches.filter(m => m.createdBy === currentUser.id);
+        for (const match of userMatches) {
+          try {
+            await deleteMatchDocument(match.id);
+          } catch (e) {
+            console.error('Error deleting match from Firestore:', e);
+          }
+        }
+      }
+
       // Clear all data in AsyncStorage
       await AsyncStorage.removeItem('matches');
       await AsyncStorage.removeItem('players');
       await AsyncStorage.removeItem('deletedPlayers');
       await AsyncStorage.removeItem('currentUser');
-      
+      await AsyncStorage.removeItem('matchesMigrated');
+
       // Reset state
       setMatches([]);
       setPlayers([]);
       setDeletedPlayers([]);
       setCurrentUser(null);
-      
+
       console.log('All data has been reset');
       return true;
     } catch (error) {
@@ -338,23 +329,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Check if email is already in use
     if (!await isEmailAvailable(email)) return null;
 
-    const newPlayer: Omit<Player, 'id' | 'createdAt' | 'updatedAt'> = {
+    const createdPlayer = await addPlayer({
       name,
       email,
-      password: '', // This will be set when they claim their account
-      stats: {
-        totalMatches: 0,
-        wins: 0,
-        losses: 0,
-        winPercentage: 0,
-      }
-    };
+    });
 
-    await addPlayer(newPlayer);
-    
-    // Get the newly created player to return
-    const createdPlayer = players.find(p => p.email === email);
-    return createdPlayer || null;
+    return createdPlayer;
   };
 
   // Get all players invited by the current user
@@ -542,103 +522,125 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const dayAfterTomorrow = new Date(today);
       dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
 
+      const now = Date.now();
       const dummyMatches: Match[] = [
         {
           id: 'match1',
-          date: twoDaysAgo.toISOString(),
-          players: ['player1', 'player2', 'player3', 'player4'],
-          teams: {
-            team1: ['player1', 'player2'],
-            team2: ['player3', 'player4']
-          },
+          createdBy: 'player1',
+          createdAt: now,
+          lastModifiedAt: now,
+          lastModifiedBy: 'player1',
+          scheduledDate: twoDaysAgo.toISOString(),
+          matchType: 'doubles',
+          team1PlayerIds: ['player1', 'player2'],
+          team2PlayerIds: ['player3', 'player4'],
+          team1PlayerNames: ['John Smith', 'Sarah Johnson'],
+          team2PlayerNames: ['Mike Williams', 'Emily Davis'],
+          allPlayerIds: ['player1', 'player2', 'player3', 'player4'],
           location: 'Central Park Courts',
           status: 'completed',
-          winner: ['player1', 'player2'],
-          score: {
-            team1: 11,
-            team2: 7
-          },
-          isDoubles: true,
+          winnerTeam: 1,
+          games: [{ team1Score: 11, team2Score: 7, winnerTeam: 1 }],
           pointsToWin: 11,
           numberOfGames: 1
         },
         {
           id: 'match2',
-          date: yesterday.toISOString(),
-          players: ['player1', 'player3'],
-          teams: {
-            team1: ['player1'],
-            team2: ['player3']
-          },
+          createdBy: 'player1',
+          createdAt: now,
+          lastModifiedAt: now,
+          lastModifiedBy: 'player1',
+          scheduledDate: yesterday.toISOString(),
+          matchType: 'singles',
+          team1PlayerIds: ['player1'],
+          team2PlayerIds: ['player3'],
+          team1PlayerNames: ['John Smith'],
+          team2PlayerNames: ['Mike Williams'],
+          allPlayerIds: ['player1', 'player3'],
           location: 'Community Center',
           status: 'completed',
-          winner: ['player3'],
-          score: {
-            team1: 9,
-            team2: 11
-          },
-          isDoubles: false,
+          winnerTeam: 2,
+          games: [{ team1Score: 9, team2Score: 11, winnerTeam: 2 }],
           pointsToWin: 11,
           numberOfGames: 1
         },
         {
           id: 'match3',
-          date: threeDaysAgo.toISOString(),
-          players: ['player2', 'player4', 'player1', 'player5'],
-          teams: {
-            team1: ['player2', 'player4'],
-            team2: ['player1', 'player5']
-          },
+          createdBy: 'player2',
+          createdAt: now,
+          lastModifiedAt: now,
+          lastModifiedBy: 'player2',
+          scheduledDate: threeDaysAgo.toISOString(),
+          matchType: 'doubles',
+          team1PlayerIds: ['player2', 'player4'],
+          team2PlayerIds: ['player1', 'player5'],
+          team1PlayerNames: ['Sarah Johnson', 'Emily Davis'],
+          team2PlayerNames: ['John Smith', 'Alex Rodriguez'],
+          allPlayerIds: ['player2', 'player4', 'player1', 'player5'],
           location: 'Riverside Courts',
           status: 'completed',
-          winner: ['player1', 'player5'],
-          score: {
-            team1: 8,
-            team2: 11
-          },
-          isDoubles: true,
+          winnerTeam: 2,
+          games: [{ team1Score: 8, team2Score: 11, winnerTeam: 2 }],
           pointsToWin: 11,
           numberOfGames: 1
         },
         {
           id: 'match4',
-          date: today.toISOString(),
-          players: ['player1', 'player2', 'player3', 'player4'],
-          teams: {
-            team1: ['player1', 'player4'],
-            team2: ['player2', 'player3']
-          },
+          createdBy: 'player1',
+          createdAt: now,
+          lastModifiedAt: now,
+          lastModifiedBy: 'player1',
+          scheduledDate: today.toISOString(),
+          matchType: 'doubles',
+          team1PlayerIds: ['player1', 'player4'],
+          team2PlayerIds: ['player2', 'player3'],
+          team1PlayerNames: ['John Smith', 'Emily Davis'],
+          team2PlayerNames: ['Sarah Johnson', 'Mike Williams'],
+          allPlayerIds: ['player1', 'player2', 'player3', 'player4'],
           location: 'Downtown Recreation Center',
           status: 'scheduled',
-          isDoubles: true,
+          winnerTeam: null,
+          games: [],
           pointsToWin: 11,
           numberOfGames: 3
         },
         {
           id: 'match5',
-          date: tomorrow.toISOString(),
-          players: ['player1', 'player3'],
-          teams: {
-            team1: ['player1'],
-            team2: ['player3']
-          },
+          createdBy: 'player1',
+          createdAt: now,
+          lastModifiedAt: now,
+          lastModifiedBy: 'player1',
+          scheduledDate: tomorrow.toISOString(),
+          matchType: 'singles',
+          team1PlayerIds: ['player1'],
+          team2PlayerIds: ['player3'],
+          team1PlayerNames: ['John Smith'],
+          team2PlayerNames: ['Mike Williams'],
+          allPlayerIds: ['player1', 'player3'],
           location: 'Tennis Club',
           status: 'scheduled',
-          isDoubles: false,
+          winnerTeam: null,
+          games: [],
           pointsToWin: 11,
           numberOfGames: 3
         },
         {
           id: 'match6',
-          date: dayAfterTomorrow.toISOString(),
-          players: ['player2', 'player5', 'player3', 'player4'],
-          teams: {
-            team1: ['player2', 'player5'],
-            team2: ['player3', 'player4']
-          },
+          createdBy: 'player2',
+          createdAt: now,
+          lastModifiedAt: now,
+          lastModifiedBy: 'player2',
+          scheduledDate: dayAfterTomorrow.toISOString(),
+          matchType: 'doubles',
+          team1PlayerIds: ['player2', 'player5'],
+          team2PlayerIds: ['player3', 'player4'],
+          team1PlayerNames: ['Sarah Johnson', 'Alex Rodriguez'],
+          team2PlayerNames: ['Mike Williams', 'Emily Davis'],
+          allPlayerIds: ['player2', 'player5', 'player3', 'player4'],
           location: 'Sports Complex',
           status: 'scheduled',
-          isDoubles: true,
+          winnerTeam: null,
+          games: [],
           pointsToWin: 11,
           numberOfGames: 3
         }

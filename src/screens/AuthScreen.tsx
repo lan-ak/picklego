@@ -17,6 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
+import { sendPasswordReset } from '../config/firebase';
 
 type AuthScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -31,6 +32,8 @@ const AuthScreen = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
   
   const handleToggleMode = () => {
     setIsLogin(!isLogin);
@@ -119,7 +122,24 @@ const AuthScreen = () => {
       setIsLoading(false);
     }
   };
-  
+
+  const handleForgotPassword = async () => {
+    if (!resetEmail.trim()) {
+      Alert.alert('Error', 'Please enter your email address.');
+      return;
+    }
+    try {
+      await sendPasswordReset(resetEmail.trim());
+      Alert.alert('Email Sent', 'If an account exists with this email, a password reset link has been sent.');
+      setShowForgotPassword(false);
+      setResetEmail('');
+    } catch (error) {
+      Alert.alert('Email Sent', 'If an account exists with this email, a password reset link has been sent.');
+      setShowForgotPassword(false);
+      setResetEmail('');
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -137,15 +157,21 @@ const AuthScreen = () => {
             <TouchableOpacity
               style={[styles.tabButton, isLogin ? styles.inactiveTab : styles.activeTab]}
               onPress={() => setIsLogin(false)}
+              accessibilityRole="tab"
+              accessibilityLabel="Sign Up"
+              accessibilityState={{ selected: !isLogin }}
             >
               <Text style={[styles.tabText, isLogin ? styles.inactiveTabText : styles.activeTabText]}>
                 Sign Up
               </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[styles.tabButton, isLogin ? styles.activeTab : styles.inactiveTab]}
               onPress={() => setIsLogin(true)}
+              accessibilityRole="tab"
+              accessibilityLabel="Login"
+              accessibilityState={{ selected: isLogin }}
             >
               <Text style={[styles.tabText, isLogin ? styles.activeTabText : styles.inactiveTabText]}>
                 Login
@@ -162,6 +188,8 @@ const AuthScreen = () => {
                   value={name}
                   onChangeText={setName}
                   placeholder="Your full name"
+                  accessibilityLabel="Full name"
+                  accessibilityHint="Enter your full name"
                 />
               </View>
             </>
@@ -176,6 +204,8 @@ const AuthScreen = () => {
               placeholder="Your email address"
               keyboardType="email-address"
               autoCapitalize="none"
+              accessibilityLabel="Email address"
+              accessibilityHint="Enter your email address"
             />
           </View>
           
@@ -188,10 +218,14 @@ const AuthScreen = () => {
                 onChangeText={setPassword}
                 placeholder="Enter your password"
                 secureTextEntry={!showPassword}
+                accessibilityLabel="Password"
+                accessibilityHint="Enter your password"
               />
               <TouchableOpacity
                 style={styles.eyeIcon}
                 onPress={() => setShowPassword(!showPassword)}
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                accessibilityRole="button"
               >
                 <Ionicons
                   name={showPassword ? 'eye-off' : 'eye'}
@@ -201,7 +235,54 @@ const AuthScreen = () => {
               </TouchableOpacity>
             </View>
           </View>
-          
+
+          {isLogin && !showForgotPassword && (
+            <TouchableOpacity
+              style={styles.forgotPasswordButton}
+              onPress={() => setShowForgotPassword(true)}
+              accessibilityLabel="Forgot password"
+              accessibilityRole="button"
+              accessibilityHint="Opens password reset form"
+            >
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          )}
+
+          {showForgotPassword && (
+            <View style={styles.forgotPasswordContainer}>
+              <Text style={styles.inputLabel}>Enter your email to reset password</Text>
+              <TextInput
+                style={styles.input}
+                value={resetEmail}
+                onChangeText={setResetEmail}
+                placeholder="Your email address"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                accessibilityLabel="Password reset email address"
+                accessibilityHint="Enter the email address to send a password reset link to"
+              />
+              <TouchableOpacity
+                style={styles.resetButton}
+                onPress={handleForgotPassword}
+                accessibilityLabel="Send reset link"
+                accessibilityRole="button"
+              >
+                <Text style={styles.resetButtonText}>Send Reset Link</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowForgotPassword(false);
+                  setResetEmail('');
+                }}
+                accessibilityLabel="Cancel password reset"
+                accessibilityRole="button"
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {!isLogin && (
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Confirm Password</Text>
@@ -212,6 +293,8 @@ const AuthScreen = () => {
                   onChangeText={setConfirmPassword}
                   placeholder="Confirm your password"
                   secureTextEntry={!showPassword}
+                  accessibilityLabel="Confirm password"
+                  accessibilityHint="Re-enter your password to confirm"
                 />
               </View>
             </View>
@@ -221,6 +304,9 @@ const AuthScreen = () => {
             style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
             onPress={isLogin ? handleLogin : handleSignUp}
             disabled={isLoading}
+            accessibilityLabel={isLogin ? 'Login' : 'Create Account'}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isLoading }}
           >
             {isLoading ? (
               <ActivityIndicator color="#fff" />
@@ -234,6 +320,8 @@ const AuthScreen = () => {
           <TouchableOpacity
             style={styles.toggleButton}
             onPress={handleToggleMode}
+            accessibilityLabel={isLogin ? 'Need an account? Sign up' : 'Already have an account? Login'}
+            accessibilityRole="button"
           >
             <Text style={styles.toggleButtonText}>
               {isLogin ? 'Need an account? Sign up' : 'Already have an account? Login'}
@@ -359,6 +447,42 @@ const styles = StyleSheet.create({
   },
   toggleButtonText: {
     color: '#0D6B3E',
+    fontSize: 14,
+  },
+  forgotPasswordButton: {
+    alignSelf: 'flex-end',
+    marginBottom: 8,
+  },
+  forgotPasswordText: {
+    color: '#0D6B3E',
+    fontSize: 14,
+  },
+  forgotPasswordContainer: {
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  resetButton: {
+    backgroundColor: '#0D6B3E',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  resetButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  cancelButton: {
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#666',
     fontSize: 14,
   },
 });

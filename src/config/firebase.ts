@@ -1,10 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
-  onAuthStateChanged as firebaseOnAuthStateChanged
+  onAuthStateChanged as firebaseOnAuthStateChanged,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -12,12 +13,15 @@ import {
   setDoc,
   getDoc,
   updateDoc,
+  addDoc,
+  deleteDoc,
   collection,
   query,
   where,
-  getDocs
+  getDocs,
+  orderBy
 } from 'firebase/firestore';
-import { Player } from '../types';
+import { Player, Match } from '../types';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -116,4 +120,52 @@ export const getCurrentUser = () => {
 
 export const onAuthStateChanged = (callback: (user: any) => void) => {
   return firebaseOnAuthStateChanged(auth, callback);
+};
+
+// Match CRUD functions
+export const createMatchDocument = async (match: Match) => {
+  try {
+    await setDoc(doc(db, 'matches', match.id), match);
+  } catch (error: any) {
+    throw new Error('Failed to create match document: ' + error.message);
+  }
+};
+
+export const updateMatchDocument = async (matchId: string, data: Partial<Match>) => {
+  try {
+    await updateDoc(doc(db, 'matches', matchId), data);
+  } catch (error: any) {
+    throw new Error('Failed to update match document: ' + error.message);
+  }
+};
+
+export const deleteMatchDocument = async (matchId: string) => {
+  try {
+    await deleteDoc(doc(db, 'matches', matchId));
+  } catch (error: any) {
+    throw new Error('Failed to delete match document: ' + error.message);
+  }
+};
+
+export const getMatchesForPlayer = async (playerId: string): Promise<Match[]> => {
+  try {
+    const q = query(
+      collection(db, 'matches'),
+      where('allPlayerIds', 'array-contains', playerId),
+      orderBy('scheduledDate', 'desc')
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => doc.data() as Match);
+  } catch (error: any) {
+    throw new Error('Failed to get matches for player: ' + error.message);
+  }
+};
+
+// Password reset
+export const sendPasswordReset = async (email: string) => {
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (error: any) {
+    throw new Error(error.message);
+  }
 }; 

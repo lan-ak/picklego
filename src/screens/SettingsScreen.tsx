@@ -198,18 +198,18 @@ const SettingsScreen: React.FC = () => {
     {
       title: 'Data',
       items: [
-        { 
-          icon: 'cloud-download-outline', 
+        {
+          icon: 'cloud-download-outline',
           label: 'Export Data',
           onPress: () => Alert.alert('Coming Soon', 'Data export will be available in a future update.')
         },
-        {
-          icon: 'add-circle-outline',
+        ...(__DEV__ ? [{
+          icon: 'add-circle-outline' as keyof typeof Ionicons.glyphMap,
           label: 'Insert Dummy Data',
           onPress: handleInsertDummyData,
-        },
-        { 
-          icon: 'refresh-outline', 
+        }] : []),
+        {
+          icon: 'refresh-outline',
           label: 'Reset All Data',
           onPress: () => {
             Alert.alert(
@@ -471,7 +471,12 @@ const SettingsScreen: React.FC = () => {
       <ScrollView style={styles.container}>
         {/* Profile Section */}
         <View style={styles.profileSection}>
-          <TouchableOpacity style={styles.profilePicContainer} onPress={handlePickImage}>
+          <TouchableOpacity
+            style={styles.profilePicContainer}
+            onPress={handlePickImage}
+            accessibilityLabel="Change profile picture"
+            accessibilityRole="button"
+          >
             {currentUser?.profilePic ? (
               <Image 
                 source={{ uri: currentUser.profilePic }} 
@@ -494,9 +499,11 @@ const SettingsScreen: React.FC = () => {
               <Text style={styles.ratingText}>{currentUser?.rating?.toFixed(1) || '3.5'}</Text>
             </View>
             
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.editProfileButton}
               onPress={handleEditProfile}
+              accessibilityLabel="Edit profile"
+              accessibilityRole="button"
             >
               <Text style={styles.editProfileButtonText}>Edit Profile</Text>
             </TouchableOpacity>
@@ -512,6 +519,8 @@ const SettingsScreen: React.FC = () => {
                 key={itemIndex}
                 style={styles.settingItem}
                 onPress={item.onPress}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
               >
                 <View style={styles.settingItemLeft}>
                   <Ionicons

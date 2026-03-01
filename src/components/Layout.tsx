@@ -36,19 +36,23 @@ const Layout: React.FC<LayoutProps> = ({
           Platform.OS === 'android' && { paddingTop: statusBarHeight + 16 }
         ]}>
           {showBackButton && navigation.canGoBack() && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.backButton}
               onPress={() => navigation.goBack()}
+              accessibilityLabel="Go back"
+              accessibilityRole="button"
             >
               <Ionicons name="arrow-back" size={24} color="#0D6B3E" />
             </TouchableOpacity>
           )}
-          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.title} accessibilityRole="header">{title}</Text>
           <View style={styles.rightContainer}>
             {!isHomeScreen && (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.homeButton}
                 onPress={navigateToHome}
+                accessibilityLabel="Go to home screen"
+                accessibilityRole="button"
               >
                 <Ionicons name="home" size={24} color="#0D6B3E" />
               </TouchableOpacity>

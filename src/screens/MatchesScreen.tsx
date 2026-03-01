@@ -9,7 +9,7 @@ import { FooterButton } from '../components/FooterButton';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { MainTabParamList, RootStackParamList } from '../types';
+import { MainTabParamList, RootStackParamList, Match } from '../types';
 
 type MatchesScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Matches'>,
@@ -41,45 +41,45 @@ const MatchesScreen = () => {
   const getFilteredMatches = (): typeof matches => {
     switch (activeTab) {
       case 'all':
-        return [...matches].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        return [...matches].sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
       
       case 'upcoming':
         return matches
           .filter(match => match.status === 'scheduled')
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
       
       case 'completed':
         return matches
           .filter(match => match.status === 'completed')
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
       
       case 'won':
         return matches
           .filter(match => {
-            if (!currentUser || match.status !== 'completed' || !match.winner) return false;
-            
+            if (!currentUser || match.status !== 'completed' || match.winnerTeam === null) return false;
+
             // First check if user participated in this match
             const participated = isUserInMatch(match, currentUser.id);
             if (!participated) return false;
-            
+
             // Then check if user is in the winners
             return isUserWinner(match, currentUser.id);
           })
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
+          .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
+
       case 'lost':
         return matches
           .filter(match => {
-            if (!currentUser || match.status !== 'completed' || !match.winner) return false;
-            
+            if (!currentUser || match.status !== 'completed' || match.winnerTeam === null) return false;
+
             // First check if user participated in this match
             const participated = isUserInMatch(match, currentUser.id);
             if (!participated) return false;
-            
+
             // Then check if user is NOT in the winners
             return !isUserWinner(match, currentUser.id);
           })
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
       
       default:
         return matches;
@@ -87,148 +87,39 @@ const MatchesScreen = () => {
   };
 
   // Helper function to check if a user is in a match
-  const isUserInMatch = (match: typeof matches[0], userId: string): boolean => {
-    if (match.teams) {
-      // For matches with teams property
-      return match.teams.team1.includes(userId) || match.teams.team2.includes(userId);
-    } else {
-      // For older format matches without teams property
-      return match.players.includes(userId);
-    }
+  const isUserInMatch = (match: Match, userId: string): boolean => {
+    return match.allPlayerIds.includes(userId);
   };
 
   // Helper function to check if a user is a winner of a match
-  const isUserWinner = (match: typeof matches[0], userId: string): boolean => {
-    if (!match.winner) return false;
-    
-    // Handle both formats of match.winner (string or array)
-    if (Array.isArray(match.winner)) {
-      return match.winner.includes(userId);
-    } else if (typeof match.winner === 'string') {
-      return match.winner === userId;
-    } else if (typeof match.winner === 'number') {
-      const userTeam = getUserTeamNumber(match, userId);
-      return userTeam === match.winner;
-    }
-    
-    return false;
+  const isUserWinner = (match: Match, userId: string): boolean => {
+    if (match.winnerTeam === null) return false;
+    const userTeam = match.team1PlayerIds.includes(userId) ? 1 : match.team2PlayerIds.includes(userId) ? 2 : null;
+    return match.winnerTeam === userTeam;
   };
 
   const filteredMatches = getFilteredMatches();
 
-  const getTeamNames = (match: typeof matches[0], teamNumber: 1 | 2) => {
-    // For matches without teams property (old format)
-    if (!match.teams) {
-      if (!match.isDoubles) {
-        // For singles, first player is team 1, second player is team 2
-        const playerIndex = teamNumber === 1 ? 0 : 1;
-        const playerId = match.players[playerIndex];
-        const fullName = getPlayerName(playerId);
-        return formatPlayerNameWithInitial(fullName);
-      } else {
-        // For doubles, split players array in half
-        const midPoint = Math.floor(match.players.length / 2);
-        const playerIds = teamNumber === 1 
-          ? match.players.slice(0, midPoint)
-          : match.players.slice(midPoint);
-        return playerIds.map(id => formatPlayerNameWithInitial(getPlayerName(id))).join(' & ');
-      }
-    }
-    
-    // For matches with teams property (new format)
-    const teamPlayers = teamNumber === 1 ? match.teams.team1 : match.teams.team2;
-    if (!match.isDoubles) {
+  const getTeamNames = (match: Match, teamNumber: 1 | 2) => {
+    const teamPlayerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
+    if (match.matchType !== 'doubles') {
       // For singles, just return the single player name
-      const playerId = teamPlayers[0];
+      const playerId = teamPlayerIds[0];
       const fullName = getPlayerName(playerId);
       return formatPlayerNameWithInitial(fullName);
     }
-    return teamPlayers.map(id => formatPlayerNameWithInitial(getPlayerName(id))).join(' & ');
+    return teamPlayerIds.map(id => formatPlayerNameWithInitial(getPlayerName(id))).join(' & ');
   };
 
-  const isTeamWinner = (match: typeof matches[0], teamNumber: 1 | 2) => {
-    try {
-      // If no winner is set, return false
-      if (!match.winner) return false;
-
-      // Check if winner is a team number
-      if (typeof match.winner === 'number') {
-        return match.winner === teamNumber;
-      }
-
-      // For singles matches
-      if (!match.isDoubles) {
-        // Get the player ID for this team
-        let playerId;
-        if (!match.teams) {
-          // Old format - first player is team 1, second is team 2
-          playerId = match.players[teamNumber === 1 ? 0 : 1];
-        } else {
-          // New format - get player from teams
-          playerId = match.teams[teamNumber === 1 ? 'team1' : 'team2'][0];
-        }
-
-        // For singles, winner should be a single player ID
-        if (typeof match.winner === 'string') {
-          return match.winner === playerId;
-        }
-        
-        // If winner is an array, check if player ID is in it
-        if (Array.isArray(match.winner)) {
-          return match.winner.includes(playerId);
-        }
-        
-        return false;
-      }
-
-      // For doubles matches
-      const teamPlayers = !match.teams
-        ? match.players.slice(teamNumber === 1 ? 0 : 2, teamNumber === 1 ? 2 : 4)
-        : match.teams[teamNumber === 1 ? 'team1' : 'team2'];
-
-      // For doubles, winner should be an array of player IDs
-      if (Array.isArray(match.winner)) {
-        const winnerSet = new Set(match.winner);
-        return teamPlayers.length === match.winner.length && 
-               teamPlayers.every(player => winnerSet.has(player));
-      }
-      return false;
-
-    } catch (error) {
-      console.error('Error determining winner:', error, {
-        match,
-        teamNumber,
-        winner: match.winner,
-        teams: match.teams,
-        players: match.players,
-        isDoubles: match.isDoubles
-      });
-      return false;
-    }
+  const isTeamWinner = (match: Match, teamNumber: 1 | 2) => {
+    return match.winnerTeam === teamNumber;
   };
 
-  // Add this helper function to determine which team the user is on
-  const getUserTeamNumber = (match: typeof matches[0], userId: string): 1 | 2 | null => {
+  // Helper function to determine which team the user is on
+  const getUserTeamNumber = (match: Match, userId: string): 1 | 2 | null => {
     if (!userId) return null;
-    
-    if (match.teams) {
-      if (match.teams.team1.includes(userId)) return 1;
-      if (match.teams.team2.includes(userId)) return 2;
-    } else {
-      // For older format
-      const playerIndex = match.players.indexOf(userId);
-      if (playerIndex === -1) return null;
-      
-      // For singles: player 0 is team 1, player 1 is team 2
-      if (!match.isDoubles) {
-        return playerIndex === 0 ? 1 : 2;
-      }
-      
-      // For doubles: first half is team 1, second half is team 2
-      const midPoint = Math.floor(match.players.length / 2);
-      return playerIndex < midPoint ? 1 : 2;
-    }
-    
+    if (match.team1PlayerIds.includes(userId)) return 1;
+    if (match.team2PlayerIds.includes(userId)) return 2;
     return null;
   };
 
@@ -250,37 +141,52 @@ const MatchesScreen = () => {
         showsHorizontalScrollIndicator={false} 
         contentContainerStyle={styles.tabsScrollContent}
       >
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.tab, activeTab === 'all' && styles.activeTab]}
           onPress={() => setActiveTab('all')}
+          accessibilityRole="tab"
+          accessibilityLabel="All"
+          accessibilityState={{ selected: activeTab === 'all' }}
         >
           <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>All</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={[styles.tab, activeTab === 'upcoming' && styles.activeTab]}
           onPress={() => setActiveTab('upcoming')}
+          accessibilityRole="tab"
+          accessibilityLabel="Upcoming"
+          accessibilityState={{ selected: activeTab === 'upcoming' }}
         >
           <Text style={[styles.tabText, activeTab === 'upcoming' && styles.activeTabText]}>Upcoming</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={[styles.tab, activeTab === 'completed' && styles.activeTab]}
           onPress={() => setActiveTab('completed')}
+          accessibilityRole="tab"
+          accessibilityLabel="Completed"
+          accessibilityState={{ selected: activeTab === 'completed' }}
         >
           <Text style={[styles.tabText, activeTab === 'completed' && styles.activeTabText]}>Completed</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={[styles.tab, activeTab === 'won' && styles.activeTab]}
           onPress={() => setActiveTab('won')}
+          accessibilityRole="tab"
+          accessibilityLabel="Won"
+          accessibilityState={{ selected: activeTab === 'won' }}
         >
           <Text style={[styles.tabText, activeTab === 'won' && styles.activeTabText]}>Won</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={[styles.tab, activeTab === 'lost' && styles.activeTab]}
           onPress={() => setActiveTab('lost')}
+          accessibilityRole="tab"
+          accessibilityLabel="Lost"
+          accessibilityState={{ selected: activeTab === 'lost' }}
         >
           <Text style={[styles.tabText, activeTab === 'lost' && styles.activeTabText]}>Lost</Text>
         </TouchableOpacity>
@@ -305,10 +211,13 @@ const MatchesScreen = () => {
         onPress={() => {
           navigation.navigate('MatchDetails', { matchId: match.id });
         }}
+        accessibilityRole="button"
+        accessibilityLabel={`${getTeamNames(match, 1)} vs ${getTeamNames(match, 2)}, ${format(new Date(match.scheduledDate), 'MMM d, yyyy')}`}
+        accessibilityHint="View match details"
       >
         <View style={styles.matchHeader}>
           <Text style={styles.matchDate}>
-            {format(new Date(match.date), 'MMM d, yyyy - h:mm a')}
+            {format(new Date(match.scheduledDate), 'MMM d, yyyy - h:mm a')}
           </Text>
           {match.status === 'completed' && (
             <View style={[
@@ -339,7 +248,7 @@ const MatchesScreen = () => {
         </View>
 
         <Text style={styles.matchType}>
-          {match.isDoubles ? 'Doubles' : 'Singles'} • {match.pointsToWin} pts • Best of {match.numberOfGames}
+          {match.matchType === 'doubles' ? 'Doubles' : 'Singles'} • {match.pointsToWin} pts • Best of {match.numberOfGames}
         </Text>
 
         <View style={styles.teamsContainer}>
@@ -374,12 +283,9 @@ const MatchesScreen = () => {
           </Text>
         )}
 
-        {match.status === 'completed' && match.score && (
+        {match.status === 'completed' && match.games.length > 0 && (
           <Text style={styles.matchScore}>
-            {typeof match.score === 'object' && match.score !== null && 
-              'team1' in match.score && 'team2' in match.score ? 
-                `${match.score['team1']} - ${match.score['team2']}` 
-                : String(match.score)}
+            {match.games.map(game => `${game.team1Score}-${game.team2Score}`).join(', ')}
           </Text>
         )}
       </TouchableOpacity>
@@ -394,6 +300,8 @@ const MatchesScreen = () => {
         <TouchableOpacity
           onPress={() => navigation.navigate('AddMatch')}
           style={styles.headerButton}
+          accessibilityLabel="Add new match"
+          accessibilityRole="button"
         >
           <Ionicons name="add-circle-outline" size={24} color="#0D6B3E" />
         </TouchableOpacity>
@@ -409,6 +317,8 @@ const MatchesScreen = () => {
               <TouchableOpacity
                 style={styles.addButton}
                 onPress={() => navigation.navigate('AddMatch')}
+                accessibilityLabel="Schedule a Match"
+                accessibilityRole="button"
               >
                 <Text style={styles.addButtonText}>Schedule a Match</Text>
               </TouchableOpacity>

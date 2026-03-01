@@ -57,9 +57,9 @@ const CompleteMatchScreen = () => {
       // Log match info for debugging
       console.log('Match loaded:', {
         id: match.id,
-        isDoubles: match.isDoubles,
-        teams: match.teams,
-        players: match.players
+        matchType: match.matchType,
+        team1PlayerIds: match.team1PlayerIds,
+        team2PlayerIds: match.team2PlayerIds
       });
     }
   }, [match]);
@@ -76,38 +76,13 @@ const CompleteMatchScreen = () => {
 
   const getTeamNames = (teamNumber: 1 | 2) => {
     try {
-      // For matches without teams property (old format)
-      if (!match.teams) {
-        if (!match.isDoubles) {
-          // For singles, first player is team 1, second player is team 2
-          const playerIndex = teamNumber === 1 ? 0 : 1;
-          const playerId = match.players[playerIndex];
-          return players.find(p => p.id === playerId)?.name || 'Unknown Player';
-        } else {
-          // For doubles, split players array in half
-          const midPoint = Math.floor(match.players.length / 2);
-          const playerIds = teamNumber === 1 
-            ? match.players.slice(0, midPoint)
-            : match.players.slice(midPoint);
-          return playerIds.map(id => players.find(p => p.id === id)?.name || 'Unknown Player').join(' & ');
-        }
+      const playerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
+      if (match.matchType !== 'doubles') {
+        return players.find(p => p.id === playerIds[0])?.name || 'Unknown Player';
       }
-      
-      // For matches with teams property (new format)
-      const teamPlayers = teamNumber === 1 ? match.teams.team1 : match.teams.team2;
-      if (!match.isDoubles) {
-        // For singles, just return the single player name
-        const playerId = teamPlayers[0];
-        return players.find(p => p.id === playerId)?.name || 'Unknown Player';
-      }
-      return teamPlayers.map(id => players.find(p => p.id === id)?.name || 'Unknown Player').join(' & ');
+      return playerIds.map(id => players.find(p => p.id === id)?.name || 'Unknown Player').join(' & ');
     } catch (error) {
-      console.error('Error in getTeamNames:', error, {
-        match,
-        teamNumber,
-        teams: match.teams,
-        players: match.players
-      });
+      console.error('Error in getTeamNames:', error);
       return `Team ${teamNumber}`;
     }
   };
@@ -135,8 +110,7 @@ const CompleteMatchScreen = () => {
     setGameScores(newScores);
   };
 
-  const validateScores = () => {
-    // Check if all games have scores and winners
+  const validateScores = (): { valid: boolean; message?: string } => {
     const hasEmptyScores = gameScores.some(
       game => !game.team1Score || !game.team2Score || !game.winner
     );
@@ -144,91 +118,55 @@ const CompleteMatchScreen = () => {
       return { valid: false, message: 'Please select winners and enter scores for all games.' };
     }
 
-    // Check if scores are valid numbers
     const hasInvalidScores = gameScores.some(
-      game => 
-        isNaN(parseInt(game.team1Score)) || 
-        isNaN(parseInt(game.team2Score))
+      game => isNaN(parseInt(game.team1Score)) || isNaN(parseInt(game.team2Score))
     );
     if (hasInvalidScores) {
       return { valid: false, message: 'Please enter valid scores.' };
     }
 
-    // Verify at least one team reaches points to win in each game
-    const hasValidWinningScore = gameScores.every(game => {
-      const t1Score = parseInt(game.team1Score);
-      const t2Score = parseInt(game.team2Score);
-      return t1Score >= match.pointsToWin || t2Score >= match.pointsToWin;
-    });
-    if (!hasValidWinningScore) {
-      return { valid: false, message: `At least one team must reach ${match.pointsToWin} points in each game.` };
+    // Win-by-2 validation for each game
+    for (let i = 0; i < gameScores.length; i++) {
+      const t1 = parseInt(gameScores[i].team1Score);
+      const t2 = parseInt(gameScores[i].team2Score);
+      const winScore = Math.max(t1, t2);
+      const loseScore = Math.min(t1, t2);
+
+      if (t1 < 0 || t2 < 0) {
+        return { valid: false, message: `Game ${i + 1}: Scores cannot be negative.` };
+      }
+
+      if (winScore < match.pointsToWin) {
+        return { valid: false, message: `Game ${i + 1}: At least one team must reach ${match.pointsToWin} points.` };
+      }
+
+      if (winScore - loseScore < 2) {
+        return { valid: false, message: `Game ${i + 1}: Must win by at least 2 points.` };
+      }
+
+      if (winScore > match.pointsToWin && winScore - loseScore !== 2) {
+        return { valid: false, message: `Game ${i + 1}: When going past ${match.pointsToWin}, the winning score must be exactly 2 more than the losing score.` };
+      }
+
+      // Verify declared winner matches scores
+      const declaredWinner = gameScores[i].winner;
+      if (declaredWinner === 'team1' && t1 <= t2) {
+        return { valid: false, message: `Game ${i + 1}: Team 1 is selected as winner but has a lower score.` };
+      }
+      if (declaredWinner === 'team2' && t2 <= t1) {
+        return { valid: false, message: `Game ${i + 1}: Team 2 is selected as winner but has a lower score.` };
+      }
     }
 
     return { valid: true };
   };
 
-  const determineMatchWinner = () => {
-    try {
-      console.log('Determining match winner...');
-      const winCounts = gameScores.reduce((counts, game) => {
-        if (game.winner) {
-          counts[game.winner] = (counts[game.winner] || 0) + 1;
-        }
-        return counts;
-      }, {} as Record<string, number>);
-      
-      console.log('Win counts:', winCounts);
-      
-      // Get win counts for each team, defaulting to 0 if not present
-      const team1Wins = winCounts.team1 || 0;
-      const team2Wins = winCounts.team2 || 0;
-      
-      console.log('Team 1 wins:', team1Wins, 'Team 2 wins:', team2Wins);
-      
-      // Handle matches without teams property (old format)
-      if (!match.teams) {
-        console.log('Old format match, calculating winner');
-        if (!match.isDoubles) {
-          // For singles, winner is the first or second player based on which team won
-          if (team1Wins > team2Wins) {
-            return [match.players[0]]; // Return as array for consistency
-          } else if (team2Wins > team1Wins) {
-            return [match.players[1]]; // Return as array for consistency
-          }
-        } else {
-          // For doubles, split players and return winning team
-          const midPoint = Math.floor(match.players.length / 2);
-          if (team1Wins > team2Wins) {
-            return match.players.slice(0, midPoint); // First half of players
-          } else if (team2Wins > team1Wins) {
-            return match.players.slice(midPoint); // Second half of players
-          }
-        }
-        return null;
-      }
-      
-      // Handle matches with teams property (new format)
-      console.log('New format match, teams:', match.teams);
-      if (team1Wins > team2Wins) {
-        console.log('Team 1 wins with:', match.teams.team1);
-        return match.teams.team1;
-      } else if (team2Wins > team1Wins) {
-        console.log('Team 2 wins with:', match.teams.team2);
-        return match.teams.team2;
-      }
-      
-      console.log('No winner could be determined - equal wins:', team1Wins, team2Wins);
-      return null;
-    } catch (error) {
-      console.error('Error in determineMatchWinner:', error, {
-        match,
-        gameScores,
-        teams: match.teams,
-        players: match.players,
-        isDoubles: match.isDoubles
-      });
-      return null;
-    }
+  const determineMatchWinner = (): 1 | 2 | null => {
+    const team1Wins = gameScores.filter(g => g.winner === 'team1').length;
+    const team2Wins = gameScores.filter(g => g.winner === 'team2').length;
+    if (team1Wins > team2Wins) return 1;
+    if (team2Wins > team1Wins) return 2;
+    return null;
   };
 
   const formatFinalScore = () => {
@@ -254,8 +192,12 @@ const CompleteMatchScreen = () => {
       console.log('Completing match with winner:', matchWinner);
       await updateMatch(match.id, {
         status: 'completed',
-        winner: matchWinner,
-        score: formatFinalScore(),
+        winnerTeam: matchWinner,
+        games: gameScores.map(g => ({
+          team1Score: parseInt(g.team1Score),
+          team2Score: parseInt(g.team2Score),
+          winnerTeam: g.winner === 'team1' ? 1 as const : 2 as const,
+        })),
       });
 
       Alert.alert(
@@ -398,13 +340,17 @@ const CompleteMatchScreen = () => {
                     inviteMethod === 'email' && styles.activeMethodButton
                   ]}
                   onPress={() => setInviteMethod('email')}
+                  accessibilityRole="radio"
+                  accessibilityLabel="Email"
+                  accessibilityState={{ selected: inviteMethod === 'email' }}
+                  accessibilityHint="Select email as the invite method"
                 >
-                  <Ionicons 
-                    name="mail" 
-                    size={18} 
-                    color={inviteMethod === 'email' ? '#fff' : '#0D6B3E'} 
+                  <Ionicons
+                    name="mail"
+                    size={18}
+                    color={inviteMethod === 'email' ? '#fff' : '#0D6B3E'}
                   />
-                  <Text 
+                  <Text
                     style={[
                       styles.methodButtonText,
                       inviteMethod === 'email' && styles.activeMethodButtonText
@@ -413,20 +359,24 @@ const CompleteMatchScreen = () => {
                     Email
                   </Text>
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   style={[
                     styles.methodButton,
                     inviteMethod === 'sms' && styles.activeMethodButton
                   ]}
                   onPress={() => setInviteMethod('sms')}
+                  accessibilityRole="radio"
+                  accessibilityLabel="SMS"
+                  accessibilityState={{ selected: inviteMethod === 'sms' }}
+                  accessibilityHint="Select SMS as the invite method"
                 >
-                  <Ionicons 
-                    name="chatbubble" 
-                    size={18} 
-                    color={inviteMethod === 'sms' ? '#fff' : '#0D6B3E'} 
+                  <Ionicons
+                    name="chatbubble"
+                    size={18}
+                    color={inviteMethod === 'sms' ? '#fff' : '#0D6B3E'}
                   />
-                  <Text 
+                  <Text
                     style={[
                       styles.methodButtonText,
                       inviteMethod === 'sms' && styles.activeMethodButtonText
@@ -527,6 +477,10 @@ const CompleteMatchScreen = () => {
                         game.winner === 'team1' && styles.winnerButtonSelected
                       ]}
                       onPress={() => handleGameWinnerSelect(index, 'team1')}
+                      accessibilityRole="radio"
+                      accessibilityLabel={`${getTeamNames(1)} wins Game ${index + 1}`}
+                      accessibilityState={{ selected: game.winner === 'team1' }}
+                      accessibilityHint={`Select ${getTeamNames(1)} as the winner of Game ${index + 1}`}
                     >
                       <Text style={[
                         styles.winnerButtonText,
@@ -535,13 +489,17 @@ const CompleteMatchScreen = () => {
                         {getTeamNames(1)}
                       </Text>
                     </TouchableOpacity>
-                    
+
                     <TouchableOpacity
                       style={[
                         styles.winnerButton,
                         game.winner === 'team2' && styles.winnerButtonSelected
                       ]}
                       onPress={() => handleGameWinnerSelect(index, 'team2')}
+                      accessibilityRole="radio"
+                      accessibilityLabel={`${getTeamNames(2)} wins Game ${index + 1}`}
+                      accessibilityState={{ selected: game.winner === 'team2' }}
+                      accessibilityHint={`Select ${getTeamNames(2)} as the winner of Game ${index + 1}`}
                     >
                       <Text style={[
                         styles.winnerButtonText,
@@ -562,11 +520,13 @@ const CompleteMatchScreen = () => {
                       onChangeText={(value) => handleScoreChange(index, 'team1Score', value)}
                       keyboardType="number-pad"
                       placeholder="0"
+                      accessibilityLabel={`Score for ${getTeamNames(1)}, Game ${index + 1}`}
+                      accessibilityHint={`Enter the score for ${getTeamNames(1)} in Game ${index + 1}`}
                     />
                   </View>
-                  
+
                   <Text style={styles.scoreSeparator}>vs</Text>
-                  
+
                   <View style={styles.teamScoreContainer}>
                     <Text style={styles.teamName}>{getTeamNames(2)}</Text>
                     <TextInput
@@ -575,6 +535,8 @@ const CompleteMatchScreen = () => {
                       onChangeText={(value) => handleScoreChange(index, 'team2Score', value)}
                       keyboardType="number-pad"
                       placeholder="0"
+                      accessibilityLabel={`Score for ${getTeamNames(2)}, Game ${index + 1}`}
+                      accessibilityHint={`Enter the score for ${getTeamNames(2)} in Game ${index + 1}`}
                     />
                   </View>
                 </View>
@@ -587,17 +549,23 @@ const CompleteMatchScreen = () => {
         </ScrollView>
         
         <View style={styles.footer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.button, styles.secondaryButton]}
             onPress={() => navigation.goBack()}
+            accessibilityLabel="Cancel"
+            accessibilityRole="button"
+            accessibilityHint="Go back without completing the match"
           >
             <Ionicons name="arrow-back" size={20} color="#666" />
             <Text style={styles.secondaryButtonText}>Cancel</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.button, styles.primaryButton]}
             onPress={handleCompleteMatch}
+            accessibilityLabel="Complete Match"
+            accessibilityRole="button"
+            accessibilityHint="Submit the scores and complete the match"
           >
             <Ionicons name="checkmark-circle" size={20} color="#fff" />
             <Text style={styles.primaryButtonText}>Complete Match</Text>

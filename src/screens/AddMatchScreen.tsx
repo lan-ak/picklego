@@ -38,22 +38,22 @@ const AddMatchScreen = () => {
   const matchId = route.params && 'matchId' in route.params ? route.params.matchId : undefined;
   const existingMatch = matchId ? matches.find(m => m.id === matchId) : null;
   
-  const [date, setDate] = useState(existingMatch ? new Date(existingMatch.date) : new Date());
+  const [date, setDate] = useState(existingMatch ? new Date(existingMatch.scheduledDate) : new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [location, setLocation] = useState(existingMatch?.location || '');
   const [team1Players, setTeam1Players] = useState<string[]>(
-    existingMatch ? existingMatch.teams.team1 : (currentUser ? [currentUser.id] : [])
+    existingMatch ? existingMatch.team1PlayerIds : (currentUser ? [currentUser.id] : [])
   );
   const [team2Players, setTeam2Players] = useState<string[]>(
-    existingMatch ? existingMatch.teams.team2 : []
+    existingMatch ? existingMatch.team2PlayerIds : []
   );
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerEmail, setNewPlayerEmail] = useState('');
   const [newPlayerPhone, setNewPlayerPhone] = useState('');
   const [rating, setRating] = useState(3.0);
   const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
-  const [isDoubles, setIsDoubles] = useState(existingMatch ? existingMatch.isDoubles : true);
+  const [isDoubles, setIsDoubles] = useState(existingMatch ? existingMatch.matchType === 'doubles' : true);
   const [pointsToWin, setPointsToWin] = useState(existingMatch ? existingMatch.pointsToWin.toString() : '11');
   const [numberOfGames, setNumberOfGames] = useState(existingMatch ? existingMatch.numberOfGames.toString() : '3');
   const [sendInvite, setSendInvite] = useState(false);
@@ -64,6 +64,22 @@ const AddMatchScreen = () => {
   const pointsToWinInput = useRef<TextInput>(null);
   const numberOfGamesInput = useRef<TextInput>(null);
   const locationInput = useRef<TextInput>(null);
+
+  // Permission check: only the match creator can edit
+  useEffect(() => {
+    if (isEditing && existingMatch && currentUser?.id !== existingMatch.createdBy) {
+      Alert.alert(
+        'Permission Denied',
+        'Only the match creator can edit this match.',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]
+      );
+    }
+  }, [isEditing, existingMatch, currentUser, navigation]);
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     const currentDate = selectedDate || date;
@@ -164,7 +180,7 @@ const AddMatchScreen = () => {
       }
 
       // Add the new player to the players list
-      const newPlayerId = await addPlayer({
+      const newPlayer = await addPlayer({
         name: newPlayerName,
         email: newPlayerEmail,
         phoneNumber: newPlayerPhone,
@@ -177,15 +193,15 @@ const AddMatchScreen = () => {
       setNewPlayerPhone('');
       setRating(3.0);
       setShowAddPlayerModal(false);
-      
+
       // Automatically add the player to the team that triggered this action
-      if (selectedTeam && newPlayerId) {
+      if (selectedTeam && newPlayer) {
         const maxPlayersPerTeam = isDoubles ? 2 : 1;
-        
+
         if (selectedTeam === 1 && team1Players.length < maxPlayersPerTeam) {
-          setTeam1Players(prev => [...prev, newPlayerId]);
+          setTeam1Players(prev => [...prev, newPlayer.id]);
         } else if (selectedTeam === 2 && team2Players.length < maxPlayersPerTeam) {
-          setTeam2Players(prev => [...prev, newPlayerId]);
+          setTeam2Players(prev => [...prev, newPlayer.id]);
         }
         
         // Reopen the player dropdown if the team isn't full yet
@@ -254,14 +270,14 @@ const AddMatchScreen = () => {
       if (isEditing && matchId) {
         // Update existing match
         await updateMatch(String(matchId), {
-          date: matchDate.toISOString(),
-          players: [...team1Players, ...team2Players],
-          teams: {
-            team1: team1Players,
-            team2: team2Players
-          },
+          scheduledDate: matchDate.toISOString(),
+          matchType: isDoubles ? 'doubles' : 'singles',
+          team1PlayerIds: team1Players,
+          team2PlayerIds: team2Players,
+          team1PlayerNames: team1Players.map(id => players.find(p => p.id === id)?.name || 'Unknown'),
+          team2PlayerNames: team2Players.map(id => players.find(p => p.id === id)?.name || 'Unknown'),
+          allPlayerIds: [...team1Players, ...team2Players],
           location: location.trim() || undefined,
-          isDoubles,
           pointsToWin: parseInt(pointsToWin),
           numberOfGames: parseInt(numberOfGames),
         });
@@ -281,15 +297,18 @@ const AddMatchScreen = () => {
       } else {
         // Create new match
         const newMatch = await addMatch({
-          date: matchDate.toISOString(),
-          players: [...team1Players, ...team2Players],
-          teams: {
-            team1: team1Players,
-            team2: team2Players
-          },
+          scheduledDate: matchDate.toISOString(),
+          matchType: isDoubles ? 'doubles' : 'singles',
+          createdBy: currentUser?.id || '',
+          team1PlayerIds: team1Players,
+          team2PlayerIds: team2Players,
+          team1PlayerNames: team1Players.map(id => players.find(p => p.id === id)?.name || 'Unknown'),
+          team2PlayerNames: team2Players.map(id => players.find(p => p.id === id)?.name || 'Unknown'),
+          allPlayerIds: [...team1Players, ...team2Players],
+          games: [],
+          winnerTeam: null,
           location: location.trim() || undefined,
           status: 'scheduled',
-          isDoubles,
           pointsToWin: parseInt(pointsToWin),
           numberOfGames: parseInt(numberOfGames),
         });
@@ -420,6 +439,8 @@ const AddMatchScreen = () => {
                 onChangeText={setNewPlayerName}
                 placeholder="Enter player's name"
                 autoFocus
+                accessibilityLabel="Player name"
+                accessibilityHint="Enter the new player's name"
               />
             </View>
             
@@ -443,6 +464,8 @@ const AddMatchScreen = () => {
                   placeholder="Enter email address"
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  accessibilityLabel="Player email address"
+                  accessibilityHint="Enter the email address to invite the player"
                 />
               </View>
             )}
@@ -451,13 +474,18 @@ const AddMatchScreen = () => {
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => setShowAddPlayerModal(false)}
+                accessibilityLabel="Cancel"
+                accessibilityRole="button"
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={[styles.modalButton, styles.addButton, { backgroundColor: '#0D6B3E' }]}
                 onPress={handleAddPlayer}
+                accessibilityLabel="Add Player"
+                accessibilityRole="button"
+                accessibilityHint="Adds the new player and closes the form"
               >
                 <Text style={styles.addButtonText}>Add Player</Text>
               </TouchableOpacity>
@@ -498,6 +526,8 @@ const AddMatchScreen = () => {
               onChangeText={setSearchQuery}
               placeholder="Search players..."
               autoFocus
+              accessibilityLabel="Search players"
+              accessibilityHint="Type to filter the player list"
             />
           </View>
           
@@ -508,6 +538,8 @@ const AddMatchScreen = () => {
               <TouchableOpacity
                 style={styles.playerItem}
                 onPress={() => togglePlayerTeamSelection(item.id)}
+                accessibilityLabel={`Add ${item.name} to Team ${selectedTeam}`}
+                accessibilityRole="button"
               >
                 <Text style={styles.playerName}>{item.name}</Text>
                 <Ionicons name="add-circle" size={24} color="#0D6B3E" />
@@ -522,6 +554,9 @@ const AddMatchScreen = () => {
                     setShowPlayerDropdown(false);
                     setShowAddPlayerModal(true);
                   }}
+                  accessibilityLabel="Add New Player"
+                  accessibilityRole="button"
+                  accessibilityHint="Opens form to create a new player"
                 >
                   <Text style={styles.addNewPlayerButtonText}>Add New Player</Text>
                 </TouchableOpacity>
@@ -548,22 +583,27 @@ const AddMatchScreen = () => {
           {team1Players.map(playerId => {
             const player = players.find(p => p.id === playerId);
             return (
-              <View key={playerId} style={styles.selectedPlayerChip}>
+              <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${player?.name || 'Unknown'}, Team 1 player`}>
                 <Text style={styles.selectedPlayerName}>{player?.name || 'Unknown'}</Text>
                 <TouchableOpacity
                   onPress={() => togglePlayerTeamSelection(playerId)}
                   style={styles.removePlayerButton}
+                  accessibilityLabel={`Remove ${player?.name || 'Unknown'} from Team 1`}
+                  accessibilityRole="button"
                 >
                   <Ionicons name="close-circle" size={18} color="#0D6B3E" />
                 </TouchableOpacity>
               </View>
             );
           })}
-          
+
           {team1Players.length < (isDoubles ? 2 : 1) && (
             <TouchableOpacity
               style={styles.addPlayerButton}
               onPress={() => openPlayerDropdown(1)}
+              accessibilityLabel="Add player to Team 1"
+              accessibilityRole="button"
+              accessibilityHint="Opens player selection for Team 1"
             >
               <Ionicons name="add-circle" size={20} color="#0D6B3E" />
               <Text style={styles.addPlayerButtonText}>Add</Text>
@@ -580,22 +620,27 @@ const AddMatchScreen = () => {
           {team2Players.map(playerId => {
             const player = players.find(p => p.id === playerId);
             return (
-              <View key={playerId} style={styles.selectedPlayerChip}>
+              <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${player?.name || 'Unknown'}, Team 2 player`}>
                 <Text style={styles.selectedPlayerName}>{player?.name || 'Unknown'}</Text>
                 <TouchableOpacity
                   onPress={() => togglePlayerTeamSelection(playerId)}
                   style={styles.removePlayerButton}
+                  accessibilityLabel={`Remove ${player?.name || 'Unknown'} from Team 2`}
+                  accessibilityRole="button"
                 >
                   <Ionicons name="close-circle" size={18} color="#0D6B3E" />
                 </TouchableOpacity>
               </View>
             );
           })}
-          
+
           {team2Players.length < (isDoubles ? 2 : 1) && (
             <TouchableOpacity
               style={styles.addPlayerButton}
               onPress={() => openPlayerDropdown(2)}
+              accessibilityLabel="Add player to Team 2"
+              accessibilityRole="button"
+              accessibilityHint="Opens player selection for Team 2"
             >
               <Ionicons name="add-circle" size={20} color="#0D6B3E" />
               <Text style={styles.addPlayerButtonText}>Add</Text>
@@ -629,6 +674,10 @@ const AddMatchScreen = () => {
                   setTeam1Players(prev => prev.slice(0, 1));
                   setTeam2Players([]);
                 }}
+                accessibilityRole="radio"
+                accessibilityLabel="Singles"
+                accessibilityState={{ selected: !isDoubles }}
+                accessibilityHint="Select singles match type"
               >
                 <Text style={[styles.typeButtonText, !isDoubles && styles.typeButtonTextSelected]}>
                   Singles
@@ -637,6 +686,10 @@ const AddMatchScreen = () => {
               <TouchableOpacity
                 style={[styles.typeButton, isDoubles && styles.typeButtonSelected]}
                 onPress={() => setIsDoubles(true)}
+                accessibilityRole="radio"
+                accessibilityLabel="Doubles"
+                accessibilityState={{ selected: isDoubles }}
+                accessibilityHint="Select doubles match type"
               >
                 <Text style={[styles.typeButtonText, isDoubles && styles.typeButtonTextSelected]}>
                   Doubles
@@ -659,6 +712,8 @@ const AddMatchScreen = () => {
                 numberOfGamesInput.current?.focus();
               }}
               ref={pointsToWinInput}
+              accessibilityLabel="Points to win"
+              accessibilityHint="Enter the number of points needed to win a game"
             />
           </View>
 
@@ -676,6 +731,8 @@ const AddMatchScreen = () => {
                 locationInput.current?.focus();
               }}
               ref={numberOfGamesInput}
+              accessibilityLabel="Number of games"
+              accessibilityHint="Enter the number of games in the match"
             />
           </View>
         </View>
@@ -692,6 +749,9 @@ const AddMatchScreen = () => {
             <TouchableOpacity
               style={styles.dateButton}
               onPress={() => setShowDatePicker(true)}
+              accessibilityLabel={`Match date: ${date.toLocaleDateString()}`}
+              accessibilityRole="button"
+              accessibilityHint="Opens date picker to change the match date"
             >
               <Ionicons name="calendar-outline" size={20} color="#0D6B3E" />
               <Text style={styles.dateButtonText}>
@@ -702,6 +762,9 @@ const AddMatchScreen = () => {
             <TouchableOpacity
               style={styles.dateButton}
               onPress={() => setShowTimePicker(true)}
+              accessibilityLabel={`Match time: ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+              accessibilityRole="button"
+              accessibilityHint="Opens time picker to change the match time"
             >
               <Ionicons name="time-outline" size={20} color="#0D6B3E" />
               <Text style={styles.dateButtonText}>
@@ -723,6 +786,8 @@ const AddMatchScreen = () => {
             placeholder="Enter match location (optional)"
             returnKeyType="done"
             ref={locationInput}
+            accessibilityLabel="Match location"
+            accessibilityHint="Enter the location where the match will be played"
             onSubmitEditing={() => {
               const maxPlayersPerTeam = isDoubles ? 2 : 1;
               const isFormValid = 
@@ -743,18 +808,24 @@ const AddMatchScreen = () => {
             style={styles.scheduleButton}
             onPress={() => handleScheduleMatch(false)}
             activeOpacity={0.7}
+            accessibilityLabel={isEditing ? "Save Changes" : "Schedule Game"}
+            accessibilityRole="button"
+            accessibilityHint={isEditing ? "Save the edited match details" : "Schedule the match for the selected date and time"}
           >
             <Ionicons name={isEditing ? "save" : "calendar"} size={24} color="#fff" />
             <Text style={styles.scheduleButtonText}>
               {isEditing ? "Save Changes" : "Schedule Game"}
             </Text>
           </TouchableOpacity>
-          
+
           {!isEditing && (
             <TouchableOpacity
               style={styles.playNowButton}
               onPress={() => handleScheduleMatch(true)}
               activeOpacity={0.7}
+              accessibilityLabel="Play Game Now"
+              accessibilityRole="button"
+              accessibilityHint="Create an instant match and start playing immediately"
             >
               <Ionicons name="play" size={24} color="#fff" />
               <Text style={styles.playNowButtonText}>Play Game Now</Text>

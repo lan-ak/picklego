@@ -49,9 +49,11 @@ const MainTabs = () => {
           tabBarLabel: "New Match",
           tabBarIcon: ({ color, size }) => (
             <View style={styles.addButtonContainer}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.addButton, { backgroundColor: '#0D6B3E' }]}
                 onPress={() => navigation.navigate('AddMatch')}
+                accessibilityLabel="Create new match"
+                accessibilityRole="button"
               >
                 <Ionicons name="add" color="#FFFFFF" size={size} />
               </TouchableOpacity>

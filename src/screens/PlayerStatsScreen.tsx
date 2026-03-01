@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
 import Layout from '../components/Layout';
-import { Match } from '../types';
+import { Match, Game } from '../types';
 
 type PlayerStats = {
   totalMatches: number;
@@ -67,38 +67,16 @@ const MyStatsScreen = () => {
 
   // Helper function to determine which team a user is on in a match
   const getUserTeamNumber = (match: Match, userId: string): number | null => {
-    if (match.teams) {
-      if (match.teams.team1.includes(userId)) return 1;
-      if (match.teams.team2.includes(userId)) return 2;
-      return null;
-    } else {
-      // For older format
-      const playerIndex = match.players.indexOf(userId);
-      if (playerIndex === -1) return null;
-      
-      // For singles: player 0 is team 1, player 1 is team 2
-      if (!match.isDoubles) {
-        return playerIndex === 0 ? 1 : 2;
-      }
-      
-      // For doubles: first half is team 1, second half is team 2
-      const midPoint = Math.floor(match.players.length / 2);
-      return playerIndex < midPoint ? 1 : 2;
-    }
+    if (match.team1PlayerIds.includes(userId)) return 1;
+    if (match.team2PlayerIds.includes(userId)) return 2;
+    return null;
   };
 
   // Helper function to determine if a user won a match
   const isUserWinner = (match: Match, userId: string): boolean => {
-    if (!match.winner) return false;
-    
-    if (Array.isArray(match.winner)) {
-      return match.winner.includes(userId);
-    } else if (typeof match.winner === 'number') {
-      const userTeam = getUserTeamNumber(match, userId);
-      return userTeam === match.winner;
-    }
-    
-    return false;
+    if (!match.winnerTeam) return false;
+    const userTeam = getUserTeamNumber(match, userId);
+    return userTeam === match.winnerTeam;
   };
 
   // Calculate extended stats (overall, singles, doubles) for each player
@@ -144,19 +122,14 @@ const MyStatsScreen = () => {
     // Process each completed match
     const completedMatches = matches
       .filter(match => match.status === 'completed')
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Sort by date, oldest first
-    
+      .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime()); // Sort by date, oldest first
+
     completedMatches.forEach(match => {
-      // Get all player IDs involved in the match
-      const playerIds = match.teams 
-        ? [...match.teams.team1, ...match.teams.team2] 
-        : match.players;
-      
       // Skip if current user is not in this match
-      if (!playerIds.includes(currentUser.id)) return;
+      if (!match.allPlayerIds.includes(currentUser.id)) return;
 
       // Determine the match type (singles or doubles)
-      const matchType = match.isDoubles ? 'doubles' : 'singles';
+      const matchType = match.matchType;
       
       // Determine if player won the match
       const isWinner = isUserWinner(match, currentUser.id);
@@ -178,18 +151,13 @@ const MyStatsScreen = () => {
       }
       
       // Process game-level statistics if available
-      if (match.score && typeof match.score === 'string') {
-        const gameScores = match.score.split(', ').map(score => {
-          const [team1Score, team2Score] = score.split('-').map(Number);
-          return { team1Score, team2Score };
-        });
-        
+      if (match.games && match.games.length > 0) {
         // Get the user's team number
         const userTeamNumber = getUserTeamNumber(match, currentUser.id);
         if (!userTeamNumber) return;
-        
+
         // Process each game in the match
-        gameScores.forEach((game) => {
+        match.games.forEach((game) => {
           // Update overall game stats
           newExtendedStats[currentUser.id].overall.totalGames!++;
           
@@ -240,45 +208,38 @@ const MyStatsScreen = () => {
     const filteredMatches = matches.filter(match => {
       // Only completed matches with the current user
       if (match.status !== 'completed') return false;
-      
-      const playerIds = match.teams 
-        ? [...match.teams.team1, ...match.teams.team2] 
-        : match.players;
-      
-      if (!playerIds.includes(currentUser.id)) return false;
-      
+
+      if (!match.allPlayerIds.includes(currentUser.id)) return false;
+
       // Filter by match type if needed
-      if (statsMode !== 'overall' && ((statsMode === 'singles' && match.isDoubles) || 
-          (statsMode === 'doubles' && !match.isDoubles))) {
+      if (statsMode !== 'overall' && match.matchType !== statsMode) {
         return false;
       }
-      
+
       // Filter by time if needed
       if (timeFilter === 'recent') {
-        const matchDate = new Date(match.date);
+        const matchDate = new Date(match.scheduledDate);
         return matchDate >= recentCutoff;
       }
-      
+
       return true;
     });
 
     // Calculate opponent stats
     const opponentMap: Record<string, OpponentStats> = {};
-    
+
     filteredMatches.forEach(match => {
-      // Skip matches without proper score format
-      if (!match.score || typeof match.score !== 'object' || !match.score.team1 || !match.score.team2) {
+      // Skip matches without games data
+      if (!match.games || match.games.length === 0) {
         return;
       }
-      
+
       // Get the user's team number
       const userTeamNumber = getUserTeamNumber(match, currentUser.id);
       if (!userTeamNumber) return;
-      
+
       // Get opponent IDs
-      const opponents = match.teams ? 
-        (userTeamNumber === 1 ? match.teams.team2 : match.teams.team1) : 
-        (userTeamNumber === 1 ? [match.players[1]] : [match.players[0]]);
+      const opponents = userTeamNumber === 1 ? match.team2PlayerIds : match.team1PlayerIds;
       
       // For each opponent, update their stats
       opponents.forEach(opponentId => {
@@ -332,12 +293,9 @@ const MyStatsScreen = () => {
     // Get completed matches involving the current user
     const userMatches = matches
       .filter(match => {
-        const playerIds = match.teams
-          ? [...match.teams.team1, ...match.teams.team2]
-          : match.players;
-        return match.status === 'completed' && playerIds.includes(currentUser.id);
+        return match.status === 'completed' && match.allPlayerIds.includes(currentUser.id);
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort newest first
+      .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime()); // Sort newest first
     
     // Calculate streaks for each mode
     const newWinStreak = { overall: 0, singles: 0, doubles: 0 };
@@ -362,7 +320,7 @@ const MyStatsScreen = () => {
     }
     
     // Singles streak
-    const singleMatches = userMatches.filter(match => !match.isDoubles);
+    const singleMatches = userMatches.filter(match => match.matchType === 'singles');
     for (const match of singleMatches) {
       const isWin = isUserWinner(match, currentUser.id);
       
@@ -379,7 +337,7 @@ const MyStatsScreen = () => {
     }
     
     // Doubles streak
-    const doubleMatches = userMatches.filter(match => match.isDoubles);
+    const doubleMatches = userMatches.filter(match => match.matchType === 'doubles');
     for (const match of doubleMatches) {
       const isWin = isUserWinner(match, currentUser.id);
       
@@ -409,37 +367,29 @@ const MyStatsScreen = () => {
     
     const filteredMatches = matches.filter(match => {
       // Only include completed doubles matches with the current user
-      if (match.status !== 'completed' || !match.isDoubles) return false;
-      
-      const playerIds = match.teams 
-        ? [...match.teams.team1, ...match.teams.team2] 
-        : match.players;
-      
-      if (!playerIds.includes(currentUser.id)) return false;
-      
+      if (match.status !== 'completed' || match.matchType !== 'doubles') return false;
+
+      if (!match.allPlayerIds.includes(currentUser.id)) return false;
+
       // Filter by time if needed
       if (timeFilter === 'recent') {
-        const matchDate = new Date(match.date);
+        const matchDate = new Date(match.scheduledDate);
         return matchDate >= recentCutoff;
       }
-      
+
       return true;
     });
-    
+
     // Track partner stats
     const partnerMap: Record<string, PartnerStats> = {};
-    
+
     filteredMatches.forEach(match => {
       // Get the user's team number
       const userTeamNumber = getUserTeamNumber(match, currentUser.id);
       if (!userTeamNumber) return;
-      
+
       // Get the team members
-      const team = match.teams
-        ? (userTeamNumber === 1 ? match.teams.team1 : match.teams.team2)
-        : (userTeamNumber === 1 
-           ? match.players.slice(0, 2) // Team 1: first half of players array
-           : match.players.slice(2));  // Team 2: second half of players array
+      const team = userTeamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
       
       // Find partners (skip if user is not in a team of 2)
       if (team.length !== 2) return;
@@ -601,36 +551,30 @@ const MyStatsScreen = () => {
       .filter(match => {
         // Filter for completed matches
         if (match.status !== 'completed') return false;
-        
+
         // Check if current user participated in this match
-        const playerIds = match.teams 
-          ? [...match.teams.team1, ...match.teams.team2] 
-          : match.players;
-        
-        if (!playerIds.includes(currentUser.id)) return false;
-        
+        if (!match.allPlayerIds.includes(currentUser.id)) return false;
+
         // Filter based on selected stats mode
-        if (statsMode !== 'overall' && 
-           ((statsMode === 'singles' && match.isDoubles) || 
-            (statsMode === 'doubles' && !match.isDoubles))) {
+        if (statsMode !== 'overall' && match.matchType !== statsMode) {
           return false;
         }
-        
+
         return true;
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort by date, newest first
+      .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime()); // Sort by date, newest first
   };
 
   // Add a function to get opponent names for a match
   const getOpponentNames = (match: Match) => {
-    if (!currentUser || !match.teams) return 'Unknown opponents';
-    
+    if (!currentUser) return 'Unknown opponents';
+
     // Check which team the current user is on
-    const isInTeam1 = match.teams.team1.includes(currentUser.id);
-    
+    const isInTeam1 = match.team1PlayerIds.includes(currentUser.id);
+
     // Get the opponent team players
-    const opponentTeam = isInTeam1 ? match.teams.team2 : match.teams.team1;
-    
+    const opponentTeam = isInTeam1 ? match.team2PlayerIds : match.team1PlayerIds;
+
     // Convert opponent IDs to names
     return opponentTeam.map((playerId: string) => {
       const player = players.find(p => p.id === playerId);
@@ -861,7 +805,7 @@ const MyStatsScreen = () => {
               {getFilteredMatches().map(match => (
                 <View key={match.id} style={styles.matchItem}>
                   <View style={styles.matchHeader}>
-                    <Text style={styles.matchDate}>{formatMatchDate(match.date)}</Text>
+                    <Text style={styles.matchDate}>{formatMatchDate(match.scheduledDate)}</Text>
                     <View style={[
                       styles.resultBadge,
                       currentUser && isUserWinner(match, currentUser.id) ? styles.winBadge : styles.lossBadge
@@ -880,19 +824,16 @@ const MyStatsScreen = () => {
                       vs {getOpponentNames(match)}
                     </Text>
                     <Text style={styles.matchType}>
-                      {match.isDoubles ? 'Doubles' : 'Singles'}
+                      {match.matchType === 'doubles' ? 'Doubles' : 'Singles'}
                     </Text>
                   </View>
                   
-                  {match.score && (
+                  {match.games && match.games.length > 0 && (
                     <View style={styles.scoreContainer}>
                       <Text style={styles.scoreLabel}>Score:</Text>
-                      <Text style={styles.matchScore}>{
-                        typeof match.score === 'object' && match.score !== null && 
-                        'team1' in match.score && 'team2' in match.score ? 
-                          `${match.score.team1} - ${match.score.team2}` 
-                          : String(match.score)
-                      }</Text>
+                      <Text style={styles.matchScore}>
+                        {match.games.map(g => `${g.team1Score}-${g.team2Score}`).join(', ')}
+                      </Text>
                     </View>
                   )}
                 </View>
