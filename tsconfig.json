@@ -4,14 +4,8 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "*": ["src/*"]
-    },
-    "allowJs": true,
-    "esModuleInterop": true,
-    "jsx": "react-native",
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "skipLibCheck": true
+      "@/*": ["src/*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]
