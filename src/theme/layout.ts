@@ -1,7 +1,7 @@
 import { spacing } from './spacing';
 
 export const layout = {
-  TAB_BAR_HEIGHT: 60,
+  TAB_BAR_HEIGHT: 70,
   screenPadding: spacing.lg,
   sectionSpacing: spacing.xl,
   cardPadding: spacing.lg,

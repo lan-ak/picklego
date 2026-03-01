@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView, Linking, Platform } from 'react-native';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
+import MapView, { Marker } from 'react-native-maps';
 import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
 import Layout from '../components/Layout';
@@ -57,6 +58,12 @@ const MatchDetailsScreen = () => {
     );
   };
 
+  const formatPlayerNameWithInitial = (fullName: string) => {
+    const parts = fullName.trim().split(' ');
+    if (parts.length < 2) return fullName;
+    return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+  };
+
   const getTeamNames = (teamNumber: 1 | 2) => {
     try {
       const playerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
@@ -68,6 +75,22 @@ const MatchDetailsScreen = () => {
       return playerIds.map(id => getPlayerName(id)).join(' & ');
     } catch (error) {
       console.error('Error in getTeamNames:', error);
+      return `Team ${teamNumber}`;
+    }
+  };
+
+  const getTeamLabel = (teamNumber: 1 | 2) => {
+    try {
+      const playerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
+
+      return playerIds
+        .map((id) => {
+          if (currentUser && id === currentUser.id) return 'You';
+          return formatPlayerNameWithInitial(getPlayerName(id));
+        })
+        .join(' & ');
+    } catch (error) {
+      console.error('Error in getTeamLabel:', error);
       return `Team ${teamNumber}`;
     }
   };
@@ -152,6 +175,46 @@ const MatchDetailsScreen = () => {
             </View>
           )}
 
+          {match.locationCoords && (
+            <View style={styles.mapSection}>
+              <View style={styles.mapWrapper}>
+                <MapView
+                  style={styles.mapView}
+                  initialRegion={{
+                    ...match.locationCoords,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  }}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                  pitchEnabled={false}
+                  rotateEnabled={false}
+                >
+                  <Marker coordinate={match.locationCoords} />
+                </MapView>
+              </View>
+              <TouchableOpacity
+                style={styles.directionsButton}
+                onPress={() => {
+                  if (!match.locationCoords) return;
+                  const { latitude, longitude } = match.locationCoords;
+                  const label = encodeURIComponent(match.location || 'Match Location');
+                  const url = Platform.select({
+                    ios: `maps:0,0?q=${label}@${latitude},${longitude}`,
+                    android: `geo:0,0?q=${latitude},${longitude}(${label})`,
+                  });
+                  if (url) Linking.openURL(url);
+                }}
+                activeOpacity={0.7}
+                accessibilityLabel="Get directions to match location"
+                accessibilityRole="button"
+              >
+                <Icon name="navigation" size={18} color={colors.white} />
+                <Text style={styles.directionsButtonText}>Get Directions</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <View style={styles.matchTypeContainer}>
             <View style={styles.chipContainer}>
               <Text style={styles.chipText}>
@@ -187,31 +250,29 @@ const MatchDetailsScreen = () => {
           </View>
 
           <View style={styles.teamsContainer}>
-            <View
+            <Text
               style={[
-                styles.teamCard,
-                match.status === 'completed' && (isTeam1Winner(match) ? styles.winnerTeam : styles.loserTeam)
+                styles.teamName,
+                match.status === 'completed' && isTeam1Winner(match) && styles.winningTeamText,
+                match.status === 'completed' && !isTeam1Winner(match) && styles.losingTeamText,
               ]}
               accessibilityLabel={`Team 1: ${getTeamNames(1)}${match.status === 'completed' && isTeam1Winner(match) ? ', Winner' : ''}`}
             >
-              <Text style={styles.teamLabel}>Team 1</Text>
-              <Text style={styles.playerNames}>{getTeamNames(1)}</Text>
-            </View>
-
-            <View style={styles.vsContainer}>
-              <Text style={styles.vsText}>VS</Text>
-            </View>
-
-            <View
+              {getTeamLabel(1)}
+              {match.status === 'completed' && isTeam1Winner(match) && ' (Winner)'}
+            </Text>
+            <Text style={styles.teamSeparator}>vs</Text>
+            <Text
               style={[
-                styles.teamCard,
-                match.status === 'completed' && (!isTeam1Winner(match) ? styles.winnerTeam : styles.loserTeam)
+                styles.teamName,
+                match.status === 'completed' && !isTeam1Winner(match) && styles.winningTeamText,
+                match.status === 'completed' && isTeam1Winner(match) && styles.losingTeamText,
               ]}
               accessibilityLabel={`Team 2: ${getTeamNames(2)}${match.status === 'completed' && !isTeam1Winner(match) ? ', Winner' : ''}`}
             >
-              <Text style={styles.teamLabel}>Team 2</Text>
-              <Text style={styles.playerNames}>{getTeamNames(2)}</Text>
-            </View>
+              {getTeamLabel(2)}
+              {match.status === 'completed' && !isTeam1Winner(match) && ' (Winner)'}
+            </Text>
           </View>
         </View>
 
@@ -364,6 +425,32 @@ const styles = StyleSheet.create({
     color: colors.neutral,
     marginLeft: spacing.sm,
   },
+  mapSection: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  mapWrapper: {
+    height: 200,
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+  },
+  mapView: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  directionsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.secondary,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.sm,
+    gap: spacing.sm,
+  },
+  directionsButtonText: {
+    ...typography.button,
+    color: colors.white,
+  },
   matchTypeContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -407,38 +494,30 @@ const styles = StyleSheet.create({
     color: '#E65100',
   },
   teamsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  teamCard: {
-    flex: 1,
-    padding: spacing.lg,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+    padding: spacing.md,
   },
-  teamLabel: {
-    ...typography.bodySmall,
-    color: colors.gray500,
-    marginBottom: spacing.sm,
-    textAlign: 'center',
-  },
-  playerNames: {
-    ...typography.bodyLarge,
+  teamName: {
+    fontSize: 17,
     fontWeight: '600',
     color: colors.neutral,
     textAlign: 'center',
+    marginVertical: spacing.xs,
   },
-  vsContainer: {
-    paddingHorizontal: spacing.md,
-    justifyContent: 'center',
+  teamSeparator: {
+    ...typography.bodySmall,
+    color: colors.gray500,
+    textAlign: 'center',
+    marginVertical: spacing.sm,
+    fontWeight: '500',
   },
-  vsText: {
-    ...typography.bodyLarge,
-    fontWeight: '600',
-    color: colors.gray400,
+  winningTeamText: {
+    color: colors.primary,
+    fontWeight: 'bold',
+  },
+  losingTeamText: {
+    color: colors.loss,
   },
   resultContent: {
     alignItems: 'center',

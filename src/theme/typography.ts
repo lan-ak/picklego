@@ -5,9 +5,6 @@ export const fontFamily = {
   fredokaSemiBold: 'Fredoka_600SemiBold',
   fredokaMedium: 'Fredoka_500Medium',
   fredokaRegular: 'Fredoka_400Regular',
-  poppinsMedium: 'Poppins_500Medium',
-  poppinsRegular: 'Poppins_400Regular',
-  bungeeRegular: 'Bungee_400Regular',
 } as const;
 
 export const typography = {
@@ -30,15 +27,15 @@ export const typography = {
     lineHeight: 26,
   } as TextStyle,
 
-  // Body (Poppins)
+  // Body
   bodyLarge: {
-    fontFamily: fontFamily.poppinsMedium,
+    fontFamily: fontFamily.fredokaMedium,
     fontSize: 16,
     lineHeight: 24,
   } as TextStyle,
 
   bodySmall: {
-    fontFamily: fontFamily.poppinsRegular,
+    fontFamily: fontFamily.fredokaRegular,
     fontSize: 14,
     lineHeight: 21,
   } as TextStyle,
@@ -52,7 +49,7 @@ export const typography = {
 
   // Stats & Scores
   stats: {
-    fontFamily: fontFamily.bungeeRegular,
+    fontFamily: fontFamily.fredokaBold,
     fontSize: 24,
   } as TextStyle,
 
@@ -61,15 +58,15 @@ export const typography = {
     fontSize: 28,
   } as TextStyle,
 
-  // Small text (Poppins)
+  // Small text
   caption: {
-    fontFamily: fontFamily.poppinsRegular,
+    fontFamily: fontFamily.fredokaRegular,
     fontSize: 12,
     lineHeight: 17,
   } as TextStyle,
 
   label: {
-    fontFamily: fontFamily.poppinsMedium,
+    fontFamily: fontFamily.fredokaMedium,
     fontSize: 14,
     lineHeight: 20,
   } as TextStyle,

@@ -41,6 +41,7 @@ const styles = StyleSheet.create({
     ...typography.button,
     color: colors.white,
     fontSize: 18,
+    fontWeight: 'bold',
     marginLeft: spacing.md,
   },
 });

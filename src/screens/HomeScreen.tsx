@@ -31,14 +31,14 @@ const OnboardingView = ({ onComplete }: { onComplete: () => void }) => {
           Track your pickleball matches, players, and stats in one place.
         </Text>
         <Text style={styles.onboardingSubtext}>
-          Create an account to get started.
+          Create your first match to get started.
         </Text>
 
         <TouchableOpacity
           style={styles.onboardingButton}
-          onPress={() => navigation.navigate('Auth')}
+          onPress={() => navigation.navigate('AddMatch')}
         >
-          <Text style={styles.onboardingButtonText}>Create Account</Text>
+          <Text style={styles.onboardingButtonText}>Create a Match</Text>
           <Icon name="arrow-right" size={20} color={colors.white} />
         </TouchableOpacity>
       </View>
@@ -214,7 +214,6 @@ const HomeScreen = () => {
 
             {nextMatch ? (
               <>
-                <PicklePete pose="stopwatch" size="sm" message="Game time approaching!" />
                 <MatchCard
                   match={nextMatch}
                   currentUserId={currentUser?.id || ''}
@@ -317,6 +316,8 @@ const HomeScreen = () => {
               </View>
             )}
           </View>
+
+
         </Animated.View>
       </ScrollView>
     </Layout>
@@ -442,6 +443,7 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: colors.primary,
     marginLeft: spacing.sm,
+    flex: 1,
   },
   statsContainerCard: {
     flexDirection: 'row',

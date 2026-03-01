@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
 import type { MainTabParamList } from '../types';
-import { colors, shadows, layout } from '../theme';
+import { colors, shadows, layout, typography, spacing } from '../theme';
 
 // Screen imports
 import HomeScreen from '../screens/HomeScreen';
@@ -29,6 +29,9 @@ const MainTabs = () => {
           ...styles.tabBar,
           height: layout.TAB_BAR_HEIGHT + insets.bottom,
           paddingBottom: insets.bottom,
+        },
+        tabBarLabelStyle: {
+          ...typography.bodySmall,
         },
       })}
     >

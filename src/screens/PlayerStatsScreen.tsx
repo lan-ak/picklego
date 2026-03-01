@@ -424,30 +424,42 @@ const MyStatsScreen = () => {
 
   const renderStatsTabs = () => (
     <View style={styles.tabContainer}>
-      <TouchableOpacity
-        style={[styles.tab, statsMode === 'overall' && styles.activeTab]}
-        onPress={() => setStatsMode('overall')}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabsScrollContent}
       >
-        <Text style={[styles.tabText, statsMode === 'overall' && styles.activeTabText]}>
-          Overall
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.tab, statsMode === 'singles' && styles.activeTab]}
-        onPress={() => setStatsMode('singles')}
-      >
-        <Text style={[styles.tabText, statsMode === 'singles' && styles.activeTabText]}>
-          Singles
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.tab, statsMode === 'doubles' && styles.activeTab]}
-        onPress={() => setStatsMode('doubles')}
-      >
-        <Text style={[styles.tabText, statsMode === 'doubles' && styles.activeTabText]}>
-          Doubles
-        </Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, statsMode === 'overall' && styles.activeTab]}
+          onPress={() => setStatsMode('overall')}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: statsMode === 'overall' }}
+        >
+          <Text style={[styles.tabText, statsMode === 'overall' && styles.activeTabText]}>
+            Overall
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, statsMode === 'singles' && styles.activeTab]}
+          onPress={() => setStatsMode('singles')}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: statsMode === 'singles' }}
+        >
+          <Text style={[styles.tabText, statsMode === 'singles' && styles.activeTabText]}>
+            Singles
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, statsMode === 'doubles' && styles.activeTab]}
+          onPress={() => setStatsMode('doubles')}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: statsMode === 'doubles' }}
+        >
+          <Text style={[styles.tabText, statsMode === 'doubles' && styles.activeTabText]}>
+            Doubles
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 
@@ -547,21 +559,33 @@ const MyStatsScreen = () => {
       .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime()); // Sort by date, newest first
   };
 
-  // Add a function to get opponent names for a match
-  const getOpponentNames = (match: Match) => {
-    if (!currentUser) return 'Unknown opponents';
+  // Helper to format names with first name and last initial
+  const formatPlayerNameWithInitial = (fullName: string) => {
+    const parts = fullName.trim().split(' ');
+    if (parts.length < 2) return fullName;
+    return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+  };
 
-    // Check which team the current user is on
+  // Get formatted team label for a match
+  const getMatchTeamLabel = (match: Match, teamNumber: 1 | 2) => {
+    if (!currentUser) return 'Unknown';
+    const playerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
+    return playerIds
+      .map((id: string) => {
+        if (id === currentUser.id) return 'You';
+        const player = players.find(p => p.id === id);
+        return player ? formatPlayerNameWithInitial(player.name) : 'Unknown';
+      })
+      .join(' & ');
+  };
+
+  // Get both team names formatted for display
+  const getMatchTeamsDisplay = (match: Match) => {
+    if (!currentUser) return 'Unknown vs Unknown';
     const isInTeam1 = match.team1PlayerIds.includes(currentUser.id);
-
-    // Get the opponent team players
-    const opponentTeam = isInTeam1 ? match.team2PlayerIds : match.team1PlayerIds;
-
-    // Convert opponent IDs to names
-    return opponentTeam.map((playerId: string) => {
-      const player = players.find(p => p.id === playerId);
-      return player ? player.name : 'Unknown';
-    }).join(' & ');
+    const userTeamNum: 1 | 2 = isInTeam1 ? 1 : 2;
+    const opponentTeamNum: 1 | 2 = isInTeam1 ? 2 : 1;
+    return `${getMatchTeamLabel(match, userTeamNum)} vs ${getMatchTeamLabel(match, opponentTeamNum)}`;
   };
 
   // Add a function to format the match date
@@ -580,6 +604,8 @@ const MyStatsScreen = () => {
       <TouchableOpacity
         style={[styles.timeFilterTab, timeFilter === 'all' && styles.activeTimeFilter]}
         onPress={() => setTimeFilter('all')}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: timeFilter === 'all' }}
       >
         <Text style={[styles.timeFilterText, timeFilter === 'all' && styles.activeTimeFilterText]}>
           All Time
@@ -588,6 +614,8 @@ const MyStatsScreen = () => {
       <TouchableOpacity
         style={[styles.timeFilterTab, timeFilter === 'recent' && styles.activeTimeFilter]}
         onPress={() => setTimeFilter('recent')}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: timeFilter === 'recent' }}
       >
         <Text style={[styles.timeFilterText, timeFilter === 'recent' && styles.activeTimeFilterText]}>
           Last 30 Days
@@ -614,8 +642,8 @@ const MyStatsScreen = () => {
         <View style={styles.opponentListContainer}>
           <View style={styles.opponentHeader}>
             <Text style={styles.opponentNameHeader}>Opponent</Text>
-            <Text style={styles.opponentStatHeader}>W-L</Text>
-            <Text style={styles.opponentStatHeader}>Win %</Text>
+            <Text style={styles.opponentStatHeader} numberOfLines={1}>W-L</Text>
+            <Text style={styles.opponentStatHeader} numberOfLines={1}>Win %</Text>
           </View>
 
           {opponentStats.slice(0, 5).map((opponent) => (
@@ -667,9 +695,9 @@ const MyStatsScreen = () => {
           <View style={styles.partnerListContainer}>
             <View style={styles.partnerHeader}>
               <Text style={styles.partnerNameHeader}>Partner</Text>
-              <Text style={styles.partnerStatHeader}>Matches</Text>
-              <Text style={styles.partnerStatHeader}>W-L</Text>
-              <Text style={styles.partnerStatHeader}>Win %</Text>
+              <Text style={styles.partnerStatHeader} numberOfLines={1}>Matches</Text>
+              <Text style={styles.partnerStatHeader} numberOfLines={1}>W-L</Text>
+              <Text style={styles.partnerStatHeader} numberOfLines={1}>Win %</Text>
             </View>
 
             {partnerStats.slice(0, 5).map((partner) => (
@@ -814,7 +842,7 @@ const MyStatsScreen = () => {
 
                   <View style={styles.matchDetails}>
                     <Text style={styles.matchOpponents}>
-                      vs {getOpponentNames(match)}
+                      {getMatchTeamsDisplay(match)}
                     </Text>
                     <Text style={styles.matchType}>
                       {match.matchType === 'doubles' ? 'Doubles' : 'Singles'}
@@ -847,35 +875,33 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   tabContainer: {
-    flexDirection: 'row',
     backgroundColor: colors.white,
-    margin: spacing.lg,
+    ...shadows.sm,
     marginBottom: spacing.sm,
-    borderRadius: borderRadius.lg,
-    overflow: 'hidden',
-    ...shadows.md,
+  },
+  tabsScrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   tab: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    marginRight: spacing.sm,
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.gray100,
   },
   activeTab: {
-    borderBottomColor: colors.primary,
     backgroundColor: colors.primaryOverlay,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
   },
   tabText: {
     ...typography.label,
-    fontSize: 15,
-    fontWeight: '600',
     color: colors.gray500,
-    letterSpacing: 0.5,
   },
   activeTabText: {
+    ...typography.button,
     color: colors.primary,
-    fontWeight: '700',
   },
   section: {
     backgroundColor: colors.white,
@@ -892,12 +918,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.surface,
+    paddingBottom: spacing.sm,
   },
   sectionTitle: {
     ...typography.h3,
     color: colors.primary,
     marginLeft: spacing.sm,
-    letterSpacing: 0.5,
   },
   sectionSubtitle: {
     ...typography.bodyLarge,
@@ -1054,30 +1082,27 @@ const styles = StyleSheet.create({
   },
   timeFiltersContainer: {
     flexDirection: 'row',
-    backgroundColor: colors.white,
-    margin: spacing.lg,
-    marginTop: 0,
-    marginBottom: spacing.sm,
-    borderRadius: borderRadius.md,
-    overflow: 'hidden',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
   },
   timeFilterTab: {
-    flex: 1,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.gray100,
   },
   activeTimeFilter: {
-    borderBottomColor: colors.primary,
     backgroundColor: colors.primaryOverlay,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
   },
   timeFilterText: {
-    ...typography.bodySmall,
-    fontWeight: '500',
+    ...typography.label,
     color: colors.gray500,
   },
   activeTimeFilterText: {
+    ...typography.button,
     color: colors.primary,
   },
   opponentListContainer: {
@@ -1093,7 +1118,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   opponentNameHeader: {
-    flex: 3,
+    flex: 2,
     ...typography.bodySmall,
     color: colors.gray500,
     fontWeight: '500',
@@ -1113,7 +1138,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.surface,
   },
   opponentName: {
-    flex: 3,
+    flex: 2,
     ...typography.bodyLarge,
     color: colors.neutral,
   },
@@ -1288,7 +1313,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   partnerNameHeader: {
-    flex: 3,
+    flex: 2,
     ...typography.bodySmall,
     color: colors.gray500,
     fontWeight: '600',
@@ -1308,7 +1333,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.surface,
   },
   partnerName: {
-    flex: 3,
+    flex: 2,
     ...typography.bodyLarge,
     fontWeight: '500',
     color: colors.neutral,

@@ -22,50 +22,50 @@ const MatchesScreen = () => {
   const navigation = useNavigation<MatchesScreenNavigationProp>();
   const { matches, players, currentUser, getPlayerName } = useData();
   const [activeTab, setActiveTab] = useState<MatchesTab>('all');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+
+  // Sort comparator based on sort order
+  const sortByDate = (a: Match, b: Match) => {
+    const timeA = new Date(a.scheduledDate).getTime();
+    const timeB = new Date(b.scheduledDate).getTime();
+    return sortOrder === 'newest' ? timeB - timeA : timeA - timeB;
+  };
 
   // Filter matches based on active tab
   const getFilteredMatches = (): typeof matches => {
     switch (activeTab) {
       case 'all':
-        return [...matches].sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
+        return [...matches].sort(sortByDate);
 
       case 'upcoming':
         return matches
           .filter(match => match.status === 'scheduled')
-          .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
+          .sort(sortByDate);
 
       case 'completed':
         return matches
           .filter(match => match.status === 'completed')
-          .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
+          .sort(sortByDate);
 
       case 'won':
         return matches
           .filter(match => {
             if (!currentUser || match.status !== 'completed' || match.winnerTeam === null) return false;
-
-            // First check if user participated in this match
             const participated = isUserInMatch(match, currentUser.id);
             if (!participated) return false;
-
-            // Then check if user is in the winners
             return isUserWinner(match, currentUser.id);
           })
-          .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
+          .sort(sortByDate);
 
       case 'lost':
         return matches
           .filter(match => {
             if (!currentUser || match.status !== 'completed' || match.winnerTeam === null) return false;
-
-            // First check if user participated in this match
             const participated = isUserInMatch(match, currentUser.id);
             if (!participated) return false;
-
-            // Then check if user is NOT in the winners
             return !isUserWinner(match, currentUser.id);
           })
-          .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
+          .sort(sortByDate);
 
       default:
         return matches;
@@ -296,6 +296,26 @@ const MatchesScreen = () => {
     >
       <View style={styles.container}>
         {renderTabs()}
+        <View style={styles.sortContainer}>
+          <TouchableOpacity
+            style={[styles.sortTab, sortOrder === 'newest' && styles.activeSortTab]}
+            onPress={() => setSortOrder('newest')}
+            accessibilityRole="tab"
+            accessibilityLabel="Sort newest first"
+            accessibilityState={{ selected: sortOrder === 'newest' }}
+          >
+            <Text style={[styles.sortTabText, sortOrder === 'newest' && styles.activeSortTabText]}>Newest</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortTab, sortOrder === 'oldest' && styles.activeSortTab]}
+            onPress={() => setSortOrder('oldest')}
+            accessibilityRole="tab"
+            accessibilityLabel="Sort oldest first"
+            accessibilityState={{ selected: sortOrder === 'oldest' }}
+          >
+            <Text style={[styles.sortTabText, sortOrder === 'oldest' && styles.activeSortTabText]}>Oldest</Text>
+          </TouchableOpacity>
+        </View>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
           {getFilteredMatches().length === 0 ? (
             <View style={styles.emptyState}>
@@ -348,6 +368,31 @@ const styles = StyleSheet.create({
     color: colors.gray500,
   },
   activeTabText: {
+    ...typography.button,
+    color: colors.primary,
+  },
+  sortContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  sortTab: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.gray100,
+  },
+  activeSortTab: {
+    backgroundColor: colors.primaryOverlay,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
+  },
+  sortTabText: {
+    ...typography.label,
+    color: colors.gray500,
+  },
+  activeSortTabText: {
     ...typography.button,
     color: colors.primary,
   },

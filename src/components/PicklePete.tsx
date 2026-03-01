@@ -23,7 +23,7 @@ const POSE_IMAGES: Record<PetePose, ImageSourcePropType> = {
 };
 
 const SIZES = {
-  sm: { width: 120, height: 65 },
+sm: { width: 120, height: 65 },
   md: { width: 180, height: 98 },
   lg: { width: 240, height: 131 },
 };

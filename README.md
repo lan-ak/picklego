@@ -58,6 +58,12 @@ src/
 - React Navigation
 - AsyncStorage (for data persistence)
 
+## Website
+
+The PickleGo landing page is hosted at [https://playpicklego.com](https://playpicklego.com) via GitHub Pages.
+
+Website source files are in the `website/` directory. Changes pushed to `main` that modify files in `website/` will automatically deploy via GitHub Actions.
+
 ## Development Status
 
 This is the initial version of the app with basic functionality. Future updates will include:

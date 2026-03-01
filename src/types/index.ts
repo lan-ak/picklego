@@ -31,6 +31,23 @@ export interface Player {
   isInvited?: boolean;
 }
 
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
+}
+
+export interface Venue {
+  id: string;
+  name: string;
+  address: string;
+  coords: Coordinates;
+  placeId?: string;
+  isFavorite: boolean;
+  createdBy: string;
+  createdAt: number;
+  notes?: string;
+}
+
 export interface Game {
   team1Score: number;
   team2Score: number;
@@ -48,6 +65,7 @@ export interface Match {
   numberOfGames: number;
   scheduledDate: string;
   location?: string;
+  locationCoords?: Coordinates;
   status: 'scheduled' | 'completed' | 'expired';
   team1PlayerIds: string[];
   team2PlayerIds: string[];
@@ -120,6 +138,7 @@ export type RootStackParamList = {
   Auth: undefined;
   EditProfile: undefined;
   PrivacyPolicy: undefined;
+  CourtsDiscovery: undefined;
 };
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<

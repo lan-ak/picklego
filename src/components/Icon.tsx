@@ -45,6 +45,10 @@ import {
   Trophy,
   TrendingUp,
   Save,
+  Navigation,
+  Map,
+  Crosshair,
+  Heart,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -93,6 +97,10 @@ const ICON_MAP = {
   'trophy': Trophy,
   'trending-up': TrendingUp,
   'save': Save,
+  'navigation': Navigation,
+  'map': Map,
+  'crosshair': Crosshair,
+  'heart': Heart,
 } as const;
 
 export type IconName = keyof typeof ICON_MAP;

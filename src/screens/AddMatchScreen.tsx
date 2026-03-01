@@ -12,6 +12,7 @@ import {
   Switch,
   FlatList,
   KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -21,8 +22,10 @@ import { colors, typography, spacing, borderRadius, shadows, layout } from '../t
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { MainTabParamList, RootStackParamList } from '../types';
+import { MainTabParamList, RootStackParamList, Coordinates } from '../types';
 import Layout from '../components/Layout';
+import LocationPicker from '../components/LocationPicker';
+import { useVenues } from '../hooks/useVenues';
 
 type AddMatchScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'AddMatch'>,
@@ -43,6 +46,11 @@ const AddMatchScreen = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [location, setLocation] = useState(existingMatch?.location || '');
+  const [locationCoords, setLocationCoords] = useState<Coordinates | undefined>(
+    existingMatch?.locationCoords
+  );
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const { venues: savedVenues, saveVenue } = useVenues(currentUser?.id);
   const [team1Players, setTeam1Players] = useState<string[]>(
     existingMatch ? existingMatch.team1PlayerIds : (currentUser ? [currentUser.id] : [])
   );
@@ -64,7 +72,6 @@ const AddMatchScreen = () => {
 
   const pointsToWinInput = useRef<TextInput>(null);
   const numberOfGamesInput = useRef<TextInput>(null);
-  const locationInput = useRef<TextInput>(null);
 
   // Permission check: only the match creator can edit
   useEffect(() => {
@@ -107,6 +114,11 @@ const AddMatchScreen = () => {
       newDate.setMinutes(currentTime.getMinutes());
       setDate(newDate);
     }
+  };
+
+  const dismissPicker = () => {
+    setShowDatePicker(false);
+    setShowTimePicker(false);
   };
 
   const togglePlayerTeamSelection = (playerId: string) => {
@@ -279,6 +291,7 @@ const AddMatchScreen = () => {
           team2PlayerNames: team2Players.map(id => players.find(p => p.id === id)?.name || 'Unknown'),
           allPlayerIds: [...team1Players, ...team2Players],
           location: location.trim() || undefined,
+          locationCoords: locationCoords || undefined,
           pointsToWin: parseInt(pointsToWin),
           numberOfGames: parseInt(numberOfGames),
         });
@@ -309,6 +322,7 @@ const AddMatchScreen = () => {
           games: [],
           winnerTeam: null,
           location: location.trim() || undefined,
+          locationCoords: locationCoords || undefined,
           status: 'scheduled',
           pointsToWin: parseInt(pointsToWin),
           numberOfGames: parseInt(numberOfGames),
@@ -365,15 +379,51 @@ const AddMatchScreen = () => {
       return null;
     }
 
-    return (showDatePicker || showTimePicker) ? (
-      <DateTimePicker
-        value={date}
-        mode={showDatePicker ? 'date' : 'time'}
-        is24Hour={false}
-        onChange={showDatePicker ? handleDateChange : handleTimeChange}
-        display="spinner"
-      />
-    ) : null;
+    // iOS: wrap spinner in a bottom-sheet Modal
+    const isVisible = showDatePicker || showTimePicker;
+    if (!isVisible) return null;
+
+    return (
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isVisible}
+        onRequestClose={dismissPicker}
+      >
+        <TouchableOpacity
+          style={styles.pickerOverlay}
+          activeOpacity={1}
+          onPress={dismissPicker}
+        >
+          <View
+            style={styles.pickerContainer}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitle}>
+                {showDatePicker ? 'Select Date' : 'Select Time'}
+              </Text>
+              <TouchableOpacity
+                style={styles.pickerDoneButton}
+                onPress={dismissPicker}
+                accessibilityLabel="Done"
+                accessibilityRole="button"
+              >
+                <Text style={styles.pickerDoneText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <DateTimePicker
+              value={date}
+              mode={showDatePicker ? 'date' : 'time'}
+              is24Hour={false}
+              onChange={showDatePicker ? handleDateChange : handleTimeChange}
+              display="spinner"
+              style={styles.picker}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    );
   };
 
   const getTeamLabel = (teamNumber: 1 | 2) => {
@@ -729,7 +779,7 @@ const AddMatchScreen = () => {
               returnKeyType="next"
               blurOnSubmit={false}
               onSubmitEditing={() => {
-                locationInput.current?.focus();
+                Keyboard.dismiss();
               }}
               ref={numberOfGamesInput}
               accessibilityLabel="Number of games"
@@ -749,7 +799,10 @@ const AddMatchScreen = () => {
           <View style={styles.dateTimeContainer}>
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={() => setShowDatePicker(true)}
+              onPress={() => {
+                setShowTimePicker(false);
+                setShowDatePicker(true);
+              }}
               accessibilityLabel={`Match date: ${date.toLocaleDateString()}`}
               accessibilityRole="button"
               accessibilityHint="Opens date picker to change the match date"
@@ -762,7 +815,10 @@ const AddMatchScreen = () => {
 
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={() => setShowTimePicker(true)}
+              onPress={() => {
+                setShowDatePicker(false);
+                setShowTimePicker(true);
+              }}
               accessibilityLabel={`Match time: ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
               accessibilityRole="button"
               accessibilityHint="Opens time picker to change the match time"
@@ -780,29 +836,69 @@ const AddMatchScreen = () => {
             <Icon name="map-pin" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Location</Text>
           </View>
-          <TextInput
-            style={styles.input}
-            value={location}
-            onChangeText={setLocation}
-            placeholder="Enter match location (optional)"
-            returnKeyType="done"
-            ref={locationInput}
-            accessibilityLabel="Match location"
-            accessibilityHint="Enter the location where the match will be played"
-            onSubmitEditing={() => {
-              const maxPlayersPerTeam = isDoubles ? 2 : 1;
-              const isFormValid =
-                team1Players.length === maxPlayersPerTeam &&
-                team2Players.length === maxPlayersPerTeam &&
-                pointsToWin.trim() !== '' &&
-                numberOfGames.trim() !== '';
+          <TouchableOpacity
+            style={styles.locationRow}
+            onPress={() => setShowLocationPicker(true)}
+            activeOpacity={0.7}
+            accessibilityLabel="Set match location"
+            accessibilityHint="Opens a map to select the match location"
+            accessibilityRole="button"
+          >
+            <Icon
+              name="map-pin"
+              size={18}
+              color={location ? colors.primary : colors.gray400}
+            />
+            <Text
+              style={[
+                styles.locationRowText,
+                !location && styles.locationRowPlaceholder,
+              ]}
+              numberOfLines={1}
+            >
+              {location || 'Tap to set location (optional)'}
+            </Text>
+            <Icon name="chevron-right" size={18} color={colors.gray400} />
+          </TouchableOpacity>
+          {location ? (
+            <TouchableOpacity
+              style={styles.locationClear}
+              onPress={() => {
+                setLocation('');
+                setLocationCoords(undefined);
+              }}
+              activeOpacity={0.7}
+              accessibilityLabel="Clear location"
+              accessibilityRole="button"
+            >
+              <Icon name="x" size={14} color={colors.gray400} />
+              <Text style={styles.locationClearText}>Clear location</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
-              if (isFormValid) {
-                handleScheduleMatch(false);
+        <Modal
+          visible={showLocationPicker}
+          animationType="slide"
+          presentationStyle="fullScreen"
+        >
+          <LocationPicker
+            initialLocation={location}
+            initialCoords={locationCoords}
+            savedVenues={savedVenues}
+            onLocationConfirmed={(loc, coords) => {
+              setLocation(loc);
+              setLocationCoords(coords);
+              setShowLocationPicker(false);
+              // Auto-save location if not already saved
+              const alreadySaved = savedVenues.some((v) => v.name === loc);
+              if (!alreadySaved) {
+                saveVenue({ name: loc, address: loc, coords, isFavorite: false });
               }
             }}
+            onCancel={() => setShowLocationPicker(false)}
           />
-        </View>
+        </Modal>
 
         <View style={styles.buttonsContainer}>
           <TouchableOpacity
@@ -931,6 +1027,34 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm,
     padding: spacing.md,
     fontSize: 16,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  locationRowText: {
+    ...typography.bodySmall,
+    color: colors.neutral,
+    flex: 1,
+  },
+  locationRowPlaceholder: {
+    color: colors.gray400,
+  },
+  locationClear: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  locationClearText: {
+    ...typography.caption,
+    color: colors.gray400,
   },
   teamsContainer: {
     marginBottom: spacing.lg,
@@ -1282,6 +1406,45 @@ const styles = StyleSheet.create({
   teamContainer: {
     marginVertical: spacing.lg,
     alignItems: 'center',
+  },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: colors.backdrop,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  pickerContainer: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    width: '100%',
+    maxWidth: 400,
+    ...shadows.lg,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  pickerTitle: {
+    ...typography.h3,
+    color: colors.neutral,
+  },
+  pickerDoneButton: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  pickerDoneText: {
+    ...typography.button,
+    color: colors.primary,
+    fontSize: 17,
+  },
+  picker: {
+    height: 216,
   },
 });
 

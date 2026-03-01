@@ -104,15 +104,6 @@ const MatchCard = ({
         ) : (
           <View />
         )}
-        {isCompleted && (
-          <TouchableOpacity
-            style={styles.ggButton}
-            onPress={() => {/* TODO: GG social feature */}}
-            accessibilityLabel="Good Game"
-          >
-            <Text style={styles.ggText}>GG</Text>
-          </TouchableOpacity>
-        )}
       </View>
     </TouchableOpacity>
   );
@@ -205,17 +196,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.gray400,
     marginLeft: spacing.xs,
-  },
-  ggButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
-  },
-  ggText: {
-    ...typography.button,
-    color: colors.white,
-    fontSize: 12,
   },
 });
 

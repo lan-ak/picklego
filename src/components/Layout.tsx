@@ -5,7 +5,7 @@ import { Icon } from './Icon';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
-import { colors, typography, spacing, shadows } from '../theme';
+import { colors, typography, spacing, shadows, layout } from '../theme';
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   rightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    minWidth: 40,
+    minWidth: spacing.xxxxl,
   },
   homeButton: {
     padding: spacing.sm,

@@ -43,11 +43,18 @@ const auth = initializeAuth(app, {
 });
 const db = getFirestore(app);
 
+// Strip undefined values from an object before passing to Firestore
+const stripUndefined = <T extends Record<string, any>>(obj: T): T => {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([_, v]) => v !== undefined)
+  ) as T;
+};
+
 // Firestore helper functions
 export const createPlayerDocument = async (player: Player) => {
   try {
     const { password, ...playerData } = player;
-    await setDoc(doc(db, 'players', player.id), playerData);
+    await setDoc(doc(db, 'players', player.id), stripUndefined(playerData));
   } catch (error: any) {
     throw new Error('Failed to create player document: ' + error.message);
   }
@@ -55,10 +62,10 @@ export const createPlayerDocument = async (player: Player) => {
 
 export const updatePlayerDocument = async (playerId: string, data: Partial<Player>) => {
   try {
-    await updateDoc(doc(db, 'players', playerId), {
+    await updateDoc(doc(db, 'players', playerId), stripUndefined({
       ...data,
       updatedAt: Date.now()
-    });
+    }));
   } catch (error: any) {
     throw new Error('Failed to update player document: ' + error.message);
   }
@@ -127,7 +134,7 @@ export const onAuthStateChanged = (callback: (user: any) => void) => {
 // Match CRUD functions
 export const createMatchDocument = async (match: Match) => {
   try {
-    await setDoc(doc(db, 'matches', match.id), match);
+    await setDoc(doc(db, 'matches', match.id), stripUndefined(match));
   } catch (error: any) {
     throw new Error('Failed to create match document: ' + error.message);
   }
@@ -135,7 +142,7 @@ export const createMatchDocument = async (match: Match) => {
 
 export const updateMatchDocument = async (matchId: string, data: Partial<Match>) => {
   try {
-    await updateDoc(doc(db, 'matches', matchId), data);
+    await updateDoc(doc(db, 'matches', matchId), stripUndefined(data));
   } catch (error: any) {
     throw new Error('Failed to update match document: ' + error.message);
   }
