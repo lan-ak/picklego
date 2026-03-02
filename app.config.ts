@@ -16,8 +16,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   ios: {
     supportsTablet: true,
-    bundleIdentifier: "com.akinyemi.picklego",
-    googleServicesFile: "./GoogleService-Info.plist",
+    bundleIdentifier: "com.picklego.picklego",
+    googleServicesFile: process.env.GOOGLE_SERVICE_INFO_PLIST ?? "./GoogleService-Info.plist",
     usesAppleSignIn: true,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
@@ -30,8 +30,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#4A8B3F",
     },
-    package: "com.akinyemi.picklego",
-    googleServicesFile: "./google-services.json",
+    package: "com.picklego.picklego",
+    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
     config: {
       googleMaps: {
         apiKey: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? "",
@@ -72,6 +72,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           "com.googleusercontent.apps.79098545592-ucg9fpm4752382fa41pogoublqat85qi",
       },
     ],
+    "./plugins/withNonModularHeaders",
   ],
   extra: {
     eas: {

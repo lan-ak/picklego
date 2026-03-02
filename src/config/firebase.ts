@@ -28,15 +28,15 @@ import {
 } from 'firebase/firestore';
 import { Player, Match } from '../types';
 
-// Your web app's Firebase configuration
+// Firebase configuration from environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyCEFYV8DMdlZlGdrXgGnznGjlpQsPYVWLE",
-  authDomain: "picklego-1c5c7.firebaseapp.com",
-  projectId: "picklego-1c5c7",
-  storageBucket: "picklego-1c5c7.firebasestorage.app",
-  messagingSenderId: "79098545592",
-  appId: "1:79098545592:web:d15c855ea5c31fcc4afb4d",
-  measurementId: "G-BV83RH77LX"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? "",
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? "",
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ?? "",
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET ?? "",
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? "",
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID ?? "",
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID ?? "",
 };
 
 // Initialize Firebase
@@ -195,7 +195,7 @@ export const signInWithGoogle = async () => {
   try {
     const { GoogleSignin } = require('@react-native-google-signin/google-signin');
     GoogleSignin.configure({
-      webClientId: '79098545592-mggm81d58hh9ruli271csod90jrblqut.apps.googleusercontent.com',
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "",
     });
     await GoogleSignin.hasPlayServices();
     const response = await GoogleSignin.signIn();
