@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Match, Game, LegacyMatch, Player, PlayerStats, DataContextType } from '../types';
+import { Match, Game, LegacyMatch, Player, PlayerStats, DataContextType, MatchNotification } from '../types';
 import { calculatePlayerStats } from '../utils/statsCalculator';
 import {
   signUpWithEmail,
@@ -20,7 +20,12 @@ import {
   signInWithGoogle,
   signInWithApple,
   getCurrentUser,
+  createNotificationDocument,
+  updateNotificationDocument,
+  getNotificationsForPlayer,
+  getNotificationsBySender,
 } from '../config/firebase';
+import { registerPushToken, removePushToken } from '../services/pushNotifications';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -29,6 +34,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [players, setPlayers] = useState<Player[]>([]);
   const [deletedPlayers, setDeletedPlayers] = useState<Player[]>([]);
   const [currentUser, setCurrentUser] = useState<Player | null>(null);
+  const [notifications, setNotifications] = useState<MatchNotification[]>([]);
 
   // Load data from AsyncStorage on mount
   useEffect(() => {
@@ -106,6 +112,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     }
   }, [matches.length]);
+
+  // Expire notifications for matches that are past their date + 24 hours
+  useEffect(() => {
+    if (notifications.length === 0) return;
+
+    const now = Date.now();
+    const staleThreshold = 24 * 60 * 60 * 1000; // 24 hours
+
+    const expiredIds = new Set<string>();
+    for (const notif of notifications) {
+      if (!notif.matchDate) continue;
+      const matchTime = new Date(notif.matchDate).getTime();
+      if (now - matchTime > staleThreshold) {
+        expiredIds.add(notif.id);
+      }
+    }
+
+    if (expiredIds.size > 0) {
+      setNotifications(prev => prev.filter(n => !expiredIds.has(n.id)));
+    }
+  }, [notifications.length]);
 
   // Claim a placeholder profile created before the user signed up.
   // When Player A creates a match and adds Player B by email before B has
@@ -228,6 +255,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           // Migrate legacy AsyncStorage matches to Firestore
           await migrateLocalMatchesToFirestore(firebaseUser.uid);
+
+          // Load notifications for this user
+          await loadNotifications(firebaseUser.uid);
+
+          // Register for push notifications
+          registerPushToken(firebaseUser.uid);
 
           // After loading the player doc and matches, check for a placeholder
           // profile that should be claimed by this user.
@@ -1064,19 +1097,131 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOutUser = async () => {
     try {
+      if (currentUser) {
+        await removePushToken(currentUser.id);
+      }
       await signOut();
       setCurrentUser(null);
+      setNotifications([]);
     } catch (error: any) {
       throw new Error(error.message);
     }
   };
 
+  // Load notifications for the current user (both received and sent)
+  const loadNotifications = async (playerId: string) => {
+    try {
+      const [received, sent] = await Promise.all([
+        getNotificationsForPlayer(playerId),
+        getNotificationsBySender(playerId),
+      ]);
+      // Merge and deduplicate by id
+      const merged = new Map<string, MatchNotification>();
+      for (const n of [...received, ...sent]) {
+        merged.set(n.id, n);
+      }
+      setNotifications(
+        Array.from(merged.values()).sort((a, b) => b.createdAt - a.createdAt)
+      );
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
+  };
+
+  // Send notifications to all players in a match (except the creator)
+  const sendMatchNotifications = async (match: Match): Promise<{ sent: number; failed: number }> => {
+    if (!currentUser) return { sent: 0, failed: 0 };
+
+    const recipientIds = match.allPlayerIds.filter(id => id !== currentUser.id);
+    const newNotifications: MatchNotification[] = [];
+    let failed = 0;
+
+    for (const recipientId of recipientIds) {
+      const team = match.team1PlayerIds.includes(recipientId) ? 1 : 2;
+      const notification: MatchNotification = {
+        id: `notif_${match.id}_${recipientId}`,
+        type: 'match_invite',
+        status: 'sent',
+        recipientId,
+        senderId: currentUser.id,
+        senderName: currentUser.name,
+        matchId: match.id,
+        matchDate: match.scheduledDate,
+        matchLocation: match.location,
+        matchType: match.matchType,
+        team: team as 1 | 2,
+        createdAt: Date.now(),
+      };
+
+      try {
+        await createNotificationDocument(notification);
+        newNotifications.push(notification);
+      } catch (error) {
+        console.error(`Error sending notification to ${recipientId}:`, error);
+        failed++;
+      }
+    }
+
+    // Add sent notifications to local state so the creator sees them immediately
+    if (newNotifications.length > 0) {
+      setNotifications(prev =>
+        [...newNotifications, ...prev].sort((a, b) => b.createdAt - a.createdAt)
+      );
+    }
+
+    return { sent: newNotifications.length, failed };
+  };
+
+  // Mark a single notification as read
+  const markNotificationRead = async (notificationId: string) => {
+    const now = Date.now();
+    try {
+      await updateNotificationDocument(notificationId, { status: 'read', readAt: now });
+      setNotifications(prev =>
+        prev.map(n => n.id === notificationId ? { ...n, status: 'read', readAt: now } : n)
+      );
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
+  // Mark all notifications as read
+  const markAllNotificationsRead = async () => {
+    const now = Date.now();
+    const unread = notifications.filter(n => n.status !== 'read');
+    const successIds = new Set<string>();
+
+    for (const n of unread) {
+      try {
+        await updateNotificationDocument(n.id, { status: 'read', readAt: now });
+        successIds.add(n.id);
+      } catch (error) {
+        console.error(`Error marking notification ${n.id} as read:`, error);
+      }
+    }
+
+    if (successIds.size > 0) {
+      setNotifications(prev =>
+        prev.map(n => successIds.has(n.id) ? { ...n, status: 'read', readAt: now } : n)
+      );
+    }
+  };
+
+  // Get notifications for a specific match (used by match creator to see statuses)
+  const getNotificationsForMatch = (matchId: string): MatchNotification[] => {
+    return notifications.filter(n => n.matchId === matchId);
+  };
+
+  const unreadNotificationCount = notifications.filter(n => n.status !== 'read').length;
+
   // Context value with all the methods and data
   const contextValue: DataContextType = {
-        players,
+    players,
     matches,
     deletedPlayers,
     currentUser,
+    notifications,
+    unreadNotificationCount,
     addPlayer,
     removePlayer,
     addMatch,
@@ -1094,7 +1239,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signIn,
     signInWithSocial,
     completeSocialSignUp,
-    signOutUser
+    signOutUser,
+    sendMatchNotifications,
+    markNotificationRead,
+    markAllNotificationsRead,
+    getNotificationsForMatch,
   };
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;

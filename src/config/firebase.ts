@@ -24,10 +24,14 @@ import {
   collection,
   query,
   where,
-  getDocs
+  getDocs,
+  orderBy,
+  limit,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Player, Match } from '../types';
+import { Player, Match, MatchNotification } from '../types';
 
 // Firebase configuration from environment variables
 const firebaseConfig = {
@@ -197,6 +201,61 @@ export const deletePlayerDocument = async (playerId: string) => {
   }
 };
 
+// Notification CRUD functions
+export const createNotificationDocument = async (notification: MatchNotification) => {
+  try {
+    await setDoc(doc(db, 'notifications', notification.id), stripUndefined(notification));
+  } catch (error: any) {
+    throw new Error('Failed to create notification document: ' + error.message);
+  }
+};
+
+export const updateNotificationDocument = async (notificationId: string, data: Partial<MatchNotification>) => {
+  try {
+    await updateDoc(doc(db, 'notifications', notificationId), stripUndefined(data));
+  } catch (error: any) {
+    throw new Error('Failed to update notification document: ' + error.message);
+  }
+};
+
+export const getNotificationsForPlayer = async (playerId: string): Promise<MatchNotification[]> => {
+  try {
+    const q = query(
+      collection(db, 'notifications'),
+      where('recipientId', '==', playerId),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => doc.data() as MatchNotification);
+  } catch (error: any) {
+    throw new Error('Failed to get notifications for player: ' + error.message);
+  }
+};
+
+export const getNotificationsBySender = async (senderId: string): Promise<MatchNotification[]> => {
+  try {
+    const q = query(
+      collection(db, 'notifications'),
+      where('senderId', '==', senderId),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => doc.data() as MatchNotification);
+  } catch (error: any) {
+    throw new Error('Failed to get notifications by sender: ' + error.message);
+  }
+};
+
+export const deleteNotificationDocument = async (notificationId: string) => {
+  try {
+    await deleteDoc(doc(db, 'notifications', notificationId));
+  } catch (error: any) {
+    throw new Error('Failed to delete notification document: ' + error.message);
+  }
+};
+
 // Password reset
 export const sendPasswordReset = async (email: string) => {
   try {
@@ -279,4 +338,25 @@ export const signInWithApple = async () => {
     }
     throw new Error('Apple Sign-In failed: ' + error.message);
   }
-}; 
+};
+
+// FCM token management
+export const addFcmToken = async (playerId: string, token: string) => {
+  try {
+    await updateDoc(doc(db, 'players', playerId), {
+      fcmTokens: arrayUnion(token),
+    });
+  } catch (error: any) {
+    throw new Error('Failed to add FCM token: ' + error.message);
+  }
+};
+
+export const removeFcmToken = async (playerId: string, token: string) => {
+  try {
+    await updateDoc(doc(db, 'players', playerId), {
+      fcmTokens: arrayRemove(token),
+    });
+  } catch (error: any) {
+    throw new Error('Failed to remove FCM token: ' + error.message);
+  }
+};

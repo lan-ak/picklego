@@ -18,6 +18,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
+import { useToast } from '../context/ToastContext';
 import { colors, typography, spacing, borderRadius, shadows, layout } from '../theme';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -35,7 +36,8 @@ type AddMatchScreenNavigationProp = CompositeNavigationProp<
 const AddMatchScreen = () => {
   const navigation = useNavigation<AddMatchScreenNavigationProp>();
   const route = useRoute();
-  const { players, addMatch, addPlayer, invitePlayer, currentUser, matches, updateMatch } = useData();
+  const { players, addMatch, addPlayer, invitePlayer, currentUser, matches, updateMatch, sendMatchNotifications } = useData();
+  const { showToast } = useToast();
 
   // Check if we're editing an existing match
   const isEditing = route.params && 'isEditing' in route.params ? route.params.isEditing : false;
@@ -296,6 +298,26 @@ const AddMatchScreen = () => {
           numberOfGames: parseInt(numberOfGames),
         });
 
+        // Re-send notifications for the updated match (uses deterministic IDs so overwrites existing)
+        const updatedMatch = matches.find(m => m.id === matchId);
+        if (updatedMatch) {
+          const result = await sendMatchNotifications({
+            ...updatedMatch,
+            scheduledDate: matchDate.toISOString(),
+            matchType: isDoubles ? 'doubles' : 'singles',
+            team1PlayerIds: team1Players,
+            team2PlayerIds: team2Players,
+            allPlayerIds: [...team1Players, ...team2Players],
+            location: location.trim() || undefined,
+          });
+          if (result.failed > 0) {
+            showToast(`Failed to notify ${result.failed} player${result.failed > 1 ? 's' : ''}`, 'error');
+          }
+          if (result.sent > 0) {
+            await updateMatch(String(matchId), { notificationsSent: true });
+          }
+        }
+
         Alert.alert(
           'Success',
           'Match updated successfully!',
@@ -327,6 +349,15 @@ const AddMatchScreen = () => {
           pointsToWin: parseInt(pointsToWin),
           numberOfGames: parseInt(numberOfGames),
         });
+
+        // Send notifications to all players in the match
+        const notifResult = await sendMatchNotifications(newMatch);
+        if (notifResult.failed > 0) {
+          showToast(`Failed to notify ${notifResult.failed} player${notifResult.failed > 1 ? 's' : ''}`, 'error');
+        }
+        if (notifResult.sent > 0) {
+          await updateMatch(newMatch.id, { notificationsSent: true });
+        }
 
         Alert.alert(
           'Success',

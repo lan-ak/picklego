@@ -12,7 +12,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   splash: {
     image: "./assets/splash-icon.png",
     resizeMode: "contain",
-    backgroundColor: "#4A8B3F",
+    backgroundColor: "#55A04D",
   },
   ios: {
     supportsTablet: true,
@@ -62,6 +62,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           "Allow PickleGo to use your location to find nearby pickleball courts.",
         locationWhenInUsePermission:
           "Allow PickleGo to use your location to find nearby pickleball courts.",
+      },
+    ],
+    [
+      "expo-notifications",
+      {
+        color: "#4CAF50",
       },
     ],
     "expo-apple-authentication",

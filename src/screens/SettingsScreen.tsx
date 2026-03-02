@@ -169,7 +169,7 @@ const SettingsScreen: React.FC = () => {
         {
           icon: 'bell',
           label: 'Notifications',
-          onPress: () => Alert.alert('Coming Soon', 'Notification settings will be available in a future update.')
+          onPress: () => navigation.navigate('Notifications'),
         },
         {
           icon: 'palette',

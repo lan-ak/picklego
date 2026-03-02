@@ -10,6 +10,7 @@ import PlayerStatsScreen from '../screens/PlayerStatsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import CourtsDiscoveryScreen from '../screens/CourtsDiscoveryScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
 import MainTabs from './TabNavigator';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -28,6 +29,7 @@ const Navigation = () => {
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="CourtsDiscovery" component={CourtsDiscoveryScreen} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} />
     </Stack.Navigator>
   );
 };

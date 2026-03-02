@@ -7,6 +7,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, MainTabParamList, Match, Game } from '../types';
 import { Icon } from '../components/Icon';
+import { NotificationBell } from '../components/NotificationBell';
 import { useData } from '../context/DataContext';
 import { format } from 'date-fns';
 import Layout from '../components/Layout';
@@ -186,21 +187,24 @@ const HomeScreen = () => {
       isHomeScreen={true}
       isInTabNavigator={true}
       rightComponent={
-        <TouchableOpacity
-          onPress={navigateToProfile}
-          style={styles.profileButton}
-          accessibilityLabel="View profile"
-          accessibilityRole="button"
-        >
-          {currentUser?.profilePic ? (
-            <Image
-              source={{ uri: currentUser.profilePic }}
-              style={styles.headerProfilePic}
-            />
-          ) : (
-            <Icon name="circle-user" size={32} color={colors.primary} />
-          )}
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <NotificationBell />
+          <TouchableOpacity
+            onPress={navigateToProfile}
+            style={styles.profileButton}
+            accessibilityLabel="View profile"
+            accessibilityRole="button"
+          >
+            {currentUser?.profilePic ? (
+              <Image
+                source={{ uri: currentUser.profilePic }}
+                style={styles.headerProfilePic}
+              />
+            ) : (
+              <Icon name="circle-user" size={32} color={colors.primary} />
+            )}
+          </TouchableOpacity>
+        </View>
       }
     >
       <ScrollView style={styles.scrollView}>
@@ -587,6 +591,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: spacing.xs,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   profileButton: {
     padding: spacing.xs,

@@ -30,6 +30,7 @@ export interface Player {
   pendingClaim?: boolean;
   isInvited?: boolean;
   authProvider?: 'email' | 'google' | 'apple';
+  fcmTokens?: string[];
 }
 
 export interface Coordinates {
@@ -75,6 +76,30 @@ export interface Match {
   games: Game[];
   winnerTeam: 1 | 2 | null;
   allPlayerIds: string[];
+  notificationsSent?: boolean;
+}
+
+export interface MatchNotification {
+  id: string;
+  type: 'match_invite';
+  status: 'sent' | 'read';
+  recipientId: string;
+  senderId: string;
+  senderName: string;
+  matchId: string;
+  matchDate?: string;
+  matchLocation?: string;
+  matchType?: 'singles' | 'doubles';
+  team?: 1 | 2;
+  message?: string;
+  createdAt: number;
+  readAt?: number;
+}
+
+export interface PushNotificationData {
+  matchId?: string;
+  screen?: string;
+  notificationId?: string;
 }
 
 // Legacy type for migration from AsyncStorage
@@ -103,6 +128,8 @@ export interface DataContextType {
   matches: Match[];
   deletedPlayers: Player[];
   currentUser: Player | null;
+  notifications: MatchNotification[];
+  unreadNotificationCount: number;
   addPlayer: (player: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Player>;
   removePlayer: (playerId: string) => Promise<boolean>;
   addMatch: (match: Omit<Match, 'id' | 'createdAt' | 'lastModifiedAt' | 'lastModifiedBy'>) => Promise<Match>;
@@ -121,6 +148,10 @@ export interface DataContextType {
   signInWithSocial: (provider: 'google' | 'apple') => Promise<{ needsName: boolean }>;
   completeSocialSignUp: (name: string, provider: 'google' | 'apple') => Promise<void>;
   signOutUser: () => Promise<void>;
+  sendMatchNotifications: (match: Match) => Promise<{ sent: number; failed: number }>;
+  markNotificationRead: (notificationId: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
+  getNotificationsForMatch: (matchId: string) => MatchNotification[];
 }
 
 export type MainTabParamList = {
@@ -141,6 +172,7 @@ export type RootStackParamList = {
   Auth: undefined;
   EditProfile: undefined;
   CourtsDiscovery: undefined;
+  Notifications: undefined;
 };
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<

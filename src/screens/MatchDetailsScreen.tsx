@@ -4,6 +4,7 @@ import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import MapView, { Marker } from 'react-native-maps';
 import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
+import { useToast } from '../context/ToastContext';
 import Layout from '../components/Layout';
 import type { Match, Game } from '../types';
 import { RootStackParamList } from '../types';
@@ -18,7 +19,8 @@ type MatchDetailsNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 const MatchDetailsScreen = () => {
   const route = useRoute<MatchDetailsRouteProp>();
   const navigation = useNavigation<MatchDetailsNavigationProp>();
-  const { matches, players, deleteMatch, currentUser, getPlayerName } = useData();
+  const { matches, players, deleteMatch, currentUser, getPlayerName, getNotificationsForMatch, sendMatchNotifications } = useData();
+  const { showToast } = useToast();
   const match = matches.find(m => m.id === route.params.matchId);
 
   if (!match) {
@@ -146,6 +148,72 @@ const MatchDetailsScreen = () => {
     return null;
   };
 
+  const matchNotifications = getNotificationsForMatch(match.id);
+
+  const getPlayerNotificationStatus = (playerId: string) => {
+    const notif = matchNotifications.find(n => n.recipientId === playerId);
+    if (!notif) return null;
+    return notif.status;
+  };
+
+  const handleResendNotifications = async () => {
+    const result = await sendMatchNotifications(match);
+    if (result.failed > 0) {
+      showToast(`Failed to notify ${result.failed} player${result.failed > 1 ? 's' : ''}`, 'error');
+    } else if (result.sent > 0) {
+      showToast(`Notifications resent to ${result.sent} player${result.sent > 1 ? 's' : ''}`, 'success');
+    }
+  };
+
+  const renderTeamWithStatus = (teamNumber: 1 | 2) => {
+    const playerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
+    const isWinner = teamNumber === 1 ? isTeam1Winner(match) : !isTeam1Winner(match);
+
+    return (
+      <View>
+        <Text style={styles.teamLabel}>Team {teamNumber}{match.status === 'completed' && isWinner ? ' (Winner)' : ''}</Text>
+        {playerIds.map(playerId => {
+          const isMe = currentUser && playerId === currentUser.id;
+          const name = isMe ? 'You' : formatPlayerNameWithInitial(getPlayerName(playerId));
+          const notifStatus = isMe ? null : getPlayerNotificationStatus(playerId);
+
+          return (
+            <View key={playerId} style={styles.playerRow}>
+              <Text
+                style={[
+                  styles.playerName,
+                  match.status === 'completed' && isWinner && styles.winningTeamText,
+                  match.status === 'completed' && !isWinner && styles.losingTeamText,
+                ]}
+              >
+                {name}
+              </Text>
+              {notifStatus && (
+                <View style={styles.notifStatusRow}>
+                  <View style={[styles.notifBadge, notifStatus === 'read' ? styles.notifRead : styles.notifSent]}>
+                    <Icon
+                      name={notifStatus === 'read' ? 'check-circle' : 'mail'}
+                      size={12}
+                      color={notifStatus === 'read' ? colors.primary : colors.gray400}
+                    />
+                    <Text style={[styles.notifBadgeText, notifStatus === 'read' ? styles.notifReadText : styles.notifSentText]}>
+                      {notifStatus === 'read' ? 'Seen' : 'Sent'}
+                    </Text>
+                  </View>
+                  {notifStatus === 'sent' && (
+                    <TouchableOpacity onPress={handleResendNotifications} style={styles.resendButton}>
+                      <Text style={styles.resendText}>Resend</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
   return (
     <Layout title="Match Details" showBackButton={true}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -249,31 +317,41 @@ const MatchDetailsScreen = () => {
             <Text style={styles.sectionTitle}>Teams</Text>
           </View>
 
-          <View style={styles.teamsContainer}>
-            <Text
-              style={[
-                styles.teamName,
-                match.status === 'completed' && isTeam1Winner(match) && styles.winningTeamText,
-                match.status === 'completed' && !isTeam1Winner(match) && styles.losingTeamText,
-              ]}
-              accessibilityLabel={`Team 1: ${getTeamNames(1)}${match.status === 'completed' && isTeam1Winner(match) ? ', Winner' : ''}`}
-            >
-              {getTeamLabel(1)}
-              {match.status === 'completed' && isTeam1Winner(match) && ' (Winner)'}
-            </Text>
-            <Text style={styles.teamSeparator}>vs</Text>
-            <Text
-              style={[
-                styles.teamName,
-                match.status === 'completed' && !isTeam1Winner(match) && styles.winningTeamText,
-                match.status === 'completed' && isTeam1Winner(match) && styles.losingTeamText,
-              ]}
-              accessibilityLabel={`Team 2: ${getTeamNames(2)}${match.status === 'completed' && !isTeam1Winner(match) ? ', Winner' : ''}`}
-            >
-              {getTeamLabel(2)}
-              {match.status === 'completed' && !isTeam1Winner(match) && ' (Winner)'}
-            </Text>
-          </View>
+          {currentUser?.id === match.createdBy ? (
+            // Creator view: show individual players with notification status
+            <View style={styles.teamsContainer}>
+              {renderTeamWithStatus(1)}
+              <Text style={styles.teamSeparator}>vs</Text>
+              {renderTeamWithStatus(2)}
+            </View>
+          ) : (
+            // Non-creator view: show team names as before
+            <View style={styles.teamsContainer}>
+              <Text
+                style={[
+                  styles.teamName,
+                  match.status === 'completed' && isTeam1Winner(match) && styles.winningTeamText,
+                  match.status === 'completed' && !isTeam1Winner(match) && styles.losingTeamText,
+                ]}
+                accessibilityLabel={`Team 1: ${getTeamNames(1)}${match.status === 'completed' && isTeam1Winner(match) ? ', Winner' : ''}`}
+              >
+                {getTeamLabel(1)}
+                {match.status === 'completed' && isTeam1Winner(match) && ' (Winner)'}
+              </Text>
+              <Text style={styles.teamSeparator}>vs</Text>
+              <Text
+                style={[
+                  styles.teamName,
+                  match.status === 'completed' && !isTeam1Winner(match) && styles.winningTeamText,
+                  match.status === 'completed' && isTeam1Winner(match) && styles.losingTeamText,
+                ]}
+                accessibilityLabel={`Team 2: ${getTeamNames(2)}${match.status === 'completed' && !isTeam1Winner(match) ? ', Winner' : ''}`}
+              >
+                {getTeamLabel(2)}
+                {match.status === 'completed' && !isTeam1Winner(match) && ' (Winner)'}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Results Section - Only for completed matches */}
@@ -581,6 +659,64 @@ const styles = StyleSheet.create({
     backgroundColor: colors.lossOverlay,
     borderWidth: 1,
     borderColor: '#E57373',
+  },
+  teamLabel: {
+    ...typography.bodySmall,
+    color: colors.gray500,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  playerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+  },
+  playerName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.neutral,
+  },
+  notifBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+    gap: 4,
+  },
+  notifSent: {
+    backgroundColor: colors.surface,
+  },
+  notifRead: {
+    backgroundColor: colors.winOverlay,
+  },
+  notifBadgeText: {
+    ...typography.caption,
+    fontSize: 11,
+  },
+  notifSentText: {
+    color: colors.gray400,
+  },
+  notifReadText: {
+    color: colors.primary,
+  },
+  notifStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  resendButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  resendText: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.secondary,
+    fontWeight: '600',
   },
 });
 

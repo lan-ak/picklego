@@ -20,6 +20,18 @@ service cloud.firestore {
       allow delete: if request.auth != null
         && request.auth.uid == resource.data.createdBy;
     }
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.recipientId ||
+        request.auth.uid == resource.data.senderId
+      );
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.senderId;
+      allow update: if request.auth != null && request.auth.uid == resource.data.recipientId;
+      allow delete: if request.auth != null && (
+        request.auth.uid == resource.data.recipientId ||
+        request.auth.uid == resource.data.senderId
+      );
+    }
     match /venues/{venueId} {
       allow list: if request.auth != null && resource.data.createdBy == request.auth.uid;
       allow get: if request.auth != null && resource.data.createdBy == request.auth.uid;
