@@ -26,6 +26,7 @@ import {
   where,
   getDocs
 } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Player, Match } from '../types';
 
 // Firebase configuration from environment variables
@@ -45,6 +46,7 @@ const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(ReactNativeAsyncStorage)
 });
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // Strip undefined values from an object before passing to Firestore
 const stripUndefined = <T extends Record<string, any>>(obj: T): T => {
@@ -71,6 +73,21 @@ export const updatePlayerDocument = async (playerId: string, data: Partial<Playe
     }));
   } catch (error: any) {
     throw new Error('Failed to update player document: ' + error.message);
+  }
+};
+
+export const uploadProfilePicture = async (
+  playerId: string,
+  localUri: string
+): Promise<string> => {
+  try {
+    const response = await fetch(localUri);
+    const blob = await response.blob();
+    const storageRef = ref(storage, `profilePics/${playerId}`);
+    await uploadBytes(storageRef, blob);
+    return await getDownloadURL(storageRef);
+  } catch (error: any) {
+    throw new Error('Failed to upload profile picture: ' + error.message);
   }
 };
 

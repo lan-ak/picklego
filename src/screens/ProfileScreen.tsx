@@ -12,12 +12,12 @@ import {
 import { Icon } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
-import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Player } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useToast } from '../context/ToastContext';
+import { useProfilePicture } from '../hooks/useProfilePicture';
 
 const ProfileSetupView = () => {
   const { addPlayer, setCurrentUser } = useData();
@@ -191,6 +191,12 @@ const ProfileSetupView = () => {
 const ProfileScreen = () => {
   const { currentUser, updatePlayer, isEmailAvailable } = useData();
   const { showToast } = useToast();
+  const { pickAndUploadImage, uploading } = useProfilePicture({
+    playerId: currentUser?.id,
+    onUpdate: updatePlayer,
+    onSuccess: () => showToast('Profile picture updated successfully', 'success'),
+    onError: () => Alert.alert('Error', 'Failed to update profile picture'),
+  });
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(currentUser?.name || '');
   const [email, setEmail] = useState(currentUser?.email || '');
@@ -300,35 +306,6 @@ const ProfileScreen = () => {
     }
   };
 
-  // Handle profile picture selection
-  const handlePickImage = async () => {
-    if (!currentUser) return;
-
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please grant access to your photo library to change your profile picture.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      try {
-        await updatePlayer(currentUser.id, {
-          profilePic: result.assets[0].uri
-        });
-        showToast('Profile picture updated successfully', 'success');
-      } catch (error) {
-        Alert.alert('Error', 'Failed to update profile picture');
-      }
-    }
-  };
-
   const renderStats = () => {
     if (!currentUser?.stats) {
       return (
@@ -370,7 +347,7 @@ const ProfileScreen = () => {
       <ScrollView style={styles.container}>
         <View style={styles.profileSection}>
           {/* Profile Picture */}
-          <TouchableOpacity style={styles.profilePicContainer} onPress={handlePickImage}>
+          <TouchableOpacity style={[styles.profilePicContainer, uploading && { opacity: 0.6 }]} onPress={pickAndUploadImage} disabled={uploading}>
             {currentUser.profilePic ? (
               <Image
                 source={{ uri: currentUser.profilePic }}

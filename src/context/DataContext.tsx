@@ -690,7 +690,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phoneNumber: '555-123-4567',
           rating: 4.2,
           profilePic: 'https://randomuser.me/api/portraits/men/32.jpg',
-          password: 'dummy-password',
           createdAt: Date.now(),
           updatedAt: Date.now(),
           stats: {
@@ -710,7 +709,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phoneNumber: '555-987-6543',
           rating: 3.8,
           profilePic: 'https://randomuser.me/api/portraits/women/44.jpg',
-          password: 'dummy-password',
           createdAt: Date.now(),
           updatedAt: Date.now(),
           stats: {
@@ -730,7 +728,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phoneNumber: '555-456-7890',
           rating: 4.5,
           profilePic: 'https://randomuser.me/api/portraits/men/67.jpg',
-          password: 'dummy-password',
           createdAt: Date.now(),
           updatedAt: Date.now(),
           stats: {
@@ -750,7 +747,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phoneNumber: '555-789-0123',
           rating: 3.5,
           profilePic: 'https://randomuser.me/api/portraits/women/17.jpg',
-          password: 'dummy-password',
           createdAt: Date.now(),
           updatedAt: Date.now(),
           stats: {
@@ -772,7 +768,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isInvited: true,
           invitedBy: 'player1',
           pendingClaim: true,
-          password: 'dummy-password',
           createdAt: Date.now(),
           updatedAt: Date.now(),
           profilePic: 'https://randomuser.me/api/portraits/men/92.jpg',

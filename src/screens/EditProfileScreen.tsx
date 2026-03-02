@@ -13,12 +13,12 @@ import {
 import { Icon } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
-import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Player } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useToast } from '../context/ToastContext';
+import { useProfilePicture } from '../hooks/useProfilePicture';
 
 type EditProfileScreenRouteProp = RouteProp<RootStackParamList, 'EditProfile'>;
 type EditProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -28,6 +28,12 @@ const EditProfileScreen: React.FC = () => {
   const navigation = useNavigation<EditProfileScreenNavigationProp>();
   const route = useRoute<EditProfileScreenRouteProp>();
   const { showToast } = useToast();
+  const { pickAndUploadImage, uploading } = useProfilePicture({
+    playerId: currentUser?.id,
+    onUpdate: updatePlayer,
+    onSuccess: () => showToast('Profile picture updated successfully', 'success'),
+    onError: () => Alert.alert('Error', 'Failed to update profile picture'),
+  });
 
   const [tempName, setTempName] = useState('');
   const [tempRating, setTempRating] = useState('');
@@ -110,34 +116,6 @@ const EditProfileScreen: React.FC = () => {
     }
   };
 
-  const handlePickImage = async () => {
-    if (!currentUser) return;
-
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Please grant camera roll permissions to upload a photo.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      try {
-        await updatePlayer(currentUser.id, {
-          profilePic: result.assets[0].uri
-        });
-        showToast('Profile picture updated successfully', 'success');
-      } catch (error) {
-        Alert.alert('Error', 'Failed to update profile picture');
-      }
-    }
-  };
-
   return (
     <Layout title="Edit Profile">
       <ScrollView style={styles.container}>
@@ -153,14 +131,15 @@ const EditProfileScreen: React.FC = () => {
             </View>
           )}
           <TouchableOpacity
-            style={styles.changePhotoButton}
-            onPress={handlePickImage}
+            style={[styles.changePhotoButton, uploading && { opacity: 0.6 }]}
+            onPress={pickAndUploadImage}
+            disabled={uploading}
             accessibilityLabel="Change profile photo"
             accessibilityRole="button"
             accessibilityHint="Opens the photo library to select a new profile picture"
           >
             <Icon name="camera" size={18} color={colors.white} />
-            <Text style={styles.changePhotoText}>Change Photo</Text>
+            <Text style={styles.changePhotoText}>{uploading ? 'Uploading...' : 'Change Photo'}</Text>
           </TouchableOpacity>
         </View>
 

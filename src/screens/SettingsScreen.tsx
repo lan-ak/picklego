@@ -16,12 +16,12 @@ import {
 import { Icon, IconName } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
-import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Player } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useToast } from '../context/ToastContext';
+import { useProfilePicture } from '../hooks/useProfilePicture';
 import PicklePete from '../components/PicklePete';
 
 type SettingItem = {
@@ -47,37 +47,15 @@ const SettingsScreen: React.FC = () => {
   const [showManagePlayers, setShowManagePlayers] = useState(false);
   const navigation = useNavigation<SettingsScreenNavigationProp>();
   const { showToast } = useToast();
+  const { pickAndUploadImage, uploading } = useProfilePicture({
+    playerId: currentUser?.id,
+    onUpdate: updatePlayer,
+    onSuccess: () => showToast('Profile picture updated successfully', 'success'),
+    onError: () => Alert.alert('Error', 'Failed to update profile picture'),
+  });
 
   const handleEditProfile = () => {
     navigation.navigate('EditProfile');
-  };
-
-  const handlePickImage = async () => {
-    if (!currentUser) return;
-
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Please grant camera roll permissions to upload a photo.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      try {
-        await updatePlayer(currentUser.id, {
-          profilePic: result.assets[0].uri
-        });
-        showToast('Profile picture updated successfully', 'success');
-      } catch (error) {
-        Alert.alert('Error', 'Failed to update profile picture');
-      }
-    }
   };
 
   // Handle player invitation
@@ -455,8 +433,9 @@ const SettingsScreen: React.FC = () => {
         {/* Profile Section */}
         <View style={styles.profileSection}>
           <TouchableOpacity
-            style={styles.profilePicContainer}
-            onPress={handlePickImage}
+            style={[styles.profilePicContainer, uploading && { opacity: 0.6 }]}
+            onPress={pickAndUploadImage}
+            disabled={uploading}
             accessibilityLabel="Change profile picture"
             accessibilityRole="button"
           >

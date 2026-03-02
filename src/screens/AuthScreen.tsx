@@ -34,8 +34,8 @@ const AuthScreen = () => {
 
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
-  const [email, setEmail] = useState(__DEV__ ? 'test@test.com' : '');
-  const [password, setPassword] = useState(__DEV__ ? 'password123' : '');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -86,8 +86,8 @@ const AuthScreen = () => {
       return;
     }
 
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
+    if (password.length < 8) {
+      Alert.alert('Error', 'Password must be at least 8 characters long');
       return;
     }
 
