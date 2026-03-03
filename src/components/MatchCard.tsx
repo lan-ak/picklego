@@ -35,7 +35,7 @@ const MatchCard = ({
 
   const getTeamLabel = (teamIds: string[]) =>
     teamIds
-      .map((id) => (id === currentUserId ? 'You' : formatPlayerNameWithInitial(getPlayerName(id))))
+      .map((id) => (id === currentUserId ? 'Me' : formatPlayerNameWithInitial(getPlayerName(id))))
       .join(' & ');
 
   const team1Label = getTeamLabel(match.team1PlayerIds);

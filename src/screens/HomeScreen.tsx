@@ -172,12 +172,8 @@ const HomeScreen = () => {
   // Get profile photo for the user
   const profilePhoto = currentUser?.profilePic || 'https://via.placeholder.com/150';
 
-  const navigateToProfile = () => {
-    if (currentUser) {
-      navigation.navigate('PlayerStats', { playerId: currentUser.id });
-    } else {
-      navigation.navigate('Auth');
-    }
+  const navigateToSettings = () => {
+    navigation.navigate('Settings');
   };
 
   return (
@@ -186,25 +182,23 @@ const HomeScreen = () => {
       showBackButton={false}
       isHomeScreen={true}
       isInTabNavigator={true}
+      leftComponent={<NotificationBell />}
       rightComponent={
-        <View style={styles.headerRight}>
-          <NotificationBell />
-          <TouchableOpacity
-            onPress={navigateToProfile}
-            style={styles.profileButton}
-            accessibilityLabel="View profile"
-            accessibilityRole="button"
-          >
-            {currentUser?.profilePic ? (
-              <Image
-                source={{ uri: currentUser.profilePic }}
-                style={styles.headerProfilePic}
-              />
-            ) : (
-              <Icon name="circle-user" size={32} color={colors.primary} />
-            )}
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={navigateToSettings}
+          style={styles.profileButton}
+          accessibilityLabel="View settings"
+          accessibilityRole="button"
+        >
+          {currentUser?.profilePic ? (
+            <Image
+              source={{ uri: currentUser.profilePic }}
+              style={styles.headerProfilePic}
+            />
+          ) : (
+            <Icon name="circle-user" size={32} color={colors.primary} />
+          )}
+        </TouchableOpacity>
       }
     >
       <ScrollView style={styles.scrollView}>
@@ -591,11 +585,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: spacing.xs,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
   },
   profileButton: {
     padding: spacing.xs,

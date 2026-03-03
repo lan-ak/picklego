@@ -30,10 +30,7 @@ const Navigation = () => {
   }
 
   return (
-    <Stack.Navigator
-      initialRouteName={currentUser ? "MainTabs" : "Auth"}
-      screenOptions={{ headerShown: false }}
-    >
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
       {currentUser ? (
         <>
           <Stack.Screen name="MainTabs" component={MainTabs} />
@@ -44,20 +41,9 @@ const Navigation = () => {
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
           <Stack.Screen name="CourtsDiscovery" component={CourtsDiscoveryScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
-          <Stack.Screen name="Auth" component={AuthScreen} />
         </>
       ) : (
-        <>
-          <Stack.Screen name="Auth" component={AuthScreen} />
-          <Stack.Screen name="MainTabs" component={MainTabs} />
-          <Stack.Screen name="MatchDetails" component={MatchDetailsScreen} />
-          <Stack.Screen name="CompleteMatch" component={CompleteMatchScreen} />
-          <Stack.Screen name="PlayerStats" component={PlayerStatsScreen} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
-          <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-          <Stack.Screen name="CourtsDiscovery" component={CourtsDiscoveryScreen} />
-          <Stack.Screen name="Notifications" component={NotificationsScreen} />
-        </>
+        <Stack.Screen name="Auth" component={AuthScreen} />
       )}
     </Stack.Navigator>
   );

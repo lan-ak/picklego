@@ -55,6 +55,8 @@ export interface Game {
   team1Score: number;
   team2Score: number;
   winnerTeam: 1 | 2;
+  team1PlayerIds?: string[];
+  team2PlayerIds?: string[];
 }
 
 export interface Match {
@@ -79,6 +81,7 @@ export interface Match {
   allPlayerIds: string[];
   deletedByPlayerIds?: string[];
   notificationsSent?: boolean;
+  randomizeTeamsPerGame?: boolean;
 }
 
 export type InviteResult = {
@@ -187,6 +190,7 @@ export type RootStackParamList = {
       location?: string;
       locationCoords?: Coordinates;
       isDoubles: boolean;
+      randomizeTeamsPerGame?: boolean;
     };
   } | undefined;
   MatchDetails: { matchId: string };

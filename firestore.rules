@@ -11,9 +11,10 @@ service cloud.firestore {
         request.auth.uid == playerId ||
         (resource.data.pendingClaim == true && resource.data.email == request.auth.token.email) ||
         (resource.data.pendingClaim == true && resource.data.invitedBy == request.auth.uid) ||
-        // TODO: This allows any auth user to modify any player's connections array.
-        // Move connection mutations to a Cloud Function for proper business logic enforcement.
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['connections', 'updatedAt'])
+        // Allow adding/removing only your own UID in another player's connections
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['connections', 'updatedAt'])
+         && request.resource.data.connections.toSet().difference(resource.data.connections.toSet()).hasOnly([request.auth.uid])
+         && resource.data.connections.toSet().difference(request.resource.data.connections.toSet()).hasOnly([request.auth.uid]))
       );
       allow delete: if request.auth != null && (
         request.auth.uid == playerId ||
@@ -28,10 +29,7 @@ service cloud.firestore {
         && request.auth.uid == request.resource.data.createdBy;
       allow update: if request.auth != null && (
         request.auth.uid in resource.data.allPlayerIds ||
-        request.auth.uid == resource.data.createdBy ||
-        // Allow placeholder profile claims: user can update only player identity fields
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['allPlayerIds', 'team1PlayerIds', 'team2PlayerIds', 'team1PlayerNames', 'team2PlayerNames'])
+        request.auth.uid == resource.data.createdBy
       );
       allow delete: if request.auth != null
         && request.auth.uid == resource.data.createdBy;

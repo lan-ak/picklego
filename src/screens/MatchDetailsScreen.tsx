@@ -81,6 +81,7 @@ const MatchDetailsScreen = () => {
                 location: match.location,
                 locationCoords: match.locationCoords,
                 isDoubles: true,
+                randomizeTeamsPerGame: match.randomizeTeamsPerGame,
               },
             });
           },
@@ -98,6 +99,7 @@ const MatchDetailsScreen = () => {
                 location: match.location,
                 locationCoords: match.locationCoords,
                 isDoubles: true,
+                randomizeTeamsPerGame: match.randomizeTeamsPerGame,
               },
             });
           },
@@ -133,7 +135,7 @@ const MatchDetailsScreen = () => {
 
       return playerIds
         .map((id) => {
-          if (currentUser && id === currentUser.id) return 'You';
+          if (currentUser && id === currentUser.id) return 'Me';
           return formatPlayerNameWithInitial(getPlayerName(id));
         })
         .join(' & ');
@@ -220,7 +222,7 @@ const MatchDetailsScreen = () => {
         <Text style={styles.teamLabel}>Team {teamNumber}{match.status === 'completed' && isWinner ? ' (Winner)' : ''}</Text>
         {playerIds.map(playerId => {
           const isMe = currentUser && playerId === currentUser.id;
-          const name = isMe ? 'You' : formatPlayerNameWithInitial(getPlayerName(playerId));
+          const name = isMe ? 'Me' : formatPlayerNameWithInitial(getPlayerName(playerId));
           const notifStatus = isMe ? null : getPlayerNotificationStatus(playerId);
 
           return (
@@ -411,9 +413,28 @@ const MatchDetailsScreen = () => {
             <View style={styles.resultContent}>
               <Text style={styles.resultLabel}>Final Score</Text>
               {match.games.length > 0 ? (
-                <Text style={styles.scoreText}>
-                  {match.games.map(g => `${g.team1Score}-${g.team2Score}`).join(', ')}
-                </Text>
+                match.randomizeTeamsPerGame && match.matchType === 'doubles' ? (
+                  <View>
+                    {match.games.map((g, i) => {
+                      const t1Ids = g.team1PlayerIds || match.team1PlayerIds;
+                      const t2Ids = g.team2PlayerIds || match.team2PlayerIds;
+                      const t1Names = t1Ids.map(id => formatPlayerNameWithInitial(getPlayerName(id))).join(' & ');
+                      const t2Names = t2Ids.map(id => formatPlayerNameWithInitial(getPlayerName(id))).join(' & ');
+                      return (
+                        <View key={i} style={styles.perGameResult}>
+                          <Text style={styles.perGameLabel}>Game {i + 1}{i > 0 ? ' (shuffled)' : ''}</Text>
+                          <Text style={styles.perGameScore}>
+                            {t1Names}  {g.team1Score} - {g.team2Score}  {t2Names}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={styles.scoreText}>
+                    {match.games.map(g => `${g.team1Score}-${g.team2Score}`).join(', ')}
+                  </Text>
+                )
               ) : (
                 <Text style={styles.scoreText}>No score recorded</Text>
               )}
@@ -668,6 +689,20 @@ const styles = StyleSheet.create({
     ...typography.scoreDisplay,
     color: colors.primary,
     marginBottom: spacing.lg,
+  },
+  perGameResult: {
+    marginBottom: spacing.sm,
+  },
+  perGameLabel: {
+    ...typography.caption,
+    color: colors.secondary,
+    fontStyle: 'italic',
+    marginBottom: 2,
+  },
+  perGameScore: {
+    ...typography.bodySmall,
+    color: colors.primary,
+    fontWeight: '600',
   },
   winnerText: {
     ...typography.h3,

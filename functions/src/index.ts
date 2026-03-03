@@ -1,6 +1,7 @@
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { initializeApp } from 'firebase-admin/app';
+
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import Expo, { ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 
@@ -140,13 +141,14 @@ export const sendPushOnNotification = onDocumentCreated(
  * this function atomically transfers match history, merges stats, and
  * deletes the placeholder — all via Admin SDK to bypass security rules.
  */
-export const claimPlaceholderProfile = onCall({ invoker: 'public' }, async (request) => {
+export const claimPlaceholderProfile = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Must be authenticated');
   }
 
   const realUid = request.auth.uid;
   const realEmail = request.auth.token.email;
+
   const realName = request.data?.name as string | undefined;
 
   if (!realEmail) {

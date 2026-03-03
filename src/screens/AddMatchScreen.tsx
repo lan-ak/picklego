@@ -14,7 +14,7 @@ import {
   KeyboardAvoidingView,
   Keyboard,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
@@ -91,9 +91,21 @@ const AddMatchScreen = () => {
   const [showPlayerDropdown, setShowPlayerDropdown] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<1 | 2 | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [autoRandomize, setAutoRandomize] = useState(false);
+  const [shufflePerGame, setShufflePerGame] = useState(
+    rematchData?.randomizeTeamsPerGame ?? existingMatch?.randomizeTeamsPerGame ?? false
+  );
 
   const pointsToWinInput = useRef<TextInput>(null);
   const numberOfGamesInput = useRef<TextInput>(null);
+
+  // Refs so the useFocusEffect callback stays stable ([] deps) but reads latest values
+  const paramsRef = useRef(route.params);
+  paramsRef.current = route.params;
+  const matchesRef = useRef(matches);
+  matchesRef.current = matches;
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
 
   // Permission check: only the match creator can edit
   useEffect(() => {
@@ -110,6 +122,70 @@ const AddMatchScreen = () => {
       );
     }
   }, [isEditing, existingMatch, currentUser, navigation]);
+
+  // Reset form every time the tab gains focus
+  useFocusEffect(
+    React.useCallback(() => {
+      const params = paramsRef.current as MainTabParamList['AddMatch'];
+      const rematch = params?.rematch;
+      const editing = params?.isEditing;
+      const editMatchId = params?.matchId;
+      const editMatch = editMatchId ? matchesRef.current.find(m => m.id === editMatchId) : null;
+
+      if (rematch) {
+        setDate(new Date());
+        setLocation(rematch.location || '');
+        setLocationCoords(rematch.locationCoords);
+        setTeam1Players(rematch.team1PlayerIds);
+        setTeam2Players(rematch.team2PlayerIds);
+        setIsDoubles(rematch.isDoubles);
+        setPointsToWin(rematch.pointsToWin.toString());
+        setNumberOfGames(rematch.numberOfGames.toString());
+        setShufflePerGame(rematch.randomizeTeamsPerGame ?? false);
+        setAutoRandomize(false);
+      } else if (editing && editMatch) {
+        setDate(new Date(editMatch.scheduledDate));
+        setLocation(editMatch.location || '');
+        setLocationCoords(editMatch.locationCoords);
+        setTeam1Players(editMatch.team1PlayerIds);
+        setTeam2Players(editMatch.team2PlayerIds);
+        setIsDoubles(editMatch.matchType === 'doubles');
+        setPointsToWin(editMatch.pointsToWin.toString());
+        setNumberOfGames(editMatch.numberOfGames.toString());
+        setShufflePerGame(editMatch.randomizeTeamsPerGame ?? false);
+        setAutoRandomize(false);
+      } else {
+        const user = currentUserRef.current;
+        setDate(new Date());
+        setLocation('');
+        setLocationCoords(undefined);
+        setTeam1Players(user ? [user.id] : []);
+        setTeam2Players([]);
+        setIsDoubles(true);
+        setPointsToWin('11');
+        setNumberOfGames('3');
+        setShufflePerGame(false);
+        setAutoRandomize(false);
+      }
+
+      // Reset transient UI state
+      setSearchQuery('');
+      setSelectedTeam(null);
+      setShowPlayerDropdown(false);
+      setShowAddPlayerModal(false);
+      setShowDatePicker(false);
+      setShowTimePicker(false);
+      setShowLocationPicker(false);
+      setNewPlayerName('');
+      setNewPlayerEmail('');
+      setNewPlayerPhone('');
+      setRating(3.0);
+      setSendInvite(false);
+
+      // Clear params so returning to this tab later doesn't re-apply
+      navigation.setParams(undefined as any);
+    }, [])
+  );
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     const currentDate = selectedDate || date;
@@ -146,20 +222,48 @@ const AddMatchScreen = () => {
   const togglePlayerTeamSelection = (playerId: string) => {
     if (currentUser && playerId === currentUser.id) return; // Prevent deselecting current user
 
-    // Remove from team 1 if already there
+    // REMOVAL
     if (team1Players.includes(playerId)) {
-      setTeam1Players(prev => prev.filter(id => id !== playerId));
+      if (autoRandomize && isDoubles && team2Players.length > 0) {
+        // Post-shuffle removal: merge remaining back into pool
+        const remaining = [...team1Players, ...team2Players].filter(id => id !== playerId);
+        setTeam1Players(remaining);
+        setTeam2Players([]);
+      } else {
+        setTeam1Players(prev => prev.filter(id => id !== playerId));
+      }
       return;
     }
 
-    // Remove from team 2 if already there
     if (team2Players.includes(playerId)) {
-      setTeam2Players(prev => prev.filter(id => id !== playerId));
+      if (autoRandomize && isDoubles) {
+        // Post-shuffle removal: merge remaining back into pool
+        const remaining = [...team1Players, ...team2Players].filter(id => id !== playerId);
+        setTeam1Players(remaining);
+        setTeam2Players([]);
+      } else {
+        setTeam2Players(prev => prev.filter(id => id !== playerId));
+      }
       return;
     }
 
-    // Add to the selected team
-    if (selectedTeam === 1) {
+    // ADDITION
+    if (autoRandomize && isDoubles) {
+      const totalSelected = team1Players.length + team2Players.length;
+      if (totalSelected < 4) {
+        const newPool = [...team1Players, ...team2Players, playerId];
+        if (newPool.length === 4 && currentUser) {
+          const { team1, team2 } = shuffleTeams(newPool, currentUser.id);
+          setTeam1Players(team1);
+          setTeam2Players(team2);
+        } else {
+          setTeam1Players(newPool);
+          setTeam2Players([]);
+        }
+      } else {
+        Alert.alert('Full', 'You can only add 4 players for doubles.');
+      }
+    } else if (selectedTeam === 1) {
       const maxPlayersPerTeam = isDoubles ? 2 : 1;
       if (team1Players.length < maxPlayersPerTeam) {
         setTeam1Players(prev => [...prev, playerId]);
@@ -180,7 +284,8 @@ const AddMatchScreen = () => {
     setSelectedTeam(null);
   };
 
-  const canShuffle = isDoubles && team1Players.length === 2 && team2Players.length === 2;
+  const isShuffled = autoRandomize && isDoubles && team1Players.length === 2 && team2Players.length === 2;
+  const canShuffle = !autoRandomize && isDoubles && team1Players.length === 2 && team2Players.length === 2;
 
   const handleShuffleTeams = () => {
     const allPlayers = [...team1Players, ...team2Players];
@@ -190,8 +295,37 @@ const AddMatchScreen = () => {
     setTeam2Players(team2);
   };
 
+  const handleToggleAutoRandomize = (value: boolean) => {
+    if (value) {
+      // ON: merge all players into pool (team1Players), clear team2
+      const allPlayers = [...team1Players, ...team2Players];
+      if (allPlayers.length === 4 && currentUser) {
+        const { team1, team2 } = shuffleTeams(allPlayers, currentUser.id);
+        setTeam1Players(team1);
+        setTeam2Players(team2);
+      } else {
+        setTeam1Players(allPlayers);
+        setTeam2Players([]);
+      }
+    } else {
+      // OFF: if pool mode (all in team1), split into teams
+      if (team2Players.length === 0 && team1Players.length > 2) {
+        setTeam1Players(team1Players.slice(0, 2));
+        setTeam2Players(team1Players.slice(2));
+      }
+      // If already shuffled (2+2), keep as-is
+    }
+    setAutoRandomize(value);
+  };
+
   const openPlayerDropdown = (teamNumber: 1 | 2) => {
     setSelectedTeam(teamNumber);
+    setShowPlayerDropdown(true);
+    setSearchQuery('');
+  };
+
+  const openPlayerDropdownForPool = () => {
+    setSelectedTeam(null);
     setShowPlayerDropdown(true);
     setSearchQuery('');
   };
@@ -255,22 +389,38 @@ const AddMatchScreen = () => {
       setRating(3.0);
       setShowAddPlayerModal(false);
 
-      // Automatically add the player to the team that triggered this action
-      if (selectedTeam && newPlayer) {
-        const maxPlayersPerTeam = isDoubles ? 2 : 1;
+      // Automatically add the player to the appropriate team/pool
+      if (newPlayer) {
+        if (autoRandomize && isDoubles) {
+          const totalSelected = team1Players.length + team2Players.length;
+          if (totalSelected < 4) {
+            const newPool = [...team1Players, ...team2Players, newPlayer.id];
+            if (newPool.length === 4 && currentUser) {
+              const { team1, team2 } = shuffleTeams(newPool, currentUser.id);
+              setTeam1Players(team1);
+              setTeam2Players(team2);
+            } else {
+              setTeam1Players(newPool);
+              setTeam2Players([]);
+              setShowPlayerDropdown(true);
+            }
+          }
+        } else if (selectedTeam) {
+          const maxPlayersPerTeam = isDoubles ? 2 : 1;
 
-        if (selectedTeam === 1 && team1Players.length < maxPlayersPerTeam) {
-          setTeam1Players(prev => [...prev, newPlayer.id]);
-        } else if (selectedTeam === 2 && team2Players.length < maxPlayersPerTeam) {
-          setTeam2Players(prev => [...prev, newPlayer.id]);
-        }
+          if (selectedTeam === 1 && team1Players.length < maxPlayersPerTeam) {
+            setTeam1Players(prev => [...prev, newPlayer.id]);
+          } else if (selectedTeam === 2 && team2Players.length < maxPlayersPerTeam) {
+            setTeam2Players(prev => [...prev, newPlayer.id]);
+          }
 
-        // Reopen the player dropdown if the team isn't full yet
-        if ((selectedTeam === 1 && team1Players.length + 1 < maxPlayersPerTeam) ||
-            (selectedTeam === 2 && team2Players.length + 1 < maxPlayersPerTeam)) {
-          setShowPlayerDropdown(true);
-        } else {
-          setSelectedTeam(null);
+          // Reopen the player dropdown if the team isn't full yet
+          if ((selectedTeam === 1 && team1Players.length + 1 < maxPlayersPerTeam) ||
+              (selectedTeam === 2 && team2Players.length + 1 < maxPlayersPerTeam)) {
+            setShowPlayerDropdown(true);
+          } else {
+            setSelectedTeam(null);
+          }
         }
       }
     } catch (error) {
@@ -342,6 +492,7 @@ const AddMatchScreen = () => {
           locationCoords: locationCoords || undefined,
           pointsToWin: parseInt(pointsToWin),
           numberOfGames: parseInt(numberOfGames),
+          randomizeTeamsPerGame: shufflePerGame,
         });
 
         // Re-send notifications for the updated match (uses deterministic IDs so overwrites existing)
@@ -394,6 +545,7 @@ const AddMatchScreen = () => {
           status: 'scheduled',
           pointsToWin: parseInt(pointsToWin),
           numberOfGames: parseInt(numberOfGames),
+          randomizeTeamsPerGame: shufflePerGame,
         });
 
         // Send notifications to all players in the match
@@ -503,10 +655,15 @@ const AddMatchScreen = () => {
     );
   };
 
+  const displayName = (playerId: string) => {
+    if (currentUser && playerId === currentUser.id) return 'Me';
+    return players.find(p => p.id === playerId)?.name || 'Unknown';
+  };
+
   const getTeamLabel = (teamNumber: 1 | 2) => {
     const teamPlayers = teamNumber === 1 ? team1Players : team2Players;
     if (teamPlayers.length === 0) return `Team ${teamNumber}`;
-    return teamPlayers.map(id => players.find(p => p.id === id)?.name).join(' & ');
+    return teamPlayers.map(id => displayName(id)).join(' & ');
   };
 
   // Add a component to handle onboarding for first time users
@@ -636,7 +793,7 @@ const AddMatchScreen = () => {
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>
-              Select Player for Team {selectedTeam}
+              {selectedTeam ? `Select Player for Team ${selectedTeam}` : 'Select Player'}
             </Text>
             <TouchableOpacity
               style={styles.closeButton}
@@ -699,14 +856,8 @@ const AddMatchScreen = () => {
     </Modal>
   );
 
-  // Update the team selection UI in the render method
-  const renderTeamSelection = () => (
-    <View style={styles.section}>
-      <View style={styles.sectionTitleRow}>
-        <Icon name="users" size={24} color={colors.primary} />
-        <Text style={styles.sectionTitle}>Select Players</Text>
-      </View>
-
+  const renderManualMode = () => (
+    <>
       {canShuffle && (
         <TouchableOpacity
           style={styles.shuffleButton}
@@ -727,12 +878,12 @@ const AddMatchScreen = () => {
           {team1Players.map(playerId => {
             const player = players.find(p => p.id === playerId);
             return (
-              <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${player?.name || 'Unknown'}, Team 1 player`}>
-                <Text style={styles.selectedPlayerName}>{player?.name || 'Unknown'}</Text>
+              <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${displayName(playerId)}, Team 1 player`}>
+                <Text style={styles.selectedPlayerName}>{displayName(playerId)}</Text>
                 <TouchableOpacity
                   onPress={() => togglePlayerTeamSelection(playerId)}
                   style={styles.removePlayerButton}
-                  accessibilityLabel={`Remove ${player?.name || 'Unknown'} from Team 1`}
+                  accessibilityLabel={`Remove ${displayName(playerId)} from Team 1`}
                   accessibilityRole="button"
                 >
                   <Icon name="x-circle" size={18} color={colors.primary} />
@@ -764,12 +915,12 @@ const AddMatchScreen = () => {
           {team2Players.map(playerId => {
             const player = players.find(p => p.id === playerId);
             return (
-              <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${player?.name || 'Unknown'}, Team 2 player`}>
-                <Text style={styles.selectedPlayerName}>{player?.name || 'Unknown'}</Text>
+              <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${displayName(playerId)}, Team 2 player`}>
+                <Text style={styles.selectedPlayerName}>{displayName(playerId)}</Text>
                 <TouchableOpacity
                   onPress={() => togglePlayerTeamSelection(playerId)}
                   style={styles.removePlayerButton}
-                  accessibilityLabel={`Remove ${player?.name || 'Unknown'} from Team 2`}
+                  accessibilityLabel={`Remove ${displayName(playerId)} from Team 2`}
                   accessibilityRole="button"
                 >
                   <Icon name="x-circle" size={18} color={colors.primary} />
@@ -792,6 +943,144 @@ const AddMatchScreen = () => {
           )}
         </View>
       </View>
+    </>
+  );
+
+  const renderRandomizeMode = () => {
+    const allPlayers = [...team1Players, ...team2Players];
+
+    if (!isShuffled) {
+      // Pool mode: show unified player list
+      return (
+        <View style={styles.teamContainer}>
+          <Text style={styles.teamLabel}>Players ({allPlayers.length}/4)</Text>
+          <View style={styles.selectedPlayersContainer}>
+            {team1Players.map(playerId => {
+              const player = players.find(p => p.id === playerId);
+              return (
+                <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${displayName(playerId)}, selected player`}>
+                  <Text style={styles.selectedPlayerName}>{displayName(playerId)}</Text>
+                  {!(currentUser && playerId === currentUser.id) && (
+                    <TouchableOpacity
+                      onPress={() => togglePlayerTeamSelection(playerId)}
+                      style={styles.removePlayerButton}
+                      accessibilityLabel={`Remove ${displayName(playerId)}`}
+                      accessibilityRole="button"
+                    >
+                      <Icon name="x-circle" size={18} color={colors.primary} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+
+            {allPlayers.length < 4 && (
+              <TouchableOpacity
+                style={styles.addPlayerButton}
+                onPress={openPlayerDropdownForPool}
+                accessibilityLabel="Add player"
+                accessibilityRole="button"
+                accessibilityHint="Opens player selection"
+              >
+                <Icon name="plus-circle" size={20} color={colors.primary} />
+                <Text style={styles.addPlayerButtonText}>Add</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      );
+    }
+
+    // Post-shuffle: show team assignments with re-shuffle button
+    return (
+      <>
+        <TouchableOpacity
+          style={styles.shuffleButton}
+          onPress={handleShuffleTeams}
+          activeOpacity={0.7}
+          accessibilityLabel="Re-shuffle Teams"
+          accessibilityRole="button"
+          accessibilityHint="Randomly reassign the 4 players into new teams"
+        >
+          <Icon name="shuffle" size={18} color={colors.secondary} />
+          <Text style={styles.shuffleButtonText}>Re-shuffle</Text>
+        </TouchableOpacity>
+
+        <View style={styles.teamContainer}>
+          <Text style={styles.teamLabel}>{getTeamLabel(1)}</Text>
+          <View style={styles.selectedPlayersContainer}>
+            {team1Players.map(playerId => {
+              const player = players.find(p => p.id === playerId);
+              return (
+                <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${displayName(playerId)}, Team 1 player`}>
+                  <Text style={styles.selectedPlayerName}>{displayName(playerId)}</Text>
+                  <TouchableOpacity
+                    onPress={() => togglePlayerTeamSelection(playerId)}
+                    style={styles.removePlayerButton}
+                    accessibilityLabel={`Remove ${displayName(playerId)}`}
+                    accessibilityRole="button"
+                  >
+                    <Icon name="x-circle" size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.teamSeparator} />
+
+        <View style={styles.teamContainer}>
+          <Text style={styles.teamLabel}>{getTeamLabel(2)}</Text>
+          <View style={styles.selectedPlayersContainer}>
+            {team2Players.map(playerId => {
+              const player = players.find(p => p.id === playerId);
+              return (
+                <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${displayName(playerId)}, Team 2 player`}>
+                  <Text style={styles.selectedPlayerName}>{displayName(playerId)}</Text>
+                  <TouchableOpacity
+                    onPress={() => togglePlayerTeamSelection(playerId)}
+                    style={styles.removePlayerButton}
+                    accessibilityLabel={`Remove ${displayName(playerId)}`}
+                    accessibilityRole="button"
+                  >
+                    <Icon name="x-circle" size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      </>
+    );
+  };
+
+  // Update the team selection UI in the render method
+  const renderTeamSelection = () => (
+    <View style={styles.section}>
+      <View style={styles.sectionTitleRow}>
+        <Icon name="users" size={24} color={colors.primary} />
+        <Text style={styles.sectionTitle}>Select Players</Text>
+      </View>
+
+      {isDoubles && (
+        <View style={styles.randomizeToggleRow}>
+          <View style={styles.randomizeToggleLabelRow}>
+            <Icon name="shuffle" size={18} color={colors.secondary} />
+            <Text style={styles.randomizeToggleLabel}>Randomize Teams</Text>
+          </View>
+          <Switch
+            value={autoRandomize}
+            onValueChange={handleToggleAutoRandomize}
+            trackColor={{ false: "#767577", true: colors.secondary }}
+            thumbColor="#f4f3f4"
+            accessibilityLabel="Randomize teams"
+            accessibilityHint="When enabled, players are randomly assigned to teams"
+          />
+        </View>
+      )}
+
+      {autoRandomize && isDoubles ? renderRandomizeMode() : renderManualMode()}
     </View>
   );
 
@@ -815,6 +1104,8 @@ const AddMatchScreen = () => {
                 style={[styles.typeButton, !isDoubles && styles.typeButtonSelected]}
                 onPress={() => {
                   setIsDoubles(false);
+                  setAutoRandomize(false);
+                  setShufflePerGame(false);
                   setTeam1Players(prev => prev.slice(0, 1));
                   setTeam2Players([]);
                 }}
@@ -879,6 +1170,23 @@ const AddMatchScreen = () => {
               accessibilityHint="Enter the number of games in the match"
             />
           </View>
+
+          {isDoubles && parseInt(numberOfGames) > 1 && (
+            <View style={styles.randomizeToggleRow}>
+              <View style={styles.randomizeToggleLabelRow}>
+                <Icon name="shuffle" size={18} color={colors.secondary} />
+                <Text style={styles.randomizeToggleLabel}>Shuffle teams each game</Text>
+              </View>
+              <Switch
+                value={shufflePerGame}
+                onValueChange={setShufflePerGame}
+                trackColor={{ false: "#767577", true: colors.secondary }}
+                thumbColor="#f4f3f4"
+                accessibilityLabel="Shuffle teams each game"
+                accessibilityHint="When enabled, teams are randomly reshuffled before each game after the first"
+              />
+            </View>
+          )}
         </View>
 
         {renderTeamSelection()}
@@ -1557,6 +1865,28 @@ const styles = StyleSheet.create({
     ...typography.button,
     color: colors.secondary,
     fontSize: 14,
+  },
+  randomizeToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.secondaryOverlay,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.secondary,
+  },
+  randomizeToggleLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  randomizeToggleLabel: {
+    ...typography.bodySmall,
+    color: colors.secondary,
+    fontWeight: '600',
   },
 });
 

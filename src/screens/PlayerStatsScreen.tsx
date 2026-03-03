@@ -572,7 +572,7 @@ const MyStatsScreen = () => {
     const playerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
     return playerIds
       .map((id: string) => {
-        if (id === currentUser.id) return 'You';
+        if (id === currentUser.id) return 'Me';
         const player = players.find(p => p.id === id);
         return player ? formatPlayerNameWithInitial(player.name) : 'Unknown';
       })

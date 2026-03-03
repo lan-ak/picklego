@@ -200,7 +200,6 @@ const SettingsScreen: React.FC = () => {
                   onPress: async () => {
                     try {
                       await signOutUser();
-                      navigation.navigate('Auth');
                     } catch (error) {
                       Alert.alert('Error', 'Failed to sign out. Please try again.');
                     }

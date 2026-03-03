@@ -89,12 +89,14 @@ const MatchesScreen = () => {
   const getTeamNames = (match: Match, teamNumber: 1 | 2) => {
     const teamPlayerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
     if (match.matchType !== 'doubles') {
-      // For singles, just return the single player name
       const playerId = teamPlayerIds[0];
-      const fullName = getPlayerName(playerId);
-      return formatPlayerNameWithInitial(fullName);
+      if (currentUser && playerId === currentUser.id) return 'Me';
+      return formatPlayerNameWithInitial(getPlayerName(playerId));
     }
-    return teamPlayerIds.map(id => formatPlayerNameWithInitial(getPlayerName(id))).join(' & ');
+    return teamPlayerIds.map(id => {
+      if (currentUser && id === currentUser.id) return 'Me';
+      return formatPlayerNameWithInitial(getPlayerName(id));
+    }).join(' & ');
   };
 
   const isTeamWinner = (match: Match, teamNumber: 1 | 2) => {
@@ -247,7 +249,7 @@ const MatchesScreen = () => {
           ]}>
             {getTeamNames(match, 1)}
             {match.status === 'completed' && isTeamWinner(match, 1) && ' (Winner)'}
-            {userTeam === 1 && ' (You)'}
+            {userTeam === 1 && ' (Me)'}
           </Text>
           <Text style={styles.teamSeparator}>vs</Text>
           <Text style={[
@@ -259,7 +261,7 @@ const MatchesScreen = () => {
           ]}>
             {getTeamNames(match, 2)}
             {match.status === 'completed' && isTeamWinner(match, 2) && ' (Winner)'}
-            {userTeam === 2 && ' (You)'}
+            {userTeam === 2 && ' (Me)'}
           </Text>
         </View>
 

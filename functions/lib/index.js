@@ -4,6 +4,7 @@ exports.claimPlaceholderProfile = exports.sendPushOnNotification = void 0;
 const firestore_1 = require("firebase-functions/v2/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const app_1 = require("firebase-admin/app");
+const auth_1 = require("firebase-admin/auth");
 const firestore_2 = require("firebase-admin/firestore");
 const expo_server_sdk_1 = require("expo-server-sdk");
 (0, app_1.initializeApp)();
@@ -102,11 +103,20 @@ exports.sendPushOnNotification = (0, firestore_1.onDocumentCreated)('notificatio
  * deletes the placeholder — all via Admin SDK to bypass security rules.
  */
 exports.claimPlaceholderProfile = (0, https_1.onCall)({ invoker: 'public' }, async (request) => {
-    if (!request.auth) {
+    let realUid;
+    let realEmail;
+    if (request.auth) {
+        realUid = request.auth.uid;
+        realEmail = request.auth.token.email;
+    }
+    else if (request.data?.idToken) {
+        const decoded = await (0, auth_1.getAuth)().verifyIdToken(request.data.idToken);
+        realUid = decoded.uid;
+        realEmail = decoded.email;
+    }
+    else {
         throw new https_1.HttpsError('unauthenticated', 'Must be authenticated');
     }
-    const realUid = request.auth.uid;
-    const realEmail = request.auth.token.email;
     const realName = request.data?.name;
     if (!realEmail) {
         throw new https_1.HttpsError('failed-precondition', 'User must have an email');

@@ -1,8 +1,6 @@
 import {
-  getFirestore,
   doc,
   setDoc,
-  getDoc,
   updateDoc,
   deleteDoc,
   collection,
@@ -11,14 +9,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { Venue } from '../types';
-
-const db = getFirestore();
-
-const stripUndefined = <T extends Record<string, any>>(obj: T): T => {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([_, v]) => v !== undefined)
-  ) as T;
-};
+import { db, stripUndefined } from './firebase';
 
 export const createVenueDocument = async (venue: Venue) => {
   try {

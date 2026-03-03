@@ -22,6 +22,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import PicklePete from '../components/PicklePete';
 import { useToast } from '../context/ToastContext';
+import { shuffleTeams } from '../utils/shuffleTeams';
 
 type CompleteMatchRouteProp = RouteProp<RootStackParamList, 'CompleteMatch'>;
 
@@ -34,12 +35,16 @@ type GameScore = {
 const CompleteMatchScreen = () => {
   const route = useRoute<CompleteMatchRouteProp>();
   const navigation = useNavigation();
-  const { matches, players, updateMatch, invitePlayer, addPlayer } = useData();
+  const { matches, players, updateMatch, invitePlayer, addPlayer, currentUser } = useData();
   const { showToast } = useToast();
   const match = matches.find(m => m.id === route.params.matchId);
 
   // Initialize match state
   const [gameScores, setGameScores] = useState<GameScore[]>([]);
+  const [gameTeams, setGameTeams] = useState<Array<{
+    team1PlayerIds: string[];
+    team2PlayerIds: string[];
+  }>>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerEmail, setNewPlayerEmail] = useState('');
@@ -57,6 +62,23 @@ const CompleteMatchScreen = () => {
           winner: null
         }))
       );
+
+      // Initialize per-game teams
+      const teams: Array<{ team1PlayerIds: string[]; team2PlayerIds: string[] }> = [];
+      for (let i = 0; i < (match.numberOfGames || 0); i++) {
+        if (i === 0 || !match.randomizeTeamsPerGame || match.matchType !== 'doubles' || !currentUser) {
+          // Game 1 always uses original teams; non-shuffle matches use original teams
+          teams.push({
+            team1PlayerIds: match.team1PlayerIds,
+            team2PlayerIds: match.team2PlayerIds,
+          });
+        } else {
+          // Games 2+ with shuffle enabled: randomize
+          const { team1, team2 } = shuffleTeams(match.allPlayerIds, currentUser.id);
+          teams.push({ team1PlayerIds: team1, team2PlayerIds: team2 });
+        }
+      }
+      setGameTeams(teams);
 
       // Log match info for debugging
       console.log('Match loaded:', {
@@ -78,13 +100,22 @@ const CompleteMatchScreen = () => {
     );
   }
 
-  const getTeamNames = (teamNumber: 1 | 2) => {
+  const getTeamNames = (teamNumber: 1 | 2, gameIndex?: number) => {
     try {
-      const playerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
+      const gameSpecific = gameIndex !== undefined ? gameTeams[gameIndex] : null;
+      const playerIds = gameSpecific
+        ? (teamNumber === 1 ? gameSpecific.team1PlayerIds : gameSpecific.team2PlayerIds)
+        : (teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds);
+
+      const getName = (id: string) => {
+        if (currentUser && id === currentUser.id) return 'Me';
+        return players.find(p => p.id === id)?.name || 'Unknown Player';
+      };
+
       if (match.matchType !== 'doubles') {
-        return players.find(p => p.id === playerIds[0])?.name || 'Unknown Player';
+        return getName(playerIds[0]);
       }
-      return playerIds.map(id => players.find(p => p.id === id)?.name || 'Unknown Player').join(' & ');
+      return playerIds.map(id => getName(id)).join(' & ');
     } catch (error) {
       console.error('Error in getTeamNames:', error);
       return `Team ${teamNumber}`;
@@ -197,10 +228,14 @@ const CompleteMatchScreen = () => {
       await updateMatch(match.id, {
         status: 'completed',
         winnerTeam: matchWinner,
-        games: gameScores.map(g => ({
+        games: gameScores.map((g, i) => ({
           team1Score: parseInt(g.team1Score),
           team2Score: parseInt(g.team2Score),
           winnerTeam: g.winner === 'team1' ? 1 as const : 2 as const,
+          ...(gameTeams[i] && match.randomizeTeamsPerGame && {
+            team1PlayerIds: gameTeams[i].team1PlayerIds,
+            team2PlayerIds: gameTeams[i].team2PlayerIds,
+          }),
         })),
       });
 
@@ -482,6 +517,9 @@ const CompleteMatchScreen = () => {
             {gameScores.map((game, index) => (
               <View key={index} style={styles.gameScoreContainer}>
                 <Text style={styles.gameNumber}>Game {index + 1}</Text>
+                {match.randomizeTeamsPerGame && index > 0 && (
+                  <Text style={styles.shuffledIndicator}>Shuffled teams</Text>
+                )}
 
                 <View style={styles.winnerSelector}>
                   <Text style={styles.winnerLabel}>Select Winner:</Text>
@@ -493,15 +531,15 @@ const CompleteMatchScreen = () => {
                       ]}
                       onPress={() => handleGameWinnerSelect(index, 'team1')}
                       accessibilityRole="radio"
-                      accessibilityLabel={`${getTeamNames(1)} wins Game ${index + 1}`}
+                      accessibilityLabel={`${getTeamNames(1, index)} wins Game ${index + 1}`}
                       accessibilityState={{ selected: game.winner === 'team1' }}
-                      accessibilityHint={`Select ${getTeamNames(1)} as the winner of Game ${index + 1}`}
+                      accessibilityHint={`Select ${getTeamNames(1, index)} as the winner of Game ${index + 1}`}
                     >
                       <Text style={[
                         styles.winnerButtonText,
                         game.winner === 'team1' && styles.winnerButtonTextSelected
                       ]}>
-                        {getTeamNames(1)}
+                        {getTeamNames(1, index)}
                       </Text>
                     </TouchableOpacity>
 
@@ -512,15 +550,15 @@ const CompleteMatchScreen = () => {
                       ]}
                       onPress={() => handleGameWinnerSelect(index, 'team2')}
                       accessibilityRole="radio"
-                      accessibilityLabel={`${getTeamNames(2)} wins Game ${index + 1}`}
+                      accessibilityLabel={`${getTeamNames(2, index)} wins Game ${index + 1}`}
                       accessibilityState={{ selected: game.winner === 'team2' }}
-                      accessibilityHint={`Select ${getTeamNames(2)} as the winner of Game ${index + 1}`}
+                      accessibilityHint={`Select ${getTeamNames(2, index)} as the winner of Game ${index + 1}`}
                     >
                       <Text style={[
                         styles.winnerButtonText,
                         game.winner === 'team2' && styles.winnerButtonTextSelected
                       ]}>
-                        {getTeamNames(2)}
+                        {getTeamNames(2, index)}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -528,30 +566,30 @@ const CompleteMatchScreen = () => {
 
                 <View style={styles.scoreInputRow}>
                   <View style={styles.teamScoreContainer}>
-                    <Text style={styles.teamName}>{getTeamNames(1)}</Text>
+                    <Text style={styles.teamName}>{getTeamNames(1, index)}</Text>
                     <TextInput
                       style={styles.scoreInput}
                       value={game.team1Score}
                       onChangeText={(value) => handleScoreChange(index, 'team1Score', value)}
                       keyboardType="number-pad"
                       placeholder="0"
-                      accessibilityLabel={`Score for ${getTeamNames(1)}, Game ${index + 1}`}
-                      accessibilityHint={`Enter the score for ${getTeamNames(1)} in Game ${index + 1}`}
+                      accessibilityLabel={`Score for ${getTeamNames(1, index)}, Game ${index + 1}`}
+                      accessibilityHint={`Enter the score for ${getTeamNames(1, index)} in Game ${index + 1}`}
                     />
                   </View>
 
                   <Text style={styles.scoreSeparator}>vs</Text>
 
                   <View style={styles.teamScoreContainer}>
-                    <Text style={styles.teamName}>{getTeamNames(2)}</Text>
+                    <Text style={styles.teamName}>{getTeamNames(2, index)}</Text>
                     <TextInput
                       style={styles.scoreInput}
                       value={game.team2Score}
                       onChangeText={(value) => handleScoreChange(index, 'team2Score', value)}
                       keyboardType="number-pad"
                       placeholder="0"
-                      accessibilityLabel={`Score for ${getTeamNames(2)}, Game ${index + 1}`}
-                      accessibilityHint={`Enter the score for ${getTeamNames(2)} in Game ${index + 1}`}
+                      accessibilityLabel={`Score for ${getTeamNames(2, index)}, Game ${index + 1}`}
+                      accessibilityHint={`Enter the score for ${getTeamNames(2, index)} in Game ${index + 1}`}
                     />
                   </View>
                 </View>
@@ -631,6 +669,12 @@ const styles = StyleSheet.create({
     ...typography.bodyLarge,
     fontWeight: '600',
     color: colors.primary,
+    marginBottom: spacing.sm,
+  },
+  shuffledIndicator: {
+    ...typography.caption,
+    color: colors.secondary,
+    fontStyle: 'italic',
     marginBottom: spacing.sm,
   },
   scoreInputRow: {

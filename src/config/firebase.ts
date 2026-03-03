@@ -51,12 +51,12 @@ const app = initializeApp(firebaseConfig);
 const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(ReactNativeAsyncStorage)
 });
-const db = getFirestore(app);
+export const db = getFirestore(app);
 const storage = getStorage(app);
 const functions = getFunctions(app);
 
 // Strip undefined values from an object before passing to Firestore
-const stripUndefined = <T extends Record<string, any>>(obj: T): T => {
+export const stripUndefined = <T extends Record<string, any>>(obj: T): T => {
   return Object.fromEntries(
     Object.entries(obj).filter(([_, v]) => v !== undefined)
   ) as T;
@@ -153,6 +153,33 @@ export const getPlayersByEmail = async (email: string): Promise<Player[]> => {
     return fallbackSnapshot.docs.map(doc => doc.data() as Player);
   } catch (error: any) {
     throw new Error('Failed to get players by email: ' + error.message);
+  }
+};
+
+export const getPlaceholderByEmail = async (email: string): Promise<Player | null> => {
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    const q = query(
+      collection(db, 'players'),
+      where('emailLowercase', '==', normalizedEmail),
+      where('pendingClaim', '==', true),
+      limit(1)
+    );
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      return snapshot.docs[0].data() as Player;
+    }
+    // Fallback for pre-migration docs
+    const fallbackQ = query(
+      collection(db, 'players'),
+      where('email', '==', email),
+      where('pendingClaim', '==', true),
+      limit(1)
+    );
+    const fallbackSnapshot = await getDocs(fallbackQ);
+    return fallbackSnapshot.empty ? null : fallbackSnapshot.docs[0].data() as Player;
+  } catch (error: any) {
+    throw new Error('Failed to check for placeholder: ' + error.message);
   }
 };
 
@@ -435,6 +462,12 @@ export const removeConnection = async (playerId: string, connectionId: string) =
 export const callClaimPlaceholderProfile = async (
   name: string,
 ): Promise<{ claimed: boolean; matchesUpdated: number }> => {
+  if (!auth.currentUser) {
+    return { claimed: false, matchesUpdated: 0 };
+  }
+  // Force-refresh the ID token so the callable sends valid credentials.
+  // On fresh sign-up the token may not be cached yet, causing "unauthenticated".
+  await auth.currentUser.getIdToken(true);
   const claimFn = httpsCallable(functions, 'claimPlaceholderProfile');
   const result = await claimFn({ name });
   return result.data as { claimed: boolean; matchesUpdated: number };

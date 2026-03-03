@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Match, Game, LegacyMatch, Player, PlayerStats, DataContextType, MatchNotification, InviteResult } from '../types';
 import { calculatePlayerStats } from '../utils/statsCalculator';
@@ -27,6 +27,7 @@ import {
   addConnectionsBatch,
   removeConnection,
   callClaimPlaceholderProfile,
+  getPlaceholderByEmail,
 } from '../config/firebase';
 import { registerPushToken, unregisterPushToken } from '../services/pushNotifications';
 
@@ -40,6 +41,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [notifications, setNotifications] = useState<MatchNotification[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
 
+  // Reset all user-scoped state. Called from onAuthStateChanged when user signs out.
+  // When adding new user-scoped state, add its reset here.
+  const resetUserState = () => {
+    setCurrentUser(null);
+    setMatches([]);
+    setPlayers([]);
+    setDeletedPlayers([]);
+    setNotifications([]);
+  };
+
+  // Keep a ref to players so the auth listener can access current state
+  const playersRef = useRef<Player[]>([]);
+  useEffect(() => { playersRef.current = players; }, [players]);
+
   // Load data from AsyncStorage on mount
   useEffect(() => {
     const loadData = async () => {
@@ -47,25 +62,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const storedMatches = await AsyncStorage.getItem('matches');
         const storedPlayers = await AsyncStorage.getItem('players');
         const storedDeletedPlayers = await AsyncStorage.getItem('deletedPlayers');
-        const storedCurrentUser = await AsyncStorage.getItem('currentUser');
-        
+
         if (storedMatches) setMatches(JSON.parse(storedMatches));
         if (storedPlayers) setPlayers(JSON.parse(storedPlayers));
         if (storedDeletedPlayers) setDeletedPlayers(JSON.parse(storedDeletedPlayers));
-        if (storedCurrentUser) setCurrentUser(JSON.parse(storedCurrentUser));
-        else if (storedPlayers) {
-          // Set first player as current user if none is set
-          const parsedPlayers = JSON.parse(storedPlayers);
-          if (parsedPlayers.length > 0) {
-            setCurrentUser(parsedPlayers[0]);
-            await AsyncStorage.setItem('currentUser', JSON.stringify(parsedPlayers[0]));
-          }
-        }
       } catch (error) {
         console.error('Error loading data:', error);
       }
     };
-    
+
     loadData();
   }, []);
 
@@ -76,16 +81,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem('matches', JSON.stringify(matches));
         await AsyncStorage.setItem('players', JSON.stringify(players));
         await AsyncStorage.setItem('deletedPlayers', JSON.stringify(deletedPlayers));
-        if (currentUser) {
-          await AsyncStorage.setItem('currentUser', JSON.stringify(currentUser));
-        }
       } catch (error) {
         console.error('Error saving data:', error);
       }
     };
-    
+
     saveData();
-  }, [matches, players, deletedPlayers, currentUser]);
+  }, [matches, players, deletedPlayers]);
 
   // Check for stale/expired matches
   useEffect(() => {
@@ -107,13 +109,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
 
       // Update expired status in Firestore
-      expiredMatches.forEach(async (match) => {
-        try {
-          await updateMatchDocument(match.id, { status: 'expired' });
-        } catch (error) {
-          console.error('Error marking match as expired in Firestore:', error);
-        }
-      });
+      Promise.all(
+        expiredMatches.map(match =>
+          updateMatchDocument(match.id, { status: 'expired' }).catch(error =>
+            console.error('Error marking match as expired in Firestore:', error)
+          )
+        )
+      );
     }
   }, [matches.length]);
 
@@ -270,7 +272,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           // Load connected player docs if not already in local state
           if (playerDoc.connections && playerDoc.connections.length > 0) {
-            const existingIds = new Set(players.map(p => p.id));
+            const existingIds = new Set(playersRef.current.map(p => p.id));
             const missingIds = playerDoc.connections.filter((id: string) => !existingIds.has(id));
             if (missingIds.length > 0) {
               const connectedDocs = await Promise.all(
@@ -292,25 +294,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           // Register for push notifications
           await registerPushToken(firebaseUser.uid);
-
-          // After loading the player doc and matches, check for a placeholder
-          // profile that should be claimed by this user.
-          if (firebaseUser.email) {
-            await claimPlaceholderProfile(
-              firebaseUser.uid,
-              playerDoc.name,
-              firebaseUser.email,
-            );
-          }
         }
       } else {
-        setCurrentUser(null);
+        resetUserState();
       }
       setAuthLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
+
+  // Claim placeholder profile after auth is fully loaded.
+  // Runs in a separate effect so auth.currentUser is guaranteed to be set
+  // (avoids the race condition inside onAuthStateChanged where the token
+  // may not yet be available for Cloud Function calls).
+  const claimAttemptedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!authLoading && currentUser?.email && claimAttemptedRef.current !== currentUser.id) {
+      claimAttemptedRef.current = currentUser.id;
+
+      // Check if a placeholder actually exists before calling the Cloud Function.
+      // This avoids unnecessary callable invocations (and auth token issues) on every login.
+      const checkAndClaim = async () => {
+        try {
+          const placeholder = await getPlaceholderByEmail(currentUser.email!);
+          if (placeholder && placeholder.id !== currentUser.id) {
+            await claimPlaceholderProfile(currentUser.id, currentUser.name, currentUser.email!);
+          }
+        } catch (error) {
+          console.error('Error checking for placeholder:', error);
+        }
+      };
+      checkAndClaim();
+    }
+  }, [authLoading, currentUser?.id, currentUser?.email]);
 
   // Migrate legacy AsyncStorage matches to Firestore on first sign-in
   const migrateLocalMatchesToFirestore = async (currentUserId: string) => {
@@ -522,6 +540,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: playerId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        ...(!isPlaceholder ? { authProvider: 'email' as const } : {}),
         ...(isPlaceholder && currentUser ? {
           pendingClaim: true,
           invitedBy: currentUser.id,
@@ -781,15 +800,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (email: string, password: string) => {
     try {
-      const firebaseUser = await signInWithEmail(email, password);
-      const playerDoc = await getPlayerDocument(firebaseUser.uid);
-      if (playerDoc) {
-        setCurrentUser(playerDoc);
-        setPlayers(prev => {
-          const filtered = prev.filter(p => p.id !== playerDoc.id);
-          return [...filtered, playerDoc];
-        });
-      }
+      // onAuthStateChanged listener handles loading the player doc,
+      // matches, connections, notifications, and push token registration.
+      await signInWithEmail(email, password);
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -847,11 +860,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await createPlayerDocument(newPlayer);
         setPlayers(prev => [...prev, newPlayer]);
         setCurrentUser(newPlayer);
-
-        // Claim placeholder profile if email matches an invited player
-        if (firebaseUser.email) {
-          await claimPlaceholderProfile(firebaseUser.uid, displayName, firebaseUser.email);
-        }
       }
 
       return { needsName };
@@ -892,10 +900,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await createPlayerDocument(newPlayer);
       setPlayers(prev => [...prev, newPlayer]);
       setCurrentUser(newPlayer);
-
-      if (firebaseUser.email) {
-        await claimPlaceholderProfile(firebaseUser.uid, name.trim(), firebaseUser.email);
-      }
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -907,9 +911,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await unregisterPushToken(currentUser.id);
       }
       await signOut();
-      setCurrentUser(null);
-      setNotifications([]);
-      await AsyncStorage.removeItem('currentUser');
+      // State cleanup handled by onAuthStateChanged -> resetUserState()
     } catch (error: any) {
       throw new Error(error.message);
     }

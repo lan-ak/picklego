@@ -11,6 +11,7 @@ type LayoutProps = {
   children: React.ReactNode;
   title?: string;
   showBackButton?: boolean;
+  leftComponent?: React.ReactNode;
   rightComponent?: React.ReactNode;
   isHomeScreen?: boolean;
   isInTabNavigator?: boolean;
@@ -20,6 +21,7 @@ const Layout: React.FC<LayoutProps> = ({
   children,
   title,
   showBackButton = true,
+  leftComponent,
   rightComponent,
   isHomeScreen = false,
   isInTabNavigator = false,
@@ -51,6 +53,11 @@ const Layout: React.FC<LayoutProps> = ({
             >
               <Icon name="arrow-left" size={24} color={colors.primary} />
             </TouchableOpacity>
+          )}
+          {leftComponent && (
+            <View style={styles.leftContainer}>
+              {leftComponent}
+            </View>
           )}
           <Text style={styles.title} accessibilityRole="header">{title}</Text>
           <View style={styles.rightContainer}>
@@ -107,6 +114,11 @@ const styles = StyleSheet.create({
   backButton: {
     padding: spacing.sm,
     marginRight: spacing.sm,
+  },
+  leftContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: spacing.xxxxl,
   },
   rightContainer: {
     flexDirection: 'row',
