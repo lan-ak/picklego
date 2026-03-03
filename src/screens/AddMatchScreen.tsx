@@ -23,7 +23,7 @@ import { colors, typography, spacing, borderRadius, shadows, layout } from '../t
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { MainTabParamList, RootStackParamList, Coordinates } from '../types';
+import { MainTabParamList, RootStackParamList, Coordinates, Player } from '../types';
 import Layout from '../components/Layout';
 import LocationPicker from '../components/LocationPicker';
 import { useVenues } from '../hooks/useVenues';
@@ -167,11 +167,12 @@ const AddMatchScreen = () => {
   };
 
   const getFilteredPlayers = () => {
-    return players.filter(player =>
-      player.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      !team1Players.includes(player.id) &&
-      !team2Players.includes(player.id)
-    );
+    return players
+      .filter(player =>
+        player.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+        !team1Players.includes(player.id) &&
+        !team2Players.includes(player.id)
+      );
   };
 
   const handleAddPlayer = async () => {
@@ -181,26 +182,41 @@ const AddMatchScreen = () => {
     }
 
     try {
-      // If sending invite is enabled and email is provided
-      if (sendInvite && newPlayerEmail.trim()) {
-        // Basic email validation
+      let newPlayer: Player | undefined;
+
+      // If email is provided, use invitePlayer to check for existing users
+      if (newPlayerEmail.trim()) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(newPlayerEmail.trim())) {
           Alert.alert('Error', 'Please enter a valid email address');
           return;
         }
 
-        // Here you would implement sending an invite email
-        console.log(`Invite would be sent to ${newPlayerEmail}`);
-      }
+        const result = await invitePlayer(newPlayerName.trim(), newPlayerEmail.trim());
 
-      // Add the new player to the players list
-      const newPlayer = await addPlayer({
-        name: newPlayerName,
-        email: newPlayerEmail,
-        phoneNumber: newPlayerPhone,
-        rating: rating || 3.0
-      });
+        if (result.type === 'invited' && result.player) {
+          newPlayer = result.player;
+        } else if (result.type === 'existing_player' && result.player) {
+          // Existing user found — add them to the match team
+          newPlayer = result.player;
+        } else if (result.type === 'already_connected' && result.player) {
+          // Already connected — add them to the match team
+          newPlayer = result.player;
+        } else if (result.type === 'request_pending' && result.player) {
+          // Pending connection invite — still allow adding to match
+          newPlayer = result.player;
+        } else {
+          Alert.alert('Error', 'There was an error sending the invitation.');
+          return;
+        }
+      } else {
+        // No email — just add as a local player
+        newPlayer = await addPlayer({
+          name: newPlayerName,
+          phoneNumber: newPlayerPhone,
+          rating: rating || 3.0
+        });
+      }
 
       // Reset form fields
       setNewPlayerName('');
@@ -623,7 +639,9 @@ const AddMatchScreen = () => {
                 accessibilityLabel={`Add ${item.name} to Team ${selectedTeam}`}
                 accessibilityRole="button"
               >
-                <Text style={styles.playerName}>{item.name}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Text style={styles.playerName}>{item.name}</Text>
+                </View>
                 <Icon name="plus-circle" size={24} color={colors.primary} />
               </TouchableOpacity>
             )}

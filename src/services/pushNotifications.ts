@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import messaging from '@react-native-firebase/messaging';
 import { addFcmToken, removeFcmToken } from '../config/firebase';
 
 // Configure how notifications appear when the app is in the foreground
@@ -19,25 +20,21 @@ export async function requestPushPermissions(): Promise<boolean> {
     return false;
   }
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  return finalStatus === 'granted';
+  const authStatus = await messaging().requestPermission();
+  return (
+    authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+    authStatus === messaging.AuthorizationStatus.PROVISIONAL
+  );
 }
 
 export async function getDevicePushToken(): Promise<string | null> {
   if (!Device.isDevice) return null;
 
   try {
-    const tokenData = await Notifications.getDevicePushTokenAsync();
-    return tokenData.data as string;
+    const token = await messaging().getToken();
+    return token;
   } catch (error) {
-    console.error('Error getting device push token:', error);
+    console.error('Error getting FCM token:', error);
     return null;
   }
 }

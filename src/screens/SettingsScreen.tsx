@@ -39,7 +39,7 @@ type SettingSection = {
 type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const SettingsScreen: React.FC = () => {
-  const { currentUser, updatePlayer, resetAllData, invitePlayer, getInvitedPlayers, players, removePlayer, insertDummyData, signOutUser } = useData();
+  const { currentUser, updatePlayer, invitePlayer, getInvitedPlayers, players, removePlayer, signOutUser } = useData();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -72,20 +72,46 @@ const SettingsScreen: React.FC = () => {
       return;
     }
 
-    const invitedPlayer = await invitePlayer(inviteName.trim(), inviteEmail.trim());
+    const result = await invitePlayer(inviteName.trim(), inviteEmail.trim());
 
-    if (invitedPlayer) {
-      Alert.alert(
-        'Success',
-        `${inviteName} has been invited. They can now join the app using this email address.`,
-        [{ text: 'OK', onPress: () => {
-          setInviteName('');
-          setInviteEmail('');
-          setShowInviteModal(false);
-        }}]
-      );
-    } else {
-      Alert.alert('Error', 'This email is already registered or there was an error sending the invitation.');
+    const clearAndClose = () => {
+      setInviteName('');
+      setInviteEmail('');
+      setShowInviteModal(false);
+    };
+
+    switch (result.type) {
+      case 'invited':
+        Alert.alert(
+          'Success',
+          `${inviteName} has been invited. They can now join the app using this email address.`,
+          [{ text: 'OK', onPress: clearAndClose }]
+        );
+        break;
+      case 'invite_sent':
+        Alert.alert(
+          'Player Invite Sent',
+          `${result.player?.name || inviteName} is already on PickleGo! A player invite has been sent.`,
+          [{ text: 'OK', onPress: clearAndClose }]
+        );
+        break;
+      case 'already_connected':
+        Alert.alert(
+          'Already Connected',
+          `You're already connected with ${result.player?.name || inviteName}.`,
+          [{ text: 'OK' }]
+        );
+        break;
+      case 'request_pending':
+        Alert.alert(
+          'Invite Pending',
+          `A player invite to ${result.player?.name || inviteName} is already pending.`,
+          [{ text: 'OK' }]
+        );
+        break;
+      default:
+        Alert.alert('Error', 'There was an error sending the invitation. Please try again.');
+        break;
     }
   };
 
@@ -108,28 +134,6 @@ const SettingsScreen: React.FC = () => {
               showToast(`${player.name} has been removed from your contacts.`, 'success');
             } else {
               Alert.alert('Error', 'Failed to remove player. You cannot remove yourself.');
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  // Handle inserting dummy data
-  const handleInsertDummyData = async () => {
-    Alert.alert(
-      'Insert Dummy Data',
-      'This will add sample players and matches to help you see how the app looks with data. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Insert Data',
-          onPress: async () => {
-            const success = await insertDummyData();
-            if (success) {
-              showToast('Dummy data has been added successfully. You are now logged in as John Smith.', 'success');
-            } else {
-              Alert.alert('Error', 'Failed to insert dummy data.');
             }
           }
         }
@@ -175,47 +179,6 @@ const SettingsScreen: React.FC = () => {
           icon: 'palette',
           label: 'Appearance',
           onPress: () => Alert.alert('Coming Soon', 'Appearance settings will be available in a future update.')
-        },
-      ],
-    },
-    {
-      title: 'Data',
-      items: [
-        {
-          icon: 'cloud-download',
-          label: 'Export Data',
-          onPress: () => Alert.alert('Coming Soon', 'Data export will be available in a future update.')
-        },
-        ...(__DEV__ ? [{
-          icon: 'plus-circle' as IconName,
-          label: 'Insert Dummy Data',
-          onPress: handleInsertDummyData,
-        }] : []),
-        {
-          icon: 'refresh-cw',
-          label: 'Reset All Data',
-          onPress: () => {
-            Alert.alert(
-              'Reset All Data',
-              'Are you sure you want to reset all data? This will delete all matches, players, and settings. This action cannot be undone.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Reset',
-                  style: 'destructive',
-                  onPress: async () => {
-                    const success = await resetAllData();
-                    if (success) {
-                      showToast('All data has been reset.', 'success');
-                    } else {
-                      Alert.alert('Error', 'Failed to reset data.');
-                    }
-                  }
-                }
-              ]
-            );
-          },
-          danger: true
         },
       ],
     },

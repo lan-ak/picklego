@@ -3,20 +3,36 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /players/{playerId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == playerId;
+      allow create: if request.auth != null && (
+        request.auth.uid == playerId ||
+        (request.resource.data.pendingClaim == true && request.resource.data.invitedBy == request.auth.uid)
+      );
       allow update: if request.auth != null && (
         request.auth.uid == playerId ||
-        (resource.data.pendingClaim == true && resource.data.email == request.auth.token.email)
+        (resource.data.pendingClaim == true && resource.data.email == request.auth.token.email) ||
+        (resource.data.pendingClaim == true && resource.data.invitedBy == request.auth.uid) ||
+        // TODO: This allows any auth user to modify any player's connections array.
+        // Move connection mutations to a Cloud Function for proper business logic enforcement.
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['connections', 'updatedAt'])
       );
-      allow delete: if request.auth != null && request.auth.uid == playerId;
+      allow delete: if request.auth != null && (
+        request.auth.uid == playerId ||
+        (resource.data.pendingClaim == true && resource.data.email == request.auth.token.email) ||
+        (resource.data.pendingClaim == true && resource.data.invitedBy == request.auth.uid)
+      );
     }
     match /matches/{matchId} {
       allow read: if request.auth != null
         && request.auth.uid in resource.data.allPlayerIds;
       allow create: if request.auth != null
         && request.auth.uid == request.resource.data.createdBy;
-      allow update: if request.auth != null
-        && request.auth.uid in resource.data.allPlayerIds;
+      allow update: if request.auth != null && (
+        request.auth.uid in resource.data.allPlayerIds ||
+        request.auth.uid == resource.data.createdBy ||
+        // Allow placeholder profile claims: user can update only player identity fields
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['allPlayerIds', 'team1PlayerIds', 'team2PlayerIds', 'team1PlayerNames', 'team2PlayerNames'])
+      );
       allow delete: if request.auth != null
         && request.auth.uid == resource.data.createdBy;
     }

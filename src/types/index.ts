@@ -31,6 +31,7 @@ export interface Player {
   isInvited?: boolean;
   authProvider?: 'email' | 'google' | 'apple';
   fcmTokens?: string[];
+  connections?: string[];
 }
 
 export interface Coordinates {
@@ -76,17 +77,24 @@ export interface Match {
   games: Game[];
   winnerTeam: 1 | 2 | null;
   allPlayerIds: string[];
+  deletedByPlayerIds?: string[];
   notificationsSent?: boolean;
 }
 
+export type InviteResult = {
+  type: 'invited' | 'existing_player' | 'invite_sent' | 'already_connected' | 'request_pending' | 'error';
+  player?: Player;
+};
+
 export interface MatchNotification {
   id: string;
-  type: 'match_invite';
-  status: 'sent' | 'read';
+  type: 'match_invite' | 'player_invite' | 'invite_accepted';
+  status: 'sent' | 'read' | 'accepted' | 'declined';
   recipientId: string;
   senderId: string;
   senderName: string;
-  matchId: string;
+  senderProfilePic?: string;
+  matchId?: string;
   matchDate?: string;
   matchLocation?: string;
   matchType?: 'singles' | 'doubles';
@@ -94,6 +102,7 @@ export interface MatchNotification {
   message?: string;
   createdAt: number;
   readAt?: number;
+  respondedAt?: number;
 }
 
 export interface PushNotificationData {
@@ -128,6 +137,7 @@ export interface DataContextType {
   matches: Match[];
   deletedPlayers: Player[];
   currentUser: Player | null;
+  authLoading: boolean;
   notifications: MatchNotification[];
   unreadNotificationCount: number;
   addPlayer: (player: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Player>;
@@ -138,12 +148,10 @@ export interface DataContextType {
   updatePlayer: (playerId: string, updates: Partial<Player>) => Promise<void>;
   getPlayerName: (playerId: string) => string;
   setCurrentUser: (player: Player | null) => void;
-  resetAllData: () => Promise<boolean>;
-  invitePlayer: (name: string, email: string) => Promise<Player | null>;
+  invitePlayer: (name: string, email: string) => Promise<InviteResult>;
   claimInvitation: (email: string, playerData: Partial<Player>) => Promise<boolean>;
   getInvitedPlayers: () => Player[];
   isEmailAvailable: (email: string) => Promise<boolean>;
-  insertDummyData: () => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<void>;
   signInWithSocial: (provider: 'google' | 'apple') => Promise<{ needsName: boolean }>;
   completeSocialSignUp: (name: string, provider: 'google' | 'apple') => Promise<void>;
@@ -152,6 +160,10 @@ export interface DataContextType {
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
   getNotificationsForMatch: (matchId: string) => MatchNotification[];
+  sendPlayerInvite: (recipientId: string) => Promise<boolean>;
+  respondToPlayerInvite: (notificationId: string, accept: boolean) => Promise<void>;
+  refreshMatches: () => Promise<void>;
+  refreshNotifications: () => Promise<void>;
 }
 
 export type MainTabParamList = {

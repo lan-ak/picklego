@@ -29,8 +29,10 @@ import {
   limit,
   arrayUnion,
   arrayRemove,
+  writeBatch,
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Player, Match, MatchNotification } from '../types';
 
 // Firebase configuration from environment variables
@@ -51,6 +53,7 @@ const auth = initializeAuth(app, {
 });
 const db = getFirestore(app);
 const storage = getStorage(app);
+const functions = getFunctions(app);
 
 // Strip undefined values from an object before passing to Firestore
 const stripUndefined = <T extends Record<string, any>>(obj: T): T => {
@@ -63,7 +66,11 @@ const stripUndefined = <T extends Record<string, any>>(obj: T): T => {
 export const createPlayerDocument = async (player: Player) => {
   try {
     const { password, ...playerData } = player;
-    await setDoc(doc(db, 'players', player.id), stripUndefined(playerData));
+    const dataToWrite = {
+      ...playerData,
+      ...(playerData.email ? { emailLowercase: playerData.email.trim().toLowerCase() } : {}),
+    };
+    await setDoc(doc(db, 'players', player.id), stripUndefined(dataToWrite));
   } catch (error: any) {
     throw new Error('Failed to create player document: ' + error.message);
   }
@@ -71,10 +78,14 @@ export const createPlayerDocument = async (player: Player) => {
 
 export const updatePlayerDocument = async (playerId: string, data: Partial<Player>) => {
   try {
-    await updateDoc(doc(db, 'players', playerId), stripUndefined({
+    const updateData: Record<string, any> = {
       ...data,
-      updatedAt: Date.now()
-    }));
+      updatedAt: Date.now(),
+    };
+    if (data.email !== undefined) {
+      updateData.emailLowercase = data.email.trim().toLowerCase();
+    }
+    await updateDoc(doc(db, 'players', playerId), stripUndefined(updateData));
   } catch (error: any) {
     throw new Error('Failed to update player document: ' + error.message);
   }
@@ -109,14 +120,39 @@ export const getPlayerDocument = async (playerId: string) => {
 
 export const getPlayerByEmail = async (email: string) => {
   try {
-    const q = query(collection(db, 'players'), where('email', '==', email));
-    const querySnapshot = await getDocs(q);
+    const normalizedEmail = email.trim().toLowerCase();
+    // Try the indexed emailLowercase field first
+    let q = query(collection(db, 'players'), where('emailLowercase', '==', normalizedEmail));
+    let querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      return querySnapshot.docs[0].data() as Player;
+    }
+    // Fallback: query on the original email field for docs created before migration
+    q = query(collection(db, 'players'), where('email', '==', email));
+    querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
       return querySnapshot.docs[0].data() as Player;
     }
     return null;
   } catch (error: any) {
     throw new Error('Failed to get player by email: ' + error.message);
+  }
+};
+
+export const getPlayersByEmail = async (email: string): Promise<Player[]> => {
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    const q = query(collection(db, 'players'), where('emailLowercase', '==', normalizedEmail));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      return querySnapshot.docs.map(doc => doc.data() as Player);
+    }
+    // Fallback for pre-migration docs
+    const fallbackQ = query(collection(db, 'players'), where('email', '==', email));
+    const fallbackSnapshot = await getDocs(fallbackQ);
+    return fallbackSnapshot.docs.map(doc => doc.data() as Player);
+  } catch (error: any) {
+    throw new Error('Failed to get players by email: ' + error.message);
   }
 };
 
@@ -177,6 +213,16 @@ export const deleteMatchDocument = async (matchId: string) => {
     await deleteDoc(doc(db, 'matches', matchId));
   } catch (error: any) {
     throw new Error('Failed to delete match document: ' + error.message);
+  }
+};
+
+export const softDeleteMatch = async (matchId: string, playerId: string) => {
+  try {
+    await updateDoc(doc(db, 'matches', matchId), {
+      deletedByPlayerIds: arrayUnion(playerId),
+    });
+  } catch (error: any) {
+    throw new Error('Failed to soft-delete match: ' + error.message);
   }
 };
 
@@ -359,4 +405,37 @@ export const removeFcmToken = async (playerId: string, token: string) => {
   } catch (error: any) {
     throw new Error('Failed to remove FCM token: ' + error.message);
   }
+};
+
+// Player connection management
+export const addConnectionsBatch = async (playerIdA: string, playerIdB: string) => {
+  try {
+    const now = Date.now();
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'players', playerIdA), { connections: arrayUnion(playerIdB), updatedAt: now });
+    batch.update(doc(db, 'players', playerIdB), { connections: arrayUnion(playerIdA), updatedAt: now });
+    await batch.commit();
+  } catch (error: any) {
+    throw new Error('Failed to add connection: ' + error.message);
+  }
+};
+
+export const removeConnection = async (playerId: string, connectionId: string) => {
+  try {
+    await updateDoc(doc(db, 'players', playerId), {
+      connections: arrayRemove(connectionId),
+      updatedAt: Date.now(),
+    });
+  } catch (error: any) {
+    throw new Error('Failed to remove connection: ' + error.message);
+  }
+};
+
+// Cloud Function callables
+export const callClaimPlaceholderProfile = async (
+  name: string,
+): Promise<{ claimed: boolean; matchesUpdated: number }> => {
+  const claimFn = httpsCallable(functions, 'claimPlaceholderProfile');
+  const result = await claimFn({ name });
+  return result.data as { claimed: boolean; matchesUpdated: number };
 };

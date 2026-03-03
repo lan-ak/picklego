@@ -44,12 +44,12 @@ const MatchDetailsScreen = () => {
 
   const handleDeleteMatch = () => {
     Alert.alert(
-      'Delete Match',
-      'Are you sure you want to delete this match? This action cannot be undone.',
+      'Remove Match',
+      'Are you sure you want to remove this match from your history? Other players in this match will not be affected.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Remove',
           style: 'destructive',
           onPress: async () => {
             await deleteMatch(match.id);
@@ -415,31 +415,31 @@ const MatchDetailsScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {currentUser?.id === match.createdBy && (
+            {isUserInMatch() && (
               <TouchableOpacity
                 style={[styles.button, styles.deleteButton]}
                 onPress={handleDeleteMatch}
-                accessibilityLabel="Delete match"
+                accessibilityLabel="Remove match"
                 accessibilityRole="button"
               >
                 <Icon name="trash" size={20} color={colors.white} />
-                <Text style={styles.buttonText}>Delete Match</Text>
+                <Text style={styles.buttonText}>Remove Match</Text>
               </TouchableOpacity>
             )}
           </View>
         )}
 
-        {/* Simple Delete button for completed matches */}
-        {match.status === 'completed' && currentUser?.id === match.createdBy && (
+        {/* Remove button for completed matches */}
+        {match.status === 'completed' && isUserInMatch() && (
           <View style={styles.footer}>
             <TouchableOpacity
               style={[styles.button, styles.deleteButton]}
               onPress={handleDeleteMatch}
-              accessibilityLabel="Delete match"
+              accessibilityLabel="Remove match"
               accessibilityRole="button"
             >
               <Icon name="trash" size={20} color={colors.white} />
-              <Text style={styles.buttonText}>Delete Match</Text>
+              <Text style={styles.buttonText}>Remove Match</Text>
             </TouchableOpacity>
           </View>
         )}

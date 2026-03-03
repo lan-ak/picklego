@@ -271,9 +271,9 @@ const CompleteMatchScreen = () => {
           return;
         }
 
-        const invitedPlayer = await invitePlayer(newPlayerName.trim(), newPlayerEmail.trim());
+        const result = await invitePlayer(newPlayerName.trim(), newPlayerEmail.trim());
 
-        if (invitedPlayer) {
+        if (result.type === 'invited' && result.player) {
           Alert.alert(
             'Success',
             `${newPlayerName} has been added and invited. They will receive an email to join the app.`,
@@ -282,8 +282,17 @@ const CompleteMatchScreen = () => {
           setNewPlayerName('');
           setNewPlayerEmail('');
           setShowInviteModal(false);
+        } else if (result.type === 'invite_sent') {
+          Alert.alert('Player Invite Sent', `${newPlayerName} already has an account. A player invite has been sent.`);
+          setNewPlayerName('');
+          setNewPlayerEmail('');
+          setShowInviteModal(false);
+        } else if (result.type === 'already_connected') {
+          Alert.alert('Already Connected', `${result.player?.name || newPlayerName} is already in your players.`);
+        } else if (result.type === 'request_pending') {
+          Alert.alert('Invite Pending', `A player invite to ${result.player?.name || newPlayerName} is already pending.`);
         } else {
-          Alert.alert('Error', 'This email is already registered or there was an error sending the invitation.');
+          Alert.alert('Error', 'There was an error sending the invitation.');
         }
       } else {
         // Just add the player without invitation
@@ -324,7 +333,7 @@ const CompleteMatchScreen = () => {
               </TouchableOpacity>
             </View>
 
-            <PicklePete pose="invite" size="sm" message="Bring a friend to the court!" />
+            <PicklePete pose="invite" size="sm" message="Bring someone new to the court!" />
 
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Player Name</Text>

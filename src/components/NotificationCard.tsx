@@ -7,6 +7,8 @@ import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 type NotificationCardProps = {
   notification: MatchNotification;
   onPress: () => void;
+  onAccept?: () => void;
+  onDecline?: () => void;
 };
 
 const formatTimeAgo = (timestamp: number): string => {
@@ -36,8 +38,95 @@ const formatMatchDate = (dateString?: string): string => {
   });
 };
 
-const NotificationCard = ({ notification, onPress }: NotificationCardProps) => {
-  const isUnread = notification.status !== 'read';
+const NotificationCard = ({ notification, onPress, onAccept, onDecline }: NotificationCardProps) => {
+  const isUnread = notification.status === 'sent' && notification.type !== 'player_invite';
+  const isPlayerInvite = notification.type === 'player_invite';
+  const isInviteAccepted = notification.type === 'invite_accepted';
+  const isPendingPlayerInvite = isPlayerInvite && notification.status === 'sent';
+
+  if (isPlayerInvite) {
+    return (
+      <TouchableOpacity
+        style={[styles.card, isPendingPlayerInvite && styles.unreadCard]}
+        onPress={onPress}
+        activeOpacity={0.7}
+        accessibilityLabel={`Player invite from ${notification.senderName}`}
+        accessibilityRole="button"
+      >
+        <View style={styles.row}>
+          {isPendingPlayerInvite && <View style={styles.unreadDot} />}
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Text style={[styles.title, isPendingPlayerInvite && styles.unreadTitle]}>
+                Player Invite
+              </Text>
+              <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+            </View>
+            <Text style={styles.body}>
+              {notification.senderName} wants to add you as a player!
+            </Text>
+            {isPendingPlayerInvite && onAccept && onDecline ? (
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={styles.acceptButton}
+                  onPress={onAccept}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="check-circle" size={16} color={colors.white} />
+                  <Text style={styles.acceptButtonText}>Accept</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.declineButton}
+                  onPress={onDecline}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="x-circle" size={16} color={colors.gray500} />
+                  <Text style={styles.declineButtonText}>Decline</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={[
+                styles.statusText,
+                notification.status === 'accepted' ? styles.acceptedText : styles.declinedText,
+              ]}>
+                {notification.status === 'accepted' ? 'Accepted' : 'Declined'}
+              </Text>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  if (isInviteAccepted) {
+    const isUnreadAccepted = notification.status === 'sent';
+    return (
+      <TouchableOpacity
+        style={[styles.card, isUnreadAccepted && styles.unreadCard]}
+        onPress={onPress}
+        activeOpacity={0.7}
+        accessibilityLabel={`${notification.senderName} accepted your player invite`}
+        accessibilityRole="button"
+      >
+        <View style={styles.row}>
+          {isUnreadAccepted && <View style={styles.unreadDot} />}
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Text style={[styles.title, isUnreadAccepted && styles.unreadTitle]}>
+                Player Added
+              </Text>
+              <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+            </View>
+            <Text style={styles.body}>
+              {notification.senderName} accepted your player invite!
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  // Default: match_invite (unchanged)
   const matchTypeLabel = notification.matchType === 'doubles' ? 'doubles' : 'singles';
 
   return (
@@ -144,6 +233,48 @@ const styles = StyleSheet.create({
     color: colors.gray500,
     fontStyle: 'italic',
     marginTop: spacing.xs,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  acceptButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    gap: spacing.xs,
+  },
+  acceptButtonText: {
+    ...typography.bodySmall,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  declineButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray100,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    gap: spacing.xs,
+  },
+  declineButtonText: {
+    ...typography.bodySmall,
+    color: colors.gray500,
+    fontWeight: '600',
+  },
+  statusText: {
+    ...typography.bodySmall,
+    fontWeight: '600',
+  },
+  acceptedText: {
+    color: colors.primary,
+  },
+  declinedText: {
+    color: colors.gray400,
   },
 });
 

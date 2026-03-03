@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Match, Game, LegacyMatch, Player, PlayerStats, DataContextType, MatchNotification } from '../types';
+import { Match, Game, LegacyMatch, Player, PlayerStats, DataContextType, MatchNotification, InviteResult } from '../types';
 import { calculatePlayerStats } from '../utils/statsCalculator';
 import {
   signUpWithEmail,
@@ -14,7 +14,7 @@ import {
   createMatchDocument,
   updateMatchDocument,
   deleteMatchDocument,
-  deletePlayerDocument,
+  softDeleteMatch,
   getMatchesForPlayer,
   sendPasswordReset,
   signInWithGoogle,
@@ -24,6 +24,9 @@ import {
   updateNotificationDocument,
   getNotificationsForPlayer,
   getNotificationsBySender,
+  addConnectionsBatch,
+  removeConnection,
+  callClaimPlaceholderProfile,
 } from '../config/firebase';
 import { registerPushToken, removePushToken } from '../services/pushNotifications';
 
@@ -35,6 +38,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [deletedPlayers, setDeletedPlayers] = useState<Player[]>([]);
   const [currentUser, setCurrentUser] = useState<Player | null>(null);
   const [notifications, setNotifications] = useState<MatchNotification[]>([]);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Load data from AsyncStorage on mount
   useEffect(() => {
@@ -113,18 +117,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [matches.length]);
 
-  // Expire notifications for matches that are past their date + 24 hours
+  // Expire stale notifications
   useEffect(() => {
     if (notifications.length === 0) return;
 
     const now = Date.now();
-    const staleThreshold = 24 * 60 * 60 * 1000; // 24 hours
+    const matchStaleThreshold = 24 * 60 * 60 * 1000; // 24 hours
+    const inviteStaleThreshold = 7 * 24 * 60 * 60 * 1000; // 7 days
 
     const expiredIds = new Set<string>();
     for (const notif of notifications) {
-      if (!notif.matchDate) continue;
-      const matchTime = new Date(notif.matchDate).getTime();
-      if (now - matchTime > staleThreshold) {
+      // Expire match notifications past their date + 24 hours
+      if (notif.matchDate) {
+        const matchTime = new Date(notif.matchDate).getTime();
+        if (now - matchTime > matchStaleThreshold) {
+          expiredIds.add(notif.id);
+        }
+      }
+      // Expire resolved player invite notifications after 7 days
+      if (
+        (notif.type === 'player_invite' || notif.type === 'invite_accepted') &&
+        notif.status !== 'sent' &&
+        now - notif.createdAt > inviteStaleThreshold
+      ) {
         expiredIds.add(notif.id);
       }
     }
@@ -139,90 +154,83 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // an account, a placeholder player doc is stored with pendingClaim: true.
   // Once B signs up / signs in with that email we transfer the match history
   // from the placeholder to the real user and delete the placeholder doc.
+  //
+  // The actual claiming (match updates, stats merge, placeholder deletion)
+  // runs in a Cloud Function using Admin SDK to bypass security rules,
+  // since the new user's UID isn't in the match allPlayerIds yet.
   const claimPlaceholderProfile = async (
     realUid: string,
     realName: string,
     email: string,
   ) => {
     try {
-      const placeholder = await getPlayerByEmail(email);
+      const result = await callClaimPlaceholderProfile(realName);
 
-      if (!placeholder || !placeholder.pendingClaim || placeholder.id === realUid) {
-        return; // nothing to claim
+      if (!result.claimed) {
+        return; // no placeholder found for this email
       }
 
-      const placeholderId = placeholder.id;
+      // Refresh matches — they now contain the real UID so the read succeeds
+      const firestoreMatches = await getMatchesForPlayer(realUid);
+      const visibleMatches = firestoreMatches.filter(
+        m => !m.deletedByPlayerIds?.includes(realUid),
+      );
+      setMatches(prev => {
+        const firestoreIds = new Set(visibleMatches.map(m => m.id));
+        const localOnly = prev.filter(m => !firestoreIds.has(m.id));
+        return [...visibleMatches, ...localOnly];
+      });
 
-      // 1. Fetch every match that references the placeholder
-      const placeholderMatches = await getMatchesForPlayer(placeholderId);
-
-      // 2. Re-point each match from the placeholder ID to the real UID
-      for (const match of placeholderMatches) {
-        const replaceId = (ids: string[]) =>
-          ids.map(id => (id === placeholderId ? realUid : id));
-
-        const replaceName = (ids: string[], names: string[]) =>
-          ids.map((id, i) => (id === placeholderId ? realName : names[i]));
-
-        const updatedFields: Partial<Match> = {
-          allPlayerIds: replaceId(match.allPlayerIds),
-          team1PlayerIds: replaceId(match.team1PlayerIds),
-          team2PlayerIds: replaceId(match.team2PlayerIds),
-          team1PlayerNames: replaceName(match.team1PlayerIds, match.team1PlayerNames),
-          team2PlayerNames: replaceName(match.team2PlayerIds, match.team2PlayerNames),
-        };
-
-        await updateMatchDocument(match.id, updatedFields);
-
-        // Also update local state so the UI reflects the change immediately
-        setMatches(prev =>
-          prev.map(m =>
-            m.id === match.id ? { ...m, ...updatedFields } : m,
-          ),
-        );
+      // Refresh the player document (stats may have been merged server-side)
+      const updatedPlayer = await getPlayerDocument(realUid);
+      if (updatedPlayer) {
+        setCurrentUser(updatedPlayer);
+        setPlayers(prev => prev.map(p => (p.id === realUid ? updatedPlayer : p)));
       }
 
-      // 3. Merge any stats from the placeholder into the real player doc
-      if (placeholder.stats && placeholder.stats.totalMatches > 0) {
-        const realPlayer = await getPlayerDocument(realUid);
-        if (realPlayer) {
-          const mergedStats: PlayerStats = {
-            totalMatches: (realPlayer.stats?.totalMatches ?? 0) + placeholder.stats.totalMatches,
-            wins: (realPlayer.stats?.wins ?? 0) + placeholder.stats.wins,
-            losses: (realPlayer.stats?.losses ?? 0) + placeholder.stats.losses,
-            winPercentage: 0,
-            totalGames: (realPlayer.stats?.totalGames ?? 0) + (placeholder.stats.totalGames ?? 0),
-            gameWins: (realPlayer.stats?.gameWins ?? 0) + (placeholder.stats.gameWins ?? 0),
-            gameLosses: (realPlayer.stats?.gameLosses ?? 0) + (placeholder.stats.gameLosses ?? 0),
-          };
-          mergedStats.winPercentage =
-            mergedStats.totalMatches > 0
-              ? Math.round((mergedStats.wins / mergedStats.totalMatches) * 1000) / 10
-              : 0;
-
-          await updatePlayerDocument(realUid, { stats: mergedStats });
-
-          setPlayers(prev =>
-            prev.map(p => (p.id === realUid ? { ...p, stats: mergedStats } : p)),
-          );
-          setCurrentUser(prev =>
-            prev && prev.id === realUid ? { ...prev, stats: mergedStats } : prev,
-          );
-        }
-      }
-
-      // 4. Delete the placeholder player document from Firestore
-      await deletePlayerDocument(placeholderId);
-
-      // 5. Remove the placeholder from local state
-      setPlayers(prev => prev.filter(p => p.id !== placeholderId));
+      // Remove the now-deleted placeholder from local state
+      const normalizedEmail = email.trim().toLowerCase();
+      setPlayers(prev =>
+        prev.filter(
+          p =>
+            !(
+              p.pendingClaim === true &&
+              p.id !== realUid &&
+              p.email?.trim().toLowerCase() === normalizedEmail
+            ),
+        ),
+      );
 
       console.log(
-        `Claimed placeholder profile ${placeholderId} for user ${realUid}`,
+        `Claimed placeholder profile for user ${realUid} (${result.matchesUpdated} matches updated)`,
       );
     } catch (error) {
       console.error('Error claiming placeholder profile:', error);
     }
+  };
+
+  // Refresh matches from Firestore for the current user
+  const refreshMatches = async () => {
+    if (!currentUser) return;
+    try {
+      const firestoreMatches = await getMatchesForPlayer(currentUser.id);
+      const visibleMatches = firestoreMatches.filter(
+        m => !m.deletedByPlayerIds?.includes(currentUser.id)
+      );
+      setMatches(prev => {
+        const firestoreIds = new Set(visibleMatches.map(m => m.id));
+        const localOnly = prev.filter(m => !firestoreIds.has(m.id));
+        return [...visibleMatches, ...localOnly];
+      });
+    } catch (error) {
+      console.error('Error refreshing matches:', error);
+    }
+  };
+
+  // Refresh notifications from Firestore for the current user
+  const refreshNotifications = async () => {
+    if (!currentUser) return;
+    await loadNotifications(currentUser.id);
   };
 
   // Initialize Firebase auth state listener
@@ -241,12 +249,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Load matches from Firestore
           try {
             const firestoreMatches = await getMatchesForPlayer(firebaseUser.uid);
-            if (firestoreMatches.length > 0) {
+            // Filter out matches soft-deleted by this user
+            const visibleMatches = firestoreMatches.filter(
+              m => !m.deletedByPlayerIds?.includes(firebaseUser.uid)
+            );
+            if (visibleMatches.length > 0) {
               setMatches(prev => {
                 // Merge: Firestore matches take precedence, keep local-only matches
-                const firestoreIds = new Set(firestoreMatches.map(m => m.id));
+                const firestoreIds = new Set(visibleMatches.map(m => m.id));
                 const localOnly = prev.filter(m => !firestoreIds.has(m.id));
-                return [...firestoreMatches, ...localOnly];
+                return [...visibleMatches, ...localOnly];
               });
             }
           } catch (error) {
@@ -256,11 +268,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Migrate legacy AsyncStorage matches to Firestore
           await migrateLocalMatchesToFirestore(firebaseUser.uid);
 
+          // Load connected player docs if not already in local state
+          if (playerDoc.connections && playerDoc.connections.length > 0) {
+            const existingIds = new Set(players.map(p => p.id));
+            const missingIds = playerDoc.connections.filter((id: string) => !existingIds.has(id));
+            if (missingIds.length > 0) {
+              const connectedDocs = await Promise.all(
+                missingIds.map((id: string) => getPlayerDocument(id))
+              );
+              const validPlayers = connectedDocs.filter((d): d is Player => d !== null);
+              if (validPlayers.length > 0) {
+                setPlayers(prev => {
+                  const currentIds = new Set(prev.map(p => p.id));
+                  const newPlayers = validPlayers.filter(p => !currentIds.has(p.id));
+                  return newPlayers.length > 0 ? [...prev, ...newPlayers] : prev;
+                });
+              }
+            }
+          }
+
           // Load notifications for this user
           await loadNotifications(firebaseUser.uid);
 
           // Register for push notifications
-          registerPushToken(firebaseUser.uid);
+          await registerPushToken(firebaseUser.uid);
 
           // After loading the player doc and matches, check for a placeholder
           // profile that should be claimed by this user.
@@ -275,6 +306,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setCurrentUser(null);
       }
+      setAuthLoading(false);
     });
 
     return () => unsubscribe();
@@ -388,8 +420,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           migratedMatches.push(migratedMatch);
         } else {
-          // Already in new schema — just push through to Firestore
-          migratedMatches.push(raw as Match);
+          // Already in new schema — update ownership to current user before pushing to Firestore
+          const match = raw as Match;
+          match.createdBy = currentUserId;
+          match.lastModifiedBy = currentUserId;
+          match.lastModifiedAt = Date.now();
+          if (!match.allPlayerIds.includes(currentUserId)) {
+            match.allPlayerIds = [...match.allPlayerIds, currentUserId];
+          }
+          migratedMatches.push(match);
         }
       }
 
@@ -466,6 +505,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addPlayer = async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>): Promise<Player> => {
     try {
       let playerId: string;
+      let isPlaceholder = false;
 
       if (playerData.email && playerData.password) {
         // Create Firebase auth user for players with credentials
@@ -474,6 +514,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         // Generate a local ID for invited/placeholder players
         playerId = Date.now().toString();
+        isPlaceholder = true;
       }
 
       const newPlayer: Player = {
@@ -481,6 +522,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: playerId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        ...(isPlaceholder && currentUser ? {
+          pendingClaim: true,
+          invitedBy: currentUser.id,
+          isInvited: true,
+        } : {}),
         stats: {
           totalMatches: 0,
           wins: 0,
@@ -525,20 +571,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deleteMatch = async (matchId: string) => {
+    if (!currentUser) return;
+
     const matchToDelete = matches.find(m => m.id === matchId);
+
+    // Optimistically remove from local state
     setMatches(prev => prev.filter(match => match.id !== matchId));
 
-    // Delete from Firestore
+    // Soft-delete in Firestore (add current user to deletedByPlayerIds)
     try {
-      await deleteMatchDocument(matchId);
+      await softDeleteMatch(matchId, currentUser.id);
     } catch (error) {
-      console.error('Error deleting match from Firestore:', error);
+      console.error('Error soft-deleting match from Firestore:', error);
+      // Restore on failure
+      if (matchToDelete) {
+        setMatches(prev => [...prev, matchToDelete]);
+      }
+      return;
     }
 
-    // Recalculate stats for all players in a deleted completed match
+    // Recalculate stats only for the current user
     if (matchToDelete && matchToDelete.status === 'completed') {
       const remainingMatches = matches.filter(m => m.id !== matchId);
-      await recalculateStatsForPlayers(matchToDelete.allPlayerIds, remainingMatches);
+      await recalculateStatsForPlayers([currentUser.id], remainingMatches);
     }
   };
 
@@ -588,41 +643,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const resetAllData = async () => {
-    try {
-      // Delete user's matches from Firestore
-      if (currentUser) {
-        const userMatches = matches.filter(m => m.createdBy === currentUser.id);
-        for (const match of userMatches) {
-          try {
-            await deleteMatchDocument(match.id);
-          } catch (e) {
-            console.error('Error deleting match from Firestore:', e);
-          }
-        }
-      }
-
-      // Clear all data in AsyncStorage
-      await AsyncStorage.removeItem('matches');
-      await AsyncStorage.removeItem('players');
-      await AsyncStorage.removeItem('deletedPlayers');
-      await AsyncStorage.removeItem('currentUser');
-      await AsyncStorage.removeItem('matchesMigrated');
-
-      // Reset state
-      setMatches([]);
-      setPlayers([]);
-      setDeletedPlayers([]);
-      setCurrentUser(null);
-
-      console.log('All data has been reset');
-      return true;
-    } catch (error) {
-      console.error('Error resetting data:', error);
-      return false;
-    }
-  };
-
   // Check if email is available (not already used)
   const isEmailAvailable = async (email: string): Promise<boolean> => {
     try {
@@ -634,19 +654,56 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
   
-  // Invite a player by creating a placeholder account
-  const invitePlayer = async (name: string, email: string): Promise<Player | null> => {
-    if (!name || !email) return null;
+  // Invite a player by creating a placeholder account, or send a player invite if they already exist
+  const invitePlayer = async (name: string, email: string): Promise<InviteResult> => {
+    if (!name || !email) return { type: 'error' };
 
     // Check if email is already in use
-    if (!await isEmailAvailable(email)) return null;
+    const emailAvailable = await isEmailAvailable(email);
 
-    const createdPlayer = await addPlayer({
-      name,
-      email,
-    });
+    if (!emailAvailable) {
+      // Email exists — look up the existing player and return them for team assignment
+      try {
+        const existingPlayer = await getPlayerByEmail(email);
+        if (!existingPlayer || !currentUser) return { type: 'error' };
 
-    return createdPlayer;
+        // Don't invite yourself
+        if (existingPlayer.id === currentUser.id) return { type: 'error' };
+
+        // Send a connection invite if not already connected and no pending invite
+        if (!currentUser.connections?.includes(existingPlayer.id)) {
+          const existingRequest = notifications.find(n =>
+            n.type === 'player_invite' &&
+            n.status === 'sent' &&
+            ((n.senderId === currentUser.id && n.recipientId === existingPlayer.id) ||
+             (n.senderId === existingPlayer.id && n.recipientId === currentUser.id))
+          );
+          if (!existingRequest) {
+            await sendPlayerInvite(existingPlayer.id);
+          }
+        }
+
+        // Ensure the existing player is in local state for name resolution
+        if (!players.some(p => p.id === existingPlayer.id)) {
+          setPlayers(prev => [...prev, existingPlayer]);
+        }
+
+        // Return the player so they can be added to the match team
+        return { type: 'existing_player', player: existingPlayer };
+      } catch (error) {
+        console.error('Error handling existing player invite:', error);
+        return { type: 'error' };
+      }
+    }
+
+    // Email is available — create a placeholder (existing behavior)
+    try {
+      const createdPlayer = await addPlayer({ name, email });
+      return { type: 'invited', player: createdPlayer };
+    } catch (error) {
+      console.error('Error creating placeholder player:', error);
+      return { type: 'error' };
+    }
   };
 
   // Get all players invited by the current user
@@ -684,291 +741,40 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return 'Unknown Player';
   };
 
-  // Remove a player from contacts
+  // Remove a player from contacts (also breaks connection if applicable)
   const removePlayer = async (playerId: string): Promise<boolean> => {
     try {
       // Don't allow removing the current user
       if (currentUser && playerId === currentUser.id) {
         return false;
       }
-      
+
       // Find the player to be removed
       const playerToRemove = players.find(player => player.id === playerId);
       if (!playerToRemove) {
         return false;
       }
-      
+
+      // If the player is a connection, break the bidirectional Firestore connection
+      if (currentUser?.connections?.includes(playerId)) {
+        await removeConnection(currentUser.id, playerId);
+        await removeConnection(playerId, currentUser.id);
+        setCurrentUser(prev => prev ? {
+          ...prev,
+          connections: (prev.connections || []).filter((id: string) => id !== playerId),
+        } : prev);
+      }
+
       // Add the player to deletedPlayers array
       setDeletedPlayers(prev => [...prev, playerToRemove]);
-      
+
       // Remove the player from the active players list
       setPlayers(prev => prev.filter(player => player.id !== playerId));
-      
+
       // Return success
       return true;
     } catch (error) {
       console.error('Error removing player:', error);
-      return false;
-    }
-  };
-
-  // Add this function to insert dummy data
-  const insertDummyData = async () => {
-    try {
-      const dummyPlayers: Player[] = [
-        {
-          id: 'player1',
-          name: 'John Smith',
-          email: 'john@example.com',
-          phoneNumber: '555-123-4567',
-          rating: 4.2,
-          profilePic: 'https://randomuser.me/api/portraits/men/32.jpg',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          stats: {
-            totalMatches: 15,
-            wins: 10,
-            losses: 5,
-            winPercentage: 66.7,
-            totalGames: 45,
-            gameWins: 30,
-            gameLosses: 15
-          }
-        },
-        {
-          id: 'player2',
-          name: 'Sarah Johnson',
-          email: 'sarah@example.com',
-          phoneNumber: '555-987-6543',
-          rating: 3.8,
-          profilePic: 'https://randomuser.me/api/portraits/women/44.jpg',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          stats: {
-            totalMatches: 12,
-            wins: 7,
-            losses: 5,
-            winPercentage: 58.3,
-            totalGames: 36,
-            gameWins: 22,
-            gameLosses: 14
-          }
-        },
-        {
-          id: 'player3',
-          name: 'Mike Williams',
-          email: 'mike@example.com',
-          phoneNumber: '555-456-7890',
-          rating: 4.5,
-          profilePic: 'https://randomuser.me/api/portraits/men/67.jpg',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          stats: {
-            totalMatches: 20,
-            wins: 15,
-            losses: 5,
-            winPercentage: 75.0,
-            totalGames: 60,
-            gameWins: 45,
-            gameLosses: 15
-          }
-        },
-        {
-          id: 'player4',
-          name: 'Emily Davis',
-          email: 'emily@example.com',
-          phoneNumber: '555-789-0123',
-          rating: 3.5,
-          profilePic: 'https://randomuser.me/api/portraits/women/17.jpg',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          stats: {
-            totalMatches: 8,
-            wins: 3,
-            losses: 5,
-            winPercentage: 37.5,
-            totalGames: 24,
-            gameWins: 10,
-            gameLosses: 14
-          }
-        },
-        {
-          id: 'player5',
-          name: 'Alex Rodriguez',
-          email: 'alex@example.com',
-          phoneNumber: '555-321-6547',
-          rating: 4.0,
-          isInvited: true,
-          invitedBy: 'player1',
-          pendingClaim: true,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          profilePic: 'https://randomuser.me/api/portraits/men/92.jpg',
-          stats: {
-            totalMatches: 5,
-            wins: 3,
-            losses: 2,
-            winPercentage: 60.0,
-            totalGames: 15,
-            gameWins: 9,
-            gameLosses: 6
-          }
-        }
-      ];
-
-      // Create dummy matches
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const twoDaysAgo = new Date(today);
-      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-      const threeDaysAgo = new Date(today);
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const dayAfterTomorrow = new Date(today);
-      dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
-
-      const now = Date.now();
-      const dummyMatches: Match[] = [
-        {
-          id: 'match1',
-          createdBy: 'player1',
-          createdAt: now,
-          lastModifiedAt: now,
-          lastModifiedBy: 'player1',
-          scheduledDate: twoDaysAgo.toISOString(),
-          matchType: 'doubles',
-          team1PlayerIds: ['player1', 'player2'],
-          team2PlayerIds: ['player3', 'player4'],
-          team1PlayerNames: ['John Smith', 'Sarah Johnson'],
-          team2PlayerNames: ['Mike Williams', 'Emily Davis'],
-          allPlayerIds: ['player1', 'player2', 'player3', 'player4'],
-          location: 'Central Park Courts',
-          status: 'completed',
-          winnerTeam: 1,
-          games: [{ team1Score: 11, team2Score: 7, winnerTeam: 1 }],
-          pointsToWin: 11,
-          numberOfGames: 1
-        },
-        {
-          id: 'match2',
-          createdBy: 'player1',
-          createdAt: now,
-          lastModifiedAt: now,
-          lastModifiedBy: 'player1',
-          scheduledDate: yesterday.toISOString(),
-          matchType: 'singles',
-          team1PlayerIds: ['player1'],
-          team2PlayerIds: ['player3'],
-          team1PlayerNames: ['John Smith'],
-          team2PlayerNames: ['Mike Williams'],
-          allPlayerIds: ['player1', 'player3'],
-          location: 'Community Center',
-          status: 'completed',
-          winnerTeam: 2,
-          games: [{ team1Score: 9, team2Score: 11, winnerTeam: 2 }],
-          pointsToWin: 11,
-          numberOfGames: 1
-        },
-        {
-          id: 'match3',
-          createdBy: 'player2',
-          createdAt: now,
-          lastModifiedAt: now,
-          lastModifiedBy: 'player2',
-          scheduledDate: threeDaysAgo.toISOString(),
-          matchType: 'doubles',
-          team1PlayerIds: ['player2', 'player4'],
-          team2PlayerIds: ['player1', 'player5'],
-          team1PlayerNames: ['Sarah Johnson', 'Emily Davis'],
-          team2PlayerNames: ['John Smith', 'Alex Rodriguez'],
-          allPlayerIds: ['player2', 'player4', 'player1', 'player5'],
-          location: 'Riverside Courts',
-          status: 'completed',
-          winnerTeam: 2,
-          games: [{ team1Score: 8, team2Score: 11, winnerTeam: 2 }],
-          pointsToWin: 11,
-          numberOfGames: 1
-        },
-        {
-          id: 'match4',
-          createdBy: 'player1',
-          createdAt: now,
-          lastModifiedAt: now,
-          lastModifiedBy: 'player1',
-          scheduledDate: today.toISOString(),
-          matchType: 'doubles',
-          team1PlayerIds: ['player1', 'player4'],
-          team2PlayerIds: ['player2', 'player3'],
-          team1PlayerNames: ['John Smith', 'Emily Davis'],
-          team2PlayerNames: ['Sarah Johnson', 'Mike Williams'],
-          allPlayerIds: ['player1', 'player2', 'player3', 'player4'],
-          location: 'Downtown Recreation Center',
-          status: 'scheduled',
-          winnerTeam: null,
-          games: [],
-          pointsToWin: 11,
-          numberOfGames: 3
-        },
-        {
-          id: 'match5',
-          createdBy: 'player1',
-          createdAt: now,
-          lastModifiedAt: now,
-          lastModifiedBy: 'player1',
-          scheduledDate: tomorrow.toISOString(),
-          matchType: 'singles',
-          team1PlayerIds: ['player1'],
-          team2PlayerIds: ['player3'],
-          team1PlayerNames: ['John Smith'],
-          team2PlayerNames: ['Mike Williams'],
-          allPlayerIds: ['player1', 'player3'],
-          location: 'Tennis Club',
-          status: 'scheduled',
-          winnerTeam: null,
-          games: [],
-          pointsToWin: 11,
-          numberOfGames: 3
-        },
-        {
-          id: 'match6',
-          createdBy: 'player2',
-          createdAt: now,
-          lastModifiedAt: now,
-          lastModifiedBy: 'player2',
-          scheduledDate: dayAfterTomorrow.toISOString(),
-          matchType: 'doubles',
-          team1PlayerIds: ['player2', 'player5'],
-          team2PlayerIds: ['player3', 'player4'],
-          team1PlayerNames: ['Sarah Johnson', 'Alex Rodriguez'],
-          team2PlayerNames: ['Mike Williams', 'Emily Davis'],
-          allPlayerIds: ['player2', 'player5', 'player3', 'player4'],
-          location: 'Sports Complex',
-          status: 'scheduled',
-          winnerTeam: null,
-          games: [],
-          pointsToWin: 11,
-          numberOfGames: 3
-        }
-      ];
-
-      // Set the current user to the first player
-      const currentUserData = dummyPlayers[0];
-
-      // Save all the dummy data
-      setPlayers(dummyPlayers);
-      setMatches(dummyMatches);
-      setCurrentUser(currentUserData);
-
-      // Save to AsyncStorage
-      await AsyncStorage.setItem('players', JSON.stringify(dummyPlayers));
-      await AsyncStorage.setItem('matches', JSON.stringify(dummyMatches));
-      await AsyncStorage.setItem('currentUser', JSON.stringify(currentUserData));
-
-      return true;
-    } catch (error) {
-      console.error('Error inserting dummy data:', error);
       return false;
     }
   };
@@ -1103,6 +909,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await signOut();
       setCurrentUser(null);
       setNotifications([]);
+      await AsyncStorage.removeItem('currentUser');
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -1185,13 +992,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Mark all notifications as read
+  // Mark all notifications as read (skip player_invite — those need explicit accept/decline)
   const markAllNotificationsRead = async () => {
     const now = Date.now();
-    const unread = notifications.filter(n => n.status !== 'read');
+    const toMark = notifications.filter(
+      n => n.status === 'sent'
+        && n.recipientId === currentUser?.id
+        && n.type !== 'player_invite'
+    );
     const successIds = new Set<string>();
 
-    for (const n of unread) {
+    for (const n of toMark) {
       try {
         await updateNotificationDocument(n.id, { status: 'read', readAt: now });
         successIds.add(n.id);
@@ -1202,7 +1013,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (successIds.size > 0) {
       setNotifications(prev =>
-        prev.map(n => successIds.has(n.id) ? { ...n, status: 'read', readAt: now } : n)
+        prev.map(n => successIds.has(n.id) ? { ...n, status: 'read' as const, readAt: now } : n)
       );
     }
   };
@@ -1212,7 +1023,126 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return notifications.filter(n => n.matchId === matchId);
   };
 
-  const unreadNotificationCount = notifications.filter(n => n.status !== 'read').length;
+  // Send a player_invite notification to an existing user
+  const sendPlayerInvite = async (recipientId: string): Promise<boolean> => {
+    if (!currentUser) return false;
+    if (recipientId === currentUser.id) return false;
+    if (currentUser.connections?.includes(recipientId)) return false;
+
+    // Check for existing pending invite in either direction
+    const existingRequest = notifications.find(n =>
+      n.type === 'player_invite' &&
+      n.status === 'sent' &&
+      ((n.senderId === currentUser.id && n.recipientId === recipientId) ||
+       (n.senderId === recipientId && n.recipientId === currentUser.id))
+    );
+    if (existingRequest) return false;
+
+    const notification: MatchNotification = {
+      id: `player_invite_${currentUser.id}_${recipientId}`,
+      type: 'player_invite',
+      status: 'sent',
+      recipientId,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderProfilePic: currentUser.profilePic,
+      message: `${currentUser.name} wants to add you as a player on PickleGo!`,
+      createdAt: Date.now(),
+    };
+
+    try {
+      await createNotificationDocument(notification);
+      setNotifications(prev =>
+        [notification, ...prev].sort((a, b) => b.createdAt - a.createdAt)
+      );
+      return true;
+    } catch (error) {
+      console.error('Error sending player invite:', error);
+      return false;
+    }
+  };
+
+  // Respond to a player invite: accept adds both as connections, decline updates status
+  const respondToPlayerInvite = async (notificationId: string, accept: boolean): Promise<void> => {
+    if (!currentUser) return;
+
+    const notification = notifications.find(n => n.id === notificationId);
+    if (!notification || notification.type !== 'player_invite') return;
+
+    const now = Date.now();
+
+    if (accept) {
+      const senderId = notification.senderId;
+
+      // Add each other as connections atomically
+      await addConnectionsBatch(currentUser.id, senderId);
+
+      // Update the player invite notification to accepted
+      await updateNotificationDocument(notificationId, {
+        status: 'accepted',
+        respondedAt: now,
+      });
+
+      // Create an invite_accepted notification for the sender
+      const acceptNotification: MatchNotification = {
+        id: `invite_accepted_${currentUser.id}_${senderId}_${now}`,
+        type: 'invite_accepted',
+        status: 'sent',
+        recipientId: senderId,
+        senderId: currentUser.id,
+        senderName: currentUser.name,
+        senderProfilePic: currentUser.profilePic,
+        message: `${currentUser.name} accepted your player invite!`,
+        createdAt: now,
+      };
+      await createNotificationDocument(acceptNotification);
+
+      // Update local notification state
+      setNotifications(prev =>
+        [acceptNotification, ...prev.map(n =>
+          n.id === notificationId ? { ...n, status: 'accepted' as const, respondedAt: now } : n
+        )].sort((a, b) => b.createdAt - a.createdAt)
+      );
+
+      // Update local player connections arrays
+      setCurrentUser(prev => prev ? {
+        ...prev,
+        connections: [...(prev.connections || []), senderId],
+      } : prev);
+
+      setPlayers(prev => prev.map(p => {
+        if (p.id === currentUser.id) return { ...p, connections: [...(p.connections || []), senderId] };
+        if (p.id === senderId) return { ...p, connections: [...(p.connections || []), currentUser.id] };
+        return p;
+      }));
+
+      // Ensure the sender's player doc is in local state
+      const senderInLocal = players.find(p => p.id === senderId);
+      if (!senderInLocal) {
+        const senderDoc = await getPlayerDocument(senderId);
+        if (senderDoc) {
+          setPlayers(prev => [...prev, senderDoc]);
+        }
+      }
+    } else {
+      // Decline: just update the notification status
+      await updateNotificationDocument(notificationId, {
+        status: 'declined',
+        respondedAt: now,
+      });
+
+      setNotifications(prev =>
+        prev.map(n =>
+          n.id === notificationId ? { ...n, status: 'declined' as const, respondedAt: now } : n
+        )
+      );
+    }
+  };
+
+  // Only count notifications where the current user is the recipient and status is 'sent'
+  const unreadNotificationCount = notifications.filter(
+    n => n.status === 'sent' && n.recipientId === currentUser?.id
+  ).length;
 
   // Context value with all the methods and data
   const contextValue: DataContextType = {
@@ -1220,6 +1150,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     matches,
     deletedPlayers,
     currentUser,
+    authLoading,
     notifications,
     unreadNotificationCount,
     addPlayer,
@@ -1230,12 +1161,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updatePlayer,
     getPlayerName,
     setCurrentUser,
-    resetAllData,
     invitePlayer,
     claimInvitation,
     getInvitedPlayers,
     isEmailAvailable,
-    insertDummyData,
     signIn,
     signInWithSocial,
     completeSocialSignUp,
@@ -1244,6 +1173,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     markNotificationRead,
     markAllNotificationsRead,
     getNotificationsForMatch,
+    sendPlayerInvite,
+    respondToPlayerInvite,
+    refreshMatches,
+    refreshNotifications,
   };
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;

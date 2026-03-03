@@ -54,6 +54,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "@react-native-firebase/app",
+    "@react-native-firebase/messaging",
     "expo-font",
     [
       "expo-location",
@@ -71,13 +72,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "expo-apple-authentication",
-    [
-      "@react-native-google-signin/google-signin",
-      {
-        iosUrlScheme:
-          process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ?? "",
-      },
-    ],
+    ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
+      ? [[
+          "@react-native-google-signin/google-signin",
+          { iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME },
+        ]]
+      : [["@react-native-google-signin/google-signin"]]),
     "./plugins/withNonModularHeaders",
   ],
   extra: {
