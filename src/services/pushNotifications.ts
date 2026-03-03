@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import messaging from '@react-native-firebase/messaging';
-import { addFcmToken, removeFcmToken } from '../config/firebase';
+import Constants from 'expo-constants';
+import { addPushToken, removePushToken } from '../config/firebase';
 
 // Configure how notifications appear when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -20,21 +20,26 @@ export async function requestPushPermissions(): Promise<boolean> {
     return false;
   }
 
-  const authStatus = await messaging().requestPermission();
-  return (
-    authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-    authStatus === messaging.AuthorizationStatus.PROVISIONAL
-  );
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  if (existingStatus === 'granted') return true;
+
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status === 'granted';
 }
 
 export async function getDevicePushToken(): Promise<string | null> {
   if (!Device.isDevice) return null;
 
   try {
-    const token = await messaging().getToken();
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+      console.error('Missing EAS project ID for push token');
+      return null;
+    }
+    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
     return token;
   } catch (error) {
-    console.error('Error getting FCM token:', error);
+    console.error('Error getting Expo push token:', error);
     return null;
   }
 }
@@ -47,7 +52,7 @@ export async function registerPushToken(playerId: string): Promise<string | null
   if (!token) return null;
 
   try {
-    await addFcmToken(playerId, token);
+    await addPushToken(playerId, token);
     return token;
   } catch (error) {
     console.error('Error storing push token:', error);
@@ -55,12 +60,12 @@ export async function registerPushToken(playerId: string): Promise<string | null
   }
 }
 
-export async function removePushToken(playerId: string): Promise<void> {
+export async function unregisterPushToken(playerId: string): Promise<void> {
   const token = await getDevicePushToken();
   if (!token) return;
 
   try {
-    await removeFcmToken(playerId, token);
+    await removePushToken(playerId, token);
   } catch (error) {
     console.error('Error removing push token:', error);
   }

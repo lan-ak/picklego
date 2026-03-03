@@ -5,9 +5,10 @@ const firestore_1 = require("firebase-functions/v2/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const app_1 = require("firebase-admin/app");
 const firestore_2 = require("firebase-admin/firestore");
-const messaging_1 = require("firebase-admin/messaging");
+const expo_server_sdk_1 = require("expo-server-sdk");
 (0, app_1.initializeApp)();
 const db = (0, firestore_2.getFirestore)();
+const expo = new expo_server_sdk_1.default();
 exports.sendPushOnNotification = (0, firestore_1.onDocumentCreated)('notifications/{notificationId}', async (event) => {
     const snapshot = event.data;
     if (!snapshot) {
@@ -25,9 +26,9 @@ exports.sendPushOnNotification = (0, firestore_1.onDocumentCreated)('notificatio
         return;
     }
     const recipient = recipientDoc.data();
-    const tokens = recipient.fcmTokens;
-    if (!tokens || tokens.length === 0) {
-        console.log(`No FCM tokens for recipient ${notification.recipientId}`);
+    const tokens = (recipient.pushTokens ?? []).filter(t => expo_server_sdk_1.default.isExpoPushToken(t));
+    if (tokens.length === 0) {
+        console.log(`No push tokens for recipient ${notification.recipientId}`);
         return;
     }
     let title;
@@ -50,52 +51,44 @@ exports.sendPushOnNotification = (0, firestore_1.onDocumentCreated)('notificatio
         title = 'New Player Invite';
         body = notification.message || `${notification.senderName} wants to add you as a player on PickleGo!`;
     }
-    const message = {
-        tokens,
-        notification: {
-            title,
-            body,
-        },
+    const messages = tokens.map(token => ({
+        to: token,
+        sound: 'default',
+        title,
+        body,
+        channelId: 'match-invites',
         data: {
             ...(notification.matchId ? { matchId: notification.matchId } : {}),
             screen: notification.type === 'match_invite' ? 'MatchDetails' : 'Notifications',
             notificationId: notification.id,
         },
-        android: {
-            notification: {
-                channelId: 'match-invites',
-            },
-        },
-        apns: {
-            payload: {
-                aps: {
-                    alert: { title, body },
-                    sound: 'default',
-                },
-            },
-        },
-    };
+    }));
     try {
-        const response = await (0, messaging_1.getMessaging)().sendEachForMulticast(message);
-        console.log(`Push to ${notification.recipientId}: ` +
-            `${response.successCount} success, ${response.failureCount} failure`);
-        if (response.failureCount > 0) {
-            const staleTokens = [];
-            response.responses.forEach((resp, index) => {
-                if (!resp.success && resp.error) {
-                    const errorCode = resp.error.code;
-                    if (errorCode === 'messaging/registration-token-not-registered' ||
-                        errorCode === 'messaging/invalid-registration-token') {
-                        staleTokens.push(tokens[index]);
+        const chunks = expo.chunkPushNotifications(messages);
+        let successCount = 0;
+        let failureCount = 0;
+        const staleTokens = [];
+        for (const chunk of chunks) {
+            const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+            ticketChunk.forEach((ticket, index) => {
+                if (ticket.status === 'ok') {
+                    successCount++;
+                }
+                else {
+                    failureCount++;
+                    if (ticket.details?.error === 'DeviceNotRegistered') {
+                        staleTokens.push(chunk[index].to);
                     }
                 }
             });
-            if (staleTokens.length > 0) {
-                console.log(`Removing ${staleTokens.length} stale tokens for ${notification.recipientId}`);
-                await db.collection('players').doc(notification.recipientId).update({
-                    fcmTokens: firestore_2.FieldValue.arrayRemove(...staleTokens),
-                });
-            }
+        }
+        console.log(`Push to ${notification.recipientId}: ` +
+            `${successCount} success, ${failureCount} failure`);
+        if (staleTokens.length > 0) {
+            console.log(`Removing ${staleTokens.length} stale tokens for ${notification.recipientId}`);
+            await db.collection('players').doc(notification.recipientId).update({
+                pushTokens: firestore_2.FieldValue.arrayRemove(...staleTokens),
+            });
         }
     }
     catch (error) {

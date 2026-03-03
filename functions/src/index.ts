@@ -2,11 +2,12 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { getMessaging } from 'firebase-admin/messaging';
+import Expo, { ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 
 initializeApp();
 
 const db = getFirestore();
+const expo = new Expo();
 
 interface MatchNotification {
   id: string;
@@ -28,7 +29,7 @@ interface MatchNotification {
 interface PlayerDoc {
   id: string;
   name: string;
-  fcmTokens?: string[];
+  pushTokens?: string[];
 }
 
 export const sendPushOnNotification = onDocumentCreated(
@@ -54,10 +55,10 @@ export const sendPushOnNotification = onDocumentCreated(
     }
 
     const recipient = recipientDoc.data() as PlayerDoc;
-    const tokens = recipient.fcmTokens;
+    const tokens = (recipient.pushTokens ?? []).filter(t => Expo.isExpoPushToken(t));
 
-    if (!tokens || tokens.length === 0) {
-      console.log(`No FCM tokens for recipient ${notification.recipientId}`);
+    if (tokens.length === 0) {
+      console.log(`No push tokens for recipient ${notification.recipientId}`);
       return;
     }
 
@@ -82,61 +83,50 @@ export const sendPushOnNotification = onDocumentCreated(
       body = notification.message || `${notification.senderName} wants to add you as a player on PickleGo!`;
     }
 
-    const message = {
-      tokens,
-      notification: {
-        title,
-        body,
-      },
+    const messages: ExpoPushMessage[] = tokens.map(token => ({
+      to: token,
+      sound: 'default' as const,
+      title,
+      body,
+      channelId: 'match-invites',
       data: {
         ...(notification.matchId ? { matchId: notification.matchId } : {}),
         screen: notification.type === 'match_invite' ? 'MatchDetails' : 'Notifications',
         notificationId: notification.id,
       },
-      android: {
-        notification: {
-          channelId: 'match-invites',
-        },
-      },
-      apns: {
-        payload: {
-          aps: {
-            alert: { title, body },
-            sound: 'default',
-          },
-        },
-      },
-    };
+    }));
 
     try {
-      const response = await getMessaging().sendEachForMulticast(message);
+      const chunks = expo.chunkPushNotifications(messages);
+      let successCount = 0;
+      let failureCount = 0;
+      const staleTokens: string[] = [];
 
-      console.log(
-        `Push to ${notification.recipientId}: ` +
-        `${response.successCount} success, ${response.failureCount} failure`
-      );
+      for (const chunk of chunks) {
+        const ticketChunk: ExpoPushTicket[] = await expo.sendPushNotificationsAsync(chunk);
 
-      if (response.failureCount > 0) {
-        const staleTokens: string[] = [];
-
-        response.responses.forEach((resp, index) => {
-          if (!resp.success && resp.error) {
-            const errorCode = resp.error.code;
-            if (
-              errorCode === 'messaging/registration-token-not-registered' ||
-              errorCode === 'messaging/invalid-registration-token'
-            ) {
-              staleTokens.push(tokens[index]);
+        ticketChunk.forEach((ticket, index) => {
+          if (ticket.status === 'ok') {
+            successCount++;
+          } else {
+            failureCount++;
+            if (ticket.details?.error === 'DeviceNotRegistered') {
+              staleTokens.push(chunk[index].to as string);
             }
           }
         });
+      }
 
-        if (staleTokens.length > 0) {
-          console.log(`Removing ${staleTokens.length} stale tokens for ${notification.recipientId}`);
-          await db.collection('players').doc(notification.recipientId).update({
-            fcmTokens: FieldValue.arrayRemove(...staleTokens),
-          });
-        }
+      console.log(
+        `Push to ${notification.recipientId}: ` +
+        `${successCount} success, ${failureCount} failure`
+      );
+
+      if (staleTokens.length > 0) {
+        console.log(`Removing ${staleTokens.length} stale tokens for ${notification.recipientId}`);
+        await db.collection('players').doc(notification.recipientId).update({
+          pushTokens: FieldValue.arrayRemove(...staleTokens),
+        });
       }
     } catch (error) {
       console.error('Error sending push notification:', error);

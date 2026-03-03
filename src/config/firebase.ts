@@ -386,24 +386,24 @@ export const signInWithApple = async () => {
   }
 };
 
-// FCM token management
-export const addFcmToken = async (playerId: string, token: string) => {
+// Push token management
+export const addPushToken = async (playerId: string, token: string) => {
   try {
     await updateDoc(doc(db, 'players', playerId), {
-      fcmTokens: arrayUnion(token),
+      pushTokens: arrayUnion(token),
     });
   } catch (error: any) {
-    throw new Error('Failed to add FCM token: ' + error.message);
+    throw new Error('Failed to add push token: ' + error.message);
   }
 };
 
-export const removeFcmToken = async (playerId: string, token: string) => {
+export const removePushToken = async (playerId: string, token: string) => {
   try {
     await updateDoc(doc(db, 'players', playerId), {
-      fcmTokens: arrayRemove(token),
+      pushTokens: arrayRemove(token),
     });
   } catch (error: any) {
-    throw new Error('Failed to remove FCM token: ' + error.message);
+    throw new Error('Failed to remove push token: ' + error.message);
   }
 };
 

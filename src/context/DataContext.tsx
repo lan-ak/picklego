@@ -28,7 +28,7 @@ import {
   removeConnection,
   callClaimPlaceholderProfile,
 } from '../config/firebase';
-import { registerPushToken, removePushToken } from '../services/pushNotifications';
+import { registerPushToken, unregisterPushToken } from '../services/pushNotifications';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -904,7 +904,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOutUser = async () => {
     try {
       if (currentUser) {
-        await removePushToken(currentUser.id);
+        await unregisterPushToken(currentUser.id);
       }
       await signOut();
       setCurrentUser(null);

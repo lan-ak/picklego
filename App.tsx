@@ -6,7 +6,6 @@ import { NavigationContainer } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
-import messaging from '@react-native-firebase/messaging';
 import { Fredoka_400Regular, Fredoka_500Medium, Fredoka_600SemiBold, Fredoka_700Bold } from '@expo-google-fonts/fredoka';
 import Navigation from './src/navigation';
 import { DataProvider } from './src/context/DataContext';
@@ -67,24 +66,6 @@ export default function App() {
       handleNotificationResponse
     );
     return () => subscription.remove();
-  }, []);
-
-  // Handle FCM messages when app is in the foreground
-  useEffect(() => {
-    const unsubscribe = messaging().onMessage(async (remoteMessage) => {
-      const { notification, data } = remoteMessage;
-      if (notification) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: notification.title ?? '',
-            body: notification.body ?? '',
-            data: data as Record<string, string>,
-          },
-          trigger: null,
-        });
-      }
-    });
-    return unsubscribe;
   }, []);
 
   const onLayoutRootView = useCallback(async () => {

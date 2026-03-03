@@ -27,6 +27,7 @@ import { MainTabParamList, RootStackParamList, Coordinates, Player } from '../ty
 import Layout from '../components/Layout';
 import LocationPicker from '../components/LocationPicker';
 import { useVenues } from '../hooks/useVenues';
+import { shuffleTeams } from '../utils/shuffleTeams';
 
 type AddMatchScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'AddMatch'>,
@@ -43,30 +44,49 @@ const AddMatchScreen = () => {
   const isEditing = route.params && 'isEditing' in route.params ? route.params.isEditing : false;
   const matchId = route.params && 'matchId' in route.params ? route.params.matchId : undefined;
   const existingMatch = matchId ? matches.find(m => m.id === matchId) : null;
+  const rematchData = route.params && 'rematch' in route.params
+    ? (route.params as NonNullable<RootStackParamList['AddMatch']>).rematch
+    : undefined;
 
   const [date, setDate] = useState(existingMatch ? new Date(existingMatch.scheduledDate) : new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [location, setLocation] = useState(existingMatch?.location || '');
+  const [location, setLocation] = useState(rematchData?.location || existingMatch?.location || '');
   const [locationCoords, setLocationCoords] = useState<Coordinates | undefined>(
-    existingMatch?.locationCoords
+    rematchData?.locationCoords || existingMatch?.locationCoords
   );
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const { venues: savedVenues, saveVenue } = useVenues(currentUser?.id);
   const [team1Players, setTeam1Players] = useState<string[]>(
-    existingMatch ? existingMatch.team1PlayerIds : (currentUser ? [currentUser.id] : [])
+    rematchData ? rematchData.team1PlayerIds :
+    existingMatch ? existingMatch.team1PlayerIds :
+    (currentUser ? [currentUser.id] : [])
   );
   const [team2Players, setTeam2Players] = useState<string[]>(
-    existingMatch ? existingMatch.team2PlayerIds : []
+    rematchData ? rematchData.team2PlayerIds :
+    existingMatch ? existingMatch.team2PlayerIds :
+    []
   );
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerEmail, setNewPlayerEmail] = useState('');
   const [newPlayerPhone, setNewPlayerPhone] = useState('');
   const [rating, setRating] = useState(3.0);
   const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
-  const [isDoubles, setIsDoubles] = useState(existingMatch ? existingMatch.matchType === 'doubles' : true);
-  const [pointsToWin, setPointsToWin] = useState(existingMatch ? existingMatch.pointsToWin.toString() : '11');
-  const [numberOfGames, setNumberOfGames] = useState(existingMatch ? existingMatch.numberOfGames.toString() : '3');
+  const [isDoubles, setIsDoubles] = useState(
+    rematchData ? rematchData.isDoubles :
+    existingMatch ? existingMatch.matchType === 'doubles' :
+    true
+  );
+  const [pointsToWin, setPointsToWin] = useState(
+    rematchData ? rematchData.pointsToWin.toString() :
+    existingMatch ? existingMatch.pointsToWin.toString() :
+    '11'
+  );
+  const [numberOfGames, setNumberOfGames] = useState(
+    rematchData ? rematchData.numberOfGames.toString() :
+    existingMatch ? existingMatch.numberOfGames.toString() :
+    '3'
+  );
   const [sendInvite, setSendInvite] = useState(false);
   const [showPlayerDropdown, setShowPlayerDropdown] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<1 | 2 | null>(null);
@@ -158,6 +178,16 @@ const AddMatchScreen = () => {
     // Close the dropdown after selection
     setShowPlayerDropdown(false);
     setSelectedTeam(null);
+  };
+
+  const canShuffle = isDoubles && team1Players.length === 2 && team2Players.length === 2;
+
+  const handleShuffleTeams = () => {
+    const allPlayers = [...team1Players, ...team2Players];
+    if (allPlayers.length !== 4 || !currentUser) return;
+    const { team1, team2 } = shuffleTeams(allPlayers, currentUser.id);
+    setTeam1Players(team1);
+    setTeam2Players(team2);
   };
 
   const openPlayerDropdown = (teamNumber: 1 | 2) => {
@@ -676,6 +706,20 @@ const AddMatchScreen = () => {
         <Icon name="users" size={24} color={colors.primary} />
         <Text style={styles.sectionTitle}>Select Players</Text>
       </View>
+
+      {canShuffle && (
+        <TouchableOpacity
+          style={styles.shuffleButton}
+          onPress={handleShuffleTeams}
+          activeOpacity={0.7}
+          accessibilityLabel="Shuffle Teams"
+          accessibilityRole="button"
+          accessibilityHint="Randomly reassign the 4 players into 2 teams"
+        >
+          <Icon name="shuffle" size={18} color={colors.secondary} />
+          <Text style={styles.shuffleButtonText}>Shuffle Teams</Text>
+        </TouchableOpacity>
+      )}
 
       <View style={styles.teamContainer}>
         <Text style={styles.teamLabel}>{getTeamLabel(1)}</Text>
@@ -1494,6 +1538,25 @@ const styles = StyleSheet.create({
   },
   picker: {
     height: 216,
+  },
+  shuffleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.secondaryOverlay,
+    borderWidth: 1,
+    borderColor: colors.secondary,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    alignSelf: 'center',
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  shuffleButtonText: {
+    ...typography.button,
+    color: colors.secondary,
+    fontSize: 14,
   },
 });
 

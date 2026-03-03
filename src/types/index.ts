@@ -30,7 +30,7 @@ export interface Player {
   pendingClaim?: boolean;
   isInvited?: boolean;
   authProvider?: 'email' | 'google' | 'apple';
-  fcmTokens?: string[];
+  pushTokens?: string[];
   connections?: string[];
 }
 
@@ -176,7 +176,19 @@ export type MainTabParamList = {
 
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList>;
-  AddMatch: { matchId?: string; isEditing?: boolean } | undefined;
+  AddMatch: {
+    matchId?: string;
+    isEditing?: boolean;
+    rematch?: {
+      team1PlayerIds: string[];
+      team2PlayerIds: string[];
+      pointsToWin: number;
+      numberOfGames: number;
+      location?: string;
+      locationCoords?: Coordinates;
+      isDoubles: boolean;
+    };
+  } | undefined;
   MatchDetails: { matchId: string };
   CompleteMatch: { matchId: string };
   PlayerStats: { playerId: string };

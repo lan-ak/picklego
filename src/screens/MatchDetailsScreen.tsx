@@ -12,6 +12,7 @@ import { format } from 'date-fns';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import PicklePete from '../components/PicklePete';
+import { shuffleTeams } from '../utils/shuffleTeams';
 
 type MatchDetailsRouteProp = RouteProp<RootStackParamList, 'MatchDetails'>;
 type MatchDetailsNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -56,6 +57,51 @@ const MatchDetailsScreen = () => {
             navigation.goBack();
           }
         }
+      ]
+    );
+  };
+
+  const handleRematch = () => {
+    if (match.matchType !== 'doubles' || !currentUser) return;
+
+    Alert.alert(
+      'Rematch',
+      'How would you like to set up the rematch?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Same Teams',
+          onPress: () => {
+            navigation.navigate('AddMatch', {
+              rematch: {
+                team1PlayerIds: match.team1PlayerIds,
+                team2PlayerIds: match.team2PlayerIds,
+                pointsToWin: match.pointsToWin,
+                numberOfGames: match.numberOfGames,
+                location: match.location,
+                locationCoords: match.locationCoords,
+                isDoubles: true,
+              },
+            });
+          },
+        },
+        {
+          text: 'Random Teams',
+          onPress: () => {
+            const { team1, team2 } = shuffleTeams(match.allPlayerIds, currentUser.id);
+            navigation.navigate('AddMatch', {
+              rematch: {
+                team1PlayerIds: team1,
+                team2PlayerIds: team2,
+                pointsToWin: match.pointsToWin,
+                numberOfGames: match.numberOfGames,
+                location: match.location,
+                locationCoords: match.locationCoords,
+                isDoubles: true,
+              },
+            });
+          },
+        },
       ]
     );
   };
@@ -429,9 +475,21 @@ const MatchDetailsScreen = () => {
           </View>
         )}
 
-        {/* Remove button for completed matches */}
+        {/* Rematch and Remove buttons for completed matches */}
         {match.status === 'completed' && isUserInMatch() && (
           <View style={styles.footer}>
+            {match.matchType === 'doubles' && (
+              <TouchableOpacity
+                style={[styles.button, styles.rematchButton]}
+                onPress={handleRematch}
+                accessibilityLabel="Rematch"
+                accessibilityRole="button"
+                accessibilityHint="Create a new match with the same players"
+              >
+                <Icon name="repeat" size={20} color={colors.white} />
+                <Text style={styles.buttonText}>Rematch</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={[styles.button, styles.deleteButton]}
               onPress={handleDeleteMatch}
@@ -646,6 +704,9 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     backgroundColor: colors.error,
+  },
+  rematchButton: {
+    backgroundColor: colors.secondary,
   },
   footer: {
     padding: spacing.lg,

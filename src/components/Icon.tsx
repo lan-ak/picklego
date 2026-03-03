@@ -49,6 +49,8 @@ import {
   Map,
   Crosshair,
   Heart,
+  Shuffle,
+  Repeat,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -101,6 +103,8 @@ const ICON_MAP = {
   'map': Map,
   'crosshair': Crosshair,
   'heart': Heart,
+  'shuffle': Shuffle,
+  'repeat': Repeat,
 } as const;
 
 export type IconName = keyof typeof ICON_MAP;
