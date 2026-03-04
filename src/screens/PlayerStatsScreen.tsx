@@ -4,7 +4,8 @@ import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
 import Layout from '../components/Layout';
 import { Match, Game } from '../types';
-import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { colors, typography, fontFamily, spacing, borderRadius, shadows, layout } from '../theme';
+import Card from '../components/Card';
 import PicklePete from '../components/PicklePete';
 
 type PlayerStats = {
@@ -626,7 +627,7 @@ const MyStatsScreen = () => {
 
   // Render the opponent analytics section
   const renderOpponentAnalytics = () => (
-    <View style={styles.section}>
+    <Card style={styles.section}>
       <View style={styles.sectionHeader}>
         <Icon name="users" size={24} color={colors.primary} />
         <Text style={styles.sectionTitle}>Opponent Analysis</Text>
@@ -652,14 +653,12 @@ const MyStatsScreen = () => {
               <Text style={styles.opponentRecord}>
                 {opponent.wins}-{opponent.losses}
               </Text>
-              <View style={[
-                styles.winRateBadge,
+              <Text style={[
+                styles.opponentWinRate,
                 opponent.winPercentage >= 50 ? styles.goodWinRate : styles.badWinRate
               ]}>
-                <Text style={styles.winRateText}>
-                  {opponent.winPercentage.toFixed(0)}%
-                </Text>
-              </View>
+                {opponent.winPercentage.toFixed(0)}%
+              </Text>
             </View>
           ))}
 
@@ -670,7 +669,7 @@ const MyStatsScreen = () => {
           )}
         </View>
       )}
-    </View>
+    </Card>
   );
 
   // Render partner stats section
@@ -679,7 +678,7 @@ const MyStatsScreen = () => {
     if (statsMode === 'singles') return null;
 
     return (
-      <View style={styles.section}>
+      <Card style={styles.section}>
         <View style={styles.sectionHeader}>
           <Icon name="users" size={24} color={colors.primary} />
           <Text style={styles.sectionTitle}>Doubles Partners</Text>
@@ -723,7 +722,7 @@ const MyStatsScreen = () => {
             )}
           </View>
         )}
-      </View>
+      </Card>
     );
   };
 
@@ -734,17 +733,17 @@ const MyStatsScreen = () => {
         {renderTimeFilters()}
 
         {winStreak[statsMode] > 3 && (
-          <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
+          <View style={styles.picklePeteContainer}>
             <PicklePete pose="win" message={`${winStreak[statsMode]} win streak! You're on fire!`} />
           </View>
         )}
         {lossStreak[statsMode] > 3 && (
-          <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
+          <View style={styles.picklePeteContainer}>
             <PicklePete pose="loss" size="sm" message="Keep your head up, you'll bounce back!" />
           </View>
         )}
 
-        <View style={styles.section}>
+        <Card style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="bar-chart" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>
@@ -754,12 +753,12 @@ const MyStatsScreen = () => {
           </View>
 
           {renderStatsCard()}
-        </View>
+        </Card>
 
         {renderOpponentAnalytics()}
         {renderPartnerStats()}
 
-        <View style={styles.section}>
+        <Card style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="trending-up" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Performance Summary</Text>
@@ -774,15 +773,15 @@ const MyStatsScreen = () => {
           ) : (
             <View style={styles.performanceSummary}>
               <View style={styles.streakContainer}>
-                <View style={styles.streakCard}>
+                <Card style={styles.streakCard}>
                   <View style={styles.streakIconBackground}>
                     <Icon name="flame" size={28} color={colors.action} />
                   </View>
                   <Text style={styles.streakValue}>{winStreak[statsMode]}</Text>
                   <Text style={styles.streakLabel}>CURRENT WIN STREAK</Text>
-                </View>
+                </Card>
 
-                <View style={styles.streakCard}>
+                <Card style={styles.streakCard}>
                   <View style={styles.streakIconBackground}>
                     <Icon name="clock" size={28} color={colors.loss} />
                   </View>
@@ -796,20 +795,20 @@ const MyStatsScreen = () => {
                       ? 'MATCHES SINCE WIN'
                       : 'ON A WINNING STREAK!'}
                   </Text>
-                </View>
+                </Card>
               </View>
 
-              <View style={styles.winRateBadge}>
-                <Icon name="bar-chart-2" size={18} color={colors.primary} style={styles.winRateIcon} />
-                <Text style={styles.winRateText}>
+              <View style={styles.performanceBadge}>
+                <Icon name="bar-chart-2" size={18} color={colors.primary} style={styles.performanceBadgeIcon} />
+                <Text style={styles.performanceBadgeText}>
                   WIN RATE: {extendedStats[currentUser.id][statsMode].winPercentage.toFixed(1)}%
                 </Text>
               </View>
             </View>
           )}
-        </View>
+        </Card>
 
-        <View style={styles.section}>
+        <Card style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="list" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Match History</Text>
@@ -861,7 +860,7 @@ const MyStatsScreen = () => {
               ))}
             </View>
           )}
-        </View>
+        </Card>
       </ScrollView>
     </Layout>
   );
@@ -872,7 +871,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: spacing.lg,
+    paddingBottom: layout.screenPadding,
   },
   tabContainer: {
     backgroundColor: colors.white,
@@ -880,13 +879,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   tabsScrollContent: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.screenPadding,
     paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
   tab: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    marginRight: spacing.sm,
     borderRadius: borderRadius.xl,
     backgroundColor: colors.gray100,
   },
@@ -904,15 +903,8 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   section: {
-    backgroundColor: colors.white,
-    margin: spacing.lg,
-    marginBottom: spacing.xl,
-    padding: spacing.xl,
-    borderRadius: borderRadius.lg,
-    ...shadows.md,
-    borderLeftWidth: 1,
-    borderTopWidth: 1,
-    borderColor: colors.surface,
+    margin: layout.screenPadding,
+    marginBottom: layout.sectionSpacing,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -928,8 +920,7 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   sectionSubtitle: {
-    ...typography.bodyLarge,
-    fontWeight: '600',
+    ...typography.button,
     color: colors.primary,
     marginVertical: spacing.md,
   },
@@ -955,8 +946,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   statLabel: {
-    ...typography.bodySmall,
-    fontWeight: '500',
+    ...typography.label,
     color: colors.gray500,
     marginTop: spacing.xs,
     textAlign: 'center',
@@ -983,7 +973,7 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
-    borderLeftWidth: 3,
+    borderLeftWidth: 2,
     borderLeftColor: colors.primary,
     borderTopWidth: 1,
     borderTopColor: colors.gray200,
@@ -1001,7 +991,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     padding: spacing.lg,
     marginBottom: spacing.lg,
-    borderLeftWidth: 4,
+    borderLeftWidth: 3,
     borderLeftColor: colors.inputBorder,
     ...shadows.sm,
   },
@@ -1012,9 +1002,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   matchDate: {
-    ...typography.label,
-    fontSize: 15,
-    fontWeight: '600',
+    ...typography.button,
     color: colors.primary,
   },
   resultBadge: {
@@ -1034,8 +1022,7 @@ const styles = StyleSheet.create({
   },
   resultText: {
     ...typography.caption,
-    fontSize: 13,
-    fontWeight: '700',
+    fontFamily: fontFamily.fredokaBold,
   },
   winText: {
     color: colors.win,
@@ -1050,15 +1037,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   matchOpponents: {
-    ...typography.bodyLarge,
-    fontWeight: '600',
+    ...typography.button,
     color: colors.neutral,
     flex: 1,
   },
   matchType: {
-    ...typography.bodySmall,
+    ...typography.label,
     color: colors.gray500,
-    fontWeight: '500',
     backgroundColor: colors.surface,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
@@ -1069,20 +1054,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scoreLabel: {
-    ...typography.bodySmall,
+    ...typography.label,
     color: colors.gray500,
-    fontWeight: '500',
     marginRight: spacing.xs,
   },
   matchScore: {
-    ...typography.label,
-    fontSize: 15,
+    ...typography.button,
     color: colors.primary,
-    fontWeight: '600',
   },
   timeFiltersContainer: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.screenPadding,
     paddingBottom: spacing.sm,
     gap: spacing.sm,
   },
@@ -1107,27 +1089,28 @@ const styles = StyleSheet.create({
   },
   opponentListContainer: {
     backgroundColor: colors.gray100,
-    borderRadius: borderRadius.sm,
-    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    padding: spacing.lg,
+    ...shadows.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.primary,
   },
   opponentHeader: {
     flexDirection: 'row',
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-    marginBottom: spacing.xs,
+    borderBottomColor: colors.gray200,
+    marginBottom: spacing.sm,
   },
   opponentNameHeader: {
     flex: 2,
-    ...typography.bodySmall,
+    ...typography.label,
     color: colors.gray500,
-    fontWeight: '500',
   },
   opponentStatHeader: {
     flex: 1,
-    ...typography.bodySmall,
+    ...typography.label,
     color: colors.gray500,
-    fontWeight: '500',
     textAlign: 'center',
   },
   opponentRow: {
@@ -1148,7 +1131,23 @@ const styles = StyleSheet.create({
     color: colors.gray500,
     textAlign: 'center',
   },
-  winRateBadge: {
+  opponentWinRate: {
+    flex: 1,
+    ...typography.label,
+    fontFamily: fontFamily.fredokaBold,
+    color: colors.primary,
+    textAlign: 'center',
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.sm,
+    overflow: 'hidden',
+  },
+  goodWinRate: {
+    backgroundColor: colors.winOverlay,
+  },
+  badWinRate: {
+    backgroundColor: colors.lossOverlay,
+  },
+  performanceBadge: {
     backgroundColor: colors.primaryOverlay,
     borderWidth: 1,
     borderColor: colors.primary,
@@ -1160,19 +1159,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...shadows.sm,
   },
-  goodWinRate: {
-    backgroundColor: colors.winOverlay,
-  },
-  badWinRate: {
-    backgroundColor: colors.lossOverlay,
-  },
-  winRateText: {
-    ...typography.bodyLarge,
-    fontWeight: '700',
+  performanceBadgeText: {
+    ...typography.button,
     color: colors.primary,
     letterSpacing: 0.5,
   },
-  winRateIcon: {
+  performanceBadgeIcon: {
     marginRight: spacing.sm,
   },
   moreOpponentsText: {
@@ -1193,8 +1185,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   spreadValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    ...typography.h3,
     color: colors.neutral,
   },
   spreadLabel: {
@@ -1225,8 +1216,7 @@ const styles = StyleSheet.create({
     color: colors.gray500,
   },
   extremeValue: {
-    ...typography.bodyLarge,
-    fontWeight: 'bold',
+    ...typography.button,
     color: colors.neutral,
     marginTop: spacing.xs,
   },
@@ -1236,6 +1226,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.gray100,
     borderRadius: borderRadius.sm,
+  },
+  picklePeteContainer: {
+    alignItems: 'center' as const,
+    marginBottom: spacing.lg,
   },
   sectionDivider: {
     flexDirection: 'row',
@@ -1251,9 +1245,9 @@ const styles = StyleSheet.create({
   },
   dividerText: {
     ...typography.caption,
+    fontFamily: fontFamily.fredokaBold,
     paddingHorizontal: spacing.md,
     color: colors.primary,
-    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
@@ -1270,29 +1264,24 @@ const styles = StyleSheet.create({
   },
   streakCard: {
     flex: 1,
-    padding: spacing.lg,
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.md,
     alignItems: 'center',
     margin: spacing.sm,
-    ...shadows.md,
   },
   streakIconBackground: {
     marginBottom: spacing.md,
     padding: spacing.md,
     backgroundColor: colors.surface,
-    borderRadius: 18,
+    borderRadius: borderRadius.xl,
     ...shadows.sm,
   },
   streakValue: {
-    ...typography.stats,
-    fontSize: 36,
+    ...typography.scoreDisplay,
     color: colors.primary,
     marginVertical: spacing.xs,
   },
   streakLabel: {
     ...typography.caption,
-    fontWeight: '600',
+    fontFamily: fontFamily.fredokaSemiBold,
     color: colors.gray500,
     textAlign: 'center',
     letterSpacing: 0.7,
@@ -1314,15 +1303,13 @@ const styles = StyleSheet.create({
   },
   partnerNameHeader: {
     flex: 2,
-    ...typography.bodySmall,
+    ...typography.label,
     color: colors.gray500,
-    fontWeight: '600',
   },
   partnerStatHeader: {
     flex: 1,
-    ...typography.bodySmall,
+    ...typography.label,
     color: colors.gray500,
-    fontWeight: '600',
     textAlign: 'center',
   },
   partnerRow: {
@@ -1335,27 +1322,24 @@ const styles = StyleSheet.create({
   partnerName: {
     flex: 2,
     ...typography.bodyLarge,
-    fontWeight: '500',
     color: colors.neutral,
   },
   partnerMatches: {
     flex: 1,
-    ...typography.bodySmall,
-    fontWeight: '600',
+    ...typography.label,
     color: colors.gray500,
     textAlign: 'center',
   },
   partnerRecord: {
     flex: 1,
-    ...typography.bodySmall,
-    fontWeight: '600',
+    ...typography.label,
     color: colors.gray500,
     textAlign: 'center',
   },
   partnerWinRate: {
     flex: 1,
-    ...typography.bodySmall,
-    fontWeight: '700',
+    ...typography.label,
+    fontFamily: fontFamily.fredokaBold,
     color: colors.primary,
     textAlign: 'center',
     paddingHorizontal: spacing.xs,
@@ -1364,11 +1348,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   morePartnersText: {
+    ...typography.label,
     textAlign: 'center',
     color: colors.gray500,
-    ...typography.bodySmall,
     marginTop: spacing.md,
-    fontWeight: '500',
   },
 });
 

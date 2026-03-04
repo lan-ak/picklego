@@ -11,10 +11,10 @@ service cloud.firestore {
         request.auth.uid == playerId ||
         (resource.data.pendingClaim == true && resource.data.email == request.auth.token.email) ||
         (resource.data.pendingClaim == true && resource.data.invitedBy == request.auth.uid) ||
-        // Allow adding/removing only your own UID in another player's connections
+        // Allow adding or removing only your own UID from another player's connections
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['connections', 'updatedAt'])
-         && request.resource.data.connections.toSet().difference(resource.data.connections.toSet()).hasOnly([request.auth.uid])
-         && resource.data.connections.toSet().difference(request.resource.data.connections.toSet()).hasOnly([request.auth.uid]))
+         && request.resource.data.get('connections', []).toSet().difference(resource.data.get('connections', []).toSet()).hasOnly([request.auth.uid])
+         && resource.data.get('connections', []).toSet().difference(request.resource.data.get('connections', []).toSet()).hasOnly([request.auth.uid]))
       );
       allow delete: if request.auth != null && (
         request.auth.uid == playerId ||
@@ -39,11 +39,15 @@ service cloud.firestore {
         request.auth.uid == resource.data.recipientId ||
         request.auth.uid == resource.data.senderId
       );
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.senderId;
-      allow update: if request.auth != null && request.auth.uid == resource.data.recipientId;
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.senderId;
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.senderId ||
+        request.auth.uid == resource.data.recipientId
+      );
       allow delete: if request.auth != null && (
-        request.auth.uid == resource.data.recipientId ||
-        request.auth.uid == resource.data.senderId
+        request.auth.uid == resource.data.senderId ||
+        request.auth.uid == resource.data.recipientId
       );
     }
     match /venues/{venueId} {

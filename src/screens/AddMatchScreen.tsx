@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { isValidEmail } from '../utils/validation';
 import {
   View,
   Text,
@@ -17,6 +18,7 @@ import {
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Icon } from '../components/Icon';
+import { Chip } from '../components/Chip';
 import { useData } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import { colors, typography, spacing, borderRadius, shadows, layout } from '../theme';
@@ -37,7 +39,7 @@ type AddMatchScreenNavigationProp = CompositeNavigationProp<
 const AddMatchScreen = () => {
   const navigation = useNavigation<AddMatchScreenNavigationProp>();
   const route = useRoute();
-  const { players, addMatch, addPlayer, invitePlayer, currentUser, matches, updateMatch, sendMatchNotifications } = useData();
+  const { players, addMatch, addPlayer, invitePlayer, currentUser, matches, updateMatch, sendMatchNotifications, refreshConnectedPlayers } = useData();
   const { showToast } = useToast();
 
   // Check if we're editing an existing match
@@ -184,6 +186,10 @@ const AddMatchScreen = () => {
 
       // Clear params so returning to this tab later doesn't re-apply
       navigation.setParams(undefined as any);
+
+      // Refresh connected players to pick up newly accepted connections
+      // and prune stale placeholders
+      refreshConnectedPlayers();
     }, [])
   );
 
@@ -285,7 +291,6 @@ const AddMatchScreen = () => {
   };
 
   const isShuffled = autoRandomize && isDoubles && team1Players.length === 2 && team2Players.length === 2;
-  const canShuffle = !autoRandomize && isDoubles && team1Players.length === 2 && team2Players.length === 2;
 
   const handleShuffleTeams = () => {
     const allPlayers = [...team1Players, ...team2Players];
@@ -331,12 +336,30 @@ const AddMatchScreen = () => {
   };
 
   const getFilteredPlayers = () => {
-    return players
-      .filter(player =>
+    const selected = new Set([...team1Players, ...team2Players]);
+    const filtered = players.filter(
+      player =>
         player.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !team1Players.includes(player.id) &&
-        !team2Players.includes(player.id)
-      );
+        !selected.has(player.id)
+    );
+
+    // Deduplicate by email: prefer real accounts over placeholders
+    const emailMap = new Map<string, Player>();
+    const noEmailPlayers: Player[] = [];
+
+    for (const player of filtered) {
+      if (player.email) {
+        const key = player.email.trim().toLowerCase();
+        const existing = emailMap.get(key);
+        if (!existing || (existing.pendingClaim && !player.pendingClaim)) {
+          emailMap.set(key, player);
+        }
+      } else {
+        noEmailPlayers.push(player);
+      }
+    }
+
+    return [...emailMap.values(), ...noEmailPlayers];
   };
 
   const handleAddPlayer = async () => {
@@ -350,24 +373,14 @@ const AddMatchScreen = () => {
 
       // If email is provided, use invitePlayer to check for existing users
       if (newPlayerEmail.trim()) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(newPlayerEmail.trim())) {
+        if (!isValidEmail(newPlayerEmail)) {
           Alert.alert('Error', 'Please enter a valid email address');
           return;
         }
 
         const result = await invitePlayer(newPlayerName.trim(), newPlayerEmail.trim());
 
-        if (result.type === 'invited' && result.player) {
-          newPlayer = result.player;
-        } else if (result.type === 'existing_player' && result.player) {
-          // Existing user found — add them to the match team
-          newPlayer = result.player;
-        } else if (result.type === 'already_connected' && result.player) {
-          // Already connected — add them to the match team
-          newPlayer = result.player;
-        } else if (result.type === 'request_pending' && result.player) {
-          // Pending connection invite — still allow adding to match
+        if (result.type !== 'error' && result.player) {
           newPlayer = result.player;
         } else {
           Alert.alert('Error', 'There was an error sending the invitation.');
@@ -835,22 +848,24 @@ const AddMatchScreen = () => {
             ListEmptyComponent={
               <View style={styles.emptyListContainer}>
                 <Text style={styles.emptyListText}>No players found</Text>
-                <TouchableOpacity
-                  style={styles.addNewPlayerButton}
-                  onPress={() => {
-                    setShowPlayerDropdown(false);
-                    setShowAddPlayerModal(true);
-                  }}
-                  accessibilityLabel="Add New Player"
-                  accessibilityRole="button"
-                  accessibilityHint="Opens form to create a new player"
-                >
-                  <Text style={styles.addNewPlayerButtonText}>Add New Player</Text>
-                </TouchableOpacity>
               </View>
             }
             style={styles.playerList}
           />
+
+          <TouchableOpacity
+            style={styles.addNewPlayerFooterButton}
+            onPress={() => {
+              setShowPlayerDropdown(false);
+              setShowAddPlayerModal(true);
+            }}
+            accessibilityLabel="Add New Player"
+            accessibilityRole="button"
+            accessibilityHint="Opens form to create a new player"
+          >
+            <Icon name="user-plus" size={20} color={colors.white} />
+            <Text style={styles.addNewPlayerButtonText}>Add New Player</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -858,39 +873,18 @@ const AddMatchScreen = () => {
 
   const renderManualMode = () => (
     <>
-      {canShuffle && (
-        <TouchableOpacity
-          style={styles.shuffleButton}
-          onPress={handleShuffleTeams}
-          activeOpacity={0.7}
-          accessibilityLabel="Shuffle Teams"
-          accessibilityRole="button"
-          accessibilityHint="Randomly reassign the 4 players into 2 teams"
-        >
-          <Icon name="shuffle" size={18} color={colors.secondary} />
-          <Text style={styles.shuffleButtonText}>Shuffle Teams</Text>
-        </TouchableOpacity>
-      )}
-
       <View style={styles.teamContainer}>
         <Text style={styles.teamLabel}>{getTeamLabel(1)}</Text>
         <View style={styles.selectedPlayersContainer}>
-          {team1Players.map(playerId => {
-            const player = players.find(p => p.id === playerId);
-            return (
-              <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${displayName(playerId)}, Team 1 player`}>
-                <Text style={styles.selectedPlayerName}>{displayName(playerId)}</Text>
-                <TouchableOpacity
-                  onPress={() => togglePlayerTeamSelection(playerId)}
-                  style={styles.removePlayerButton}
-                  accessibilityLabel={`Remove ${displayName(playerId)} from Team 1`}
-                  accessibilityRole="button"
-                >
-                  <Icon name="x-circle" size={18} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
+          {team1Players.map(playerId => (
+            <Chip
+              key={playerId}
+              variant="primary"
+              label={displayName(playerId)}
+              onRemove={() => togglePlayerTeamSelection(playerId)}
+              accessibilityLabel={`${displayName(playerId)}, Team 1 player`}
+            />
+          ))}
 
           {team1Players.length < (isDoubles ? 2 : 1) && (
             <TouchableOpacity
@@ -900,7 +894,7 @@ const AddMatchScreen = () => {
               accessibilityRole="button"
               accessibilityHint="Opens player selection for Team 1"
             >
-              <Icon name="plus-circle" size={20} color={colors.primary} />
+              <Icon name="plus-circle" size={24} color={colors.primary} />
               <Text style={styles.addPlayerButtonText}>Add</Text>
             </TouchableOpacity>
           )}
@@ -912,22 +906,15 @@ const AddMatchScreen = () => {
       <View style={styles.teamContainer}>
         <Text style={styles.teamLabel}>{getTeamLabel(2)}</Text>
         <View style={styles.selectedPlayersContainer}>
-          {team2Players.map(playerId => {
-            const player = players.find(p => p.id === playerId);
-            return (
-              <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${displayName(playerId)}, Team 2 player`}>
-                <Text style={styles.selectedPlayerName}>{displayName(playerId)}</Text>
-                <TouchableOpacity
-                  onPress={() => togglePlayerTeamSelection(playerId)}
-                  style={styles.removePlayerButton}
-                  accessibilityLabel={`Remove ${displayName(playerId)} from Team 2`}
-                  accessibilityRole="button"
-                >
-                  <Icon name="x-circle" size={18} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
+          {team2Players.map(playerId => (
+            <Chip
+              key={playerId}
+              variant="primary"
+              label={displayName(playerId)}
+              onRemove={() => togglePlayerTeamSelection(playerId)}
+              accessibilityLabel={`${displayName(playerId)}, Team 2 player`}
+            />
+          ))}
 
           {team2Players.length < (isDoubles ? 2 : 1) && (
             <TouchableOpacity
@@ -937,7 +924,7 @@ const AddMatchScreen = () => {
               accessibilityRole="button"
               accessibilityHint="Opens player selection for Team 2"
             >
-              <Icon name="plus-circle" size={20} color={colors.primary} />
+              <Icon name="plus-circle" size={24} color={colors.primary} />
               <Text style={styles.addPlayerButtonText}>Add</Text>
             </TouchableOpacity>
           )}
@@ -955,24 +942,15 @@ const AddMatchScreen = () => {
         <View style={styles.teamContainer}>
           <Text style={styles.teamLabel}>Players ({allPlayers.length}/4)</Text>
           <View style={styles.selectedPlayersContainer}>
-            {team1Players.map(playerId => {
-              const player = players.find(p => p.id === playerId);
-              return (
-                <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${displayName(playerId)}, selected player`}>
-                  <Text style={styles.selectedPlayerName}>{displayName(playerId)}</Text>
-                  {!(currentUser && playerId === currentUser.id) && (
-                    <TouchableOpacity
-                      onPress={() => togglePlayerTeamSelection(playerId)}
-                      style={styles.removePlayerButton}
-                      accessibilityLabel={`Remove ${displayName(playerId)}`}
-                      accessibilityRole="button"
-                    >
-                      <Icon name="x-circle" size={18} color={colors.primary} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              );
-            })}
+            {team1Players.map(playerId => (
+              <Chip
+                key={playerId}
+                variant="primary"
+                label={displayName(playerId)}
+                onRemove={!(currentUser && playerId === currentUser.id) ? () => togglePlayerTeamSelection(playerId) : undefined}
+                accessibilityLabel={`${displayName(playerId)}, selected player`}
+              />
+            ))}
 
             {allPlayers.length < 4 && (
               <TouchableOpacity
@@ -982,7 +960,7 @@ const AddMatchScreen = () => {
                 accessibilityRole="button"
                 accessibilityHint="Opens player selection"
               >
-                <Icon name="plus-circle" size={20} color={colors.primary} />
+                <Icon name="plus-circle" size={24} color={colors.primary} />
                 <Text style={styles.addPlayerButtonText}>Add</Text>
               </TouchableOpacity>
             )}
@@ -1009,22 +987,15 @@ const AddMatchScreen = () => {
         <View style={styles.teamContainer}>
           <Text style={styles.teamLabel}>{getTeamLabel(1)}</Text>
           <View style={styles.selectedPlayersContainer}>
-            {team1Players.map(playerId => {
-              const player = players.find(p => p.id === playerId);
-              return (
-                <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${displayName(playerId)}, Team 1 player`}>
-                  <Text style={styles.selectedPlayerName}>{displayName(playerId)}</Text>
-                  <TouchableOpacity
-                    onPress={() => togglePlayerTeamSelection(playerId)}
-                    style={styles.removePlayerButton}
-                    accessibilityLabel={`Remove ${displayName(playerId)}`}
-                    accessibilityRole="button"
-                  >
-                    <Icon name="x-circle" size={18} color={colors.primary} />
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
+            {team1Players.map(playerId => (
+              <Chip
+                key={playerId}
+                variant="primary"
+                label={displayName(playerId)}
+                onRemove={() => togglePlayerTeamSelection(playerId)}
+                accessibilityLabel={`${displayName(playerId)}, Team 1 player`}
+              />
+            ))}
           </View>
         </View>
 
@@ -1033,22 +1004,15 @@ const AddMatchScreen = () => {
         <View style={styles.teamContainer}>
           <Text style={styles.teamLabel}>{getTeamLabel(2)}</Text>
           <View style={styles.selectedPlayersContainer}>
-            {team2Players.map(playerId => {
-              const player = players.find(p => p.id === playerId);
-              return (
-                <View key={playerId} style={styles.selectedPlayerChip} accessibilityLabel={`${displayName(playerId)}, Team 2 player`}>
-                  <Text style={styles.selectedPlayerName}>{displayName(playerId)}</Text>
-                  <TouchableOpacity
-                    onPress={() => togglePlayerTeamSelection(playerId)}
-                    style={styles.removePlayerButton}
-                    accessibilityLabel={`Remove ${displayName(playerId)}`}
-                    accessibilityRole="button"
-                  >
-                    <Icon name="x-circle" size={18} color={colors.primary} />
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
+            {team2Players.map(playerId => (
+              <Chip
+                key={playerId}
+                variant="primary"
+                label={displayName(playerId)}
+                onRemove={() => togglePlayerTeamSelection(playerId)}
+                accessibilityLabel={`${displayName(playerId)}, Team 2 player`}
+              />
+            ))}
           </View>
         </View>
       </>
@@ -1475,24 +1439,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  playerChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.lg,
-    gap: spacing.sm,
-  },
-  currentUserChip: {
-    backgroundColor: colors.secondaryOverlay,
-    borderWidth: 1,
-    borderColor: colors.secondary,
-  },
-  playerChipText: {
-    ...typography.bodySmall,
-    color: colors.neutral,
-  },
   teamDivider: {
     alignItems: 'center',
     marginVertical: spacing.sm,
@@ -1533,8 +1479,9 @@ const styles = StyleSheet.create({
   addPlayerButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    minHeight: 44,
     backgroundColor: colors.primaryOverlay,
     borderRadius: borderRadius.xl,
     borderWidth: 1,
@@ -1756,6 +1703,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     borderRadius: borderRadius.sm,
   },
+  addNewPlayerFooterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.sm,
+    gap: spacing.sm,
+  },
   addNewPlayerButtonText: {
     ...typography.button,
     color: colors.white,
@@ -1767,26 +1725,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
     padding: spacing.sm,
-  },
-  selectedPlayerChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primaryOverlay,
-    borderRadius: borderRadius.xl,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    marginRight: spacing.sm,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  selectedPlayerName: {
-    ...typography.bodySmall,
-    color: colors.neutral,
-    marginRight: spacing.xs,
-  },
-  removePlayerButton: {
-    padding: 2,
   },
   addPlayerText: {
     ...typography.bodySmall,

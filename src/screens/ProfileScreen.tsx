@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { isValidEmail } from '../utils/validation';
 import {
   View,
   Text,
@@ -40,9 +41,7 @@ const ProfileSetupView = () => {
       return;
     }
 
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
+    if (!isValidEmail(email)) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
@@ -221,12 +220,6 @@ const ProfileScreen = () => {
     setRating(currentUser?.rating?.toString() || '3.5');
     setShowPasswordFields(false);
     setEditing(true);
-  };
-
-  // Validate an email address format
-  const isValidEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
   };
 
   // Validate phone number format

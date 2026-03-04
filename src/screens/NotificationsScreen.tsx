@@ -25,9 +25,10 @@ const NotificationsScreen = () => {
     }, [])
   );
 
-  // Only show notifications where user is the recipient (not sent by them)
+  // Only show notifications where user is the recipient; hide declined player invites
   const receivedNotifications = notifications.filter(
     n => currentUser && n.recipientId === currentUser.id
+      && !(n.type === 'player_invite' && n.status === 'declined')
   );
 
   const receivedUnreadCount = receivedNotifications.filter(
@@ -52,13 +53,23 @@ const NotificationsScreen = () => {
   };
 
   const handleAcceptInvite = async (notificationId: string) => {
-    await respondToPlayerInvite(notificationId, true);
-    showToast('Player invite accepted!', 'success');
+    try {
+      await respondToPlayerInvite(notificationId, true);
+      showToast('Player invite accepted!', 'success');
+    } catch (error) {
+      console.error('Failed to accept invite:', error);
+      showToast('Failed to accept invite. Please try again.', 'error');
+    }
   };
 
   const handleDeclineInvite = async (notificationId: string) => {
-    await respondToPlayerInvite(notificationId, false);
-    showToast('Player invite declined', 'info');
+    try {
+      await respondToPlayerInvite(notificationId, false);
+      showToast('Player invite declined', 'info');
+    } catch (error) {
+      console.error('Failed to decline invite:', error);
+      showToast('Failed to decline invite. Please try again.', 'error');
+    }
   };
 
   return (

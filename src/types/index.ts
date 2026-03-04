@@ -165,8 +165,10 @@ export interface DataContextType {
   getNotificationsForMatch: (matchId: string) => MatchNotification[];
   sendPlayerInvite: (recipientId: string) => Promise<boolean>;
   respondToPlayerInvite: (notificationId: string, accept: boolean) => Promise<void>;
+  deleteNotification: (notificationId: string) => Promise<void>;
   refreshMatches: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
+  refreshConnectedPlayers: () => Promise<void>;
 }
 
 export type MainTabParamList = {

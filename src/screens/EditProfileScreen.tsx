@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { isValidEmail } from '../utils/validation';
 import {
   View,
   Text,
@@ -69,8 +70,7 @@ const EditProfileScreen: React.FC = () => {
 
     // Email validation
     if (tempEmail && tempEmail.trim()) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(tempEmail.trim())) {
+      if (!isValidEmail(tempEmail)) {
         Alert.alert('Error', 'Please enter a valid email address');
         return;
       }

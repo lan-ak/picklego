@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { isValidEmail } from '../utils/validation';
 import {
   View,
   Text,
@@ -65,9 +66,7 @@ const SettingsScreen: React.FC = () => {
       return;
     }
 
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(inviteEmail)) {
+    if (!isValidEmail(inviteEmail)) {
       Alert.alert('Error', 'Please enter a valid email address.');
       return;
     }
@@ -89,6 +88,7 @@ const SettingsScreen: React.FC = () => {
         );
         break;
       case 'invite_sent':
+      case 'existing_player':
         Alert.alert(
           'Player Invite Sent',
           `${result.player?.name || inviteName} is already on PickleGo! A player invite has been sent.`,

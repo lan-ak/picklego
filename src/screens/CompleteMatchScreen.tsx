@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { isValidEmail } from '../utils/validation';
 import {
   View,
   Text,
@@ -299,9 +300,7 @@ const CompleteMatchScreen = () => {
           Alert.alert('Error', 'Unable to open SMS app');
         }
       } else if (inviteMethod === 'email' && sendInvite && newPlayerEmail.trim()) {
-        // Basic email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(newPlayerEmail.trim())) {
+        if (!isValidEmail(newPlayerEmail)) {
           Alert.alert('Error', 'Please enter a valid email address');
           return;
         }

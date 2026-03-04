@@ -15,6 +15,7 @@ import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
+import { Chip } from './Chip';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { Coordinates, Venue } from '../types';
 import { searchPlaces, getPlaceDetails, PlaceResult } from '../services/placesService';
@@ -254,30 +255,15 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
             contentContainerStyle={styles.venuesScroll}
           >
             {savedVenues.map((venue) => (
-              <TouchableOpacity
+              <Chip
                 key={venue.id}
-                style={[
-                  styles.venueChip,
-                  selectedLocation === venue.name && styles.venueChipSelected,
-                ]}
+                variant="primary"
+                selected={selectedLocation === venue.name}
+                icon={venue.isFavorite ? 'star' : 'map-pin'}
+                label={venue.name}
+                maxWidth={120}
                 onPress={() => handleSelectVenue(venue)}
-                activeOpacity={0.7}
-              >
-                <Icon
-                  name={venue.isFavorite ? 'star' : 'map-pin'}
-                  size={14}
-                  color={selectedLocation === venue.name ? colors.white : colors.primary}
-                />
-                <Text
-                  style={[
-                    styles.venueChipText,
-                    selectedLocation === venue.name && styles.venueChipTextSelected,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {venue.name}
-                </Text>
-              </TouchableOpacity>
+              />
             ))}
           </ScrollView>
         </View>
@@ -544,26 +530,6 @@ const styles = StyleSheet.create({
   venuesScroll: {
     paddingRight: spacing.lg,
     gap: spacing.sm,
-  },
-  venueChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primaryOverlay,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.pill,
-    gap: spacing.xs,
-  },
-  venueChipSelected: {
-    backgroundColor: colors.primary,
-  },
-  venueChipText: {
-    ...typography.caption,
-    color: colors.primary,
-    maxWidth: 120,
-  },
-  venueChipTextSelected: {
-    color: colors.white,
   },
   searchContainer: {
     flexDirection: 'row',

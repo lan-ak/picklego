@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { isValidEmail } from '../utils/validation';
 import {
   View,
   Text,
@@ -74,9 +75,7 @@ const AuthScreen = () => {
       return;
     }
 
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
+    if (!isValidEmail(email)) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
     }

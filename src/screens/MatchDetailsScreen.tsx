@@ -1,8 +1,9 @@
-import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView, Linking, Platform } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView, Linking, Platform, ActivityIndicator } from 'react-native';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import MapView, { Marker } from 'react-native-maps';
 import { Icon } from '../components/Icon';
+import { Chip } from '../components/Chip';
 import { useData } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import Layout from '../components/Layout';
@@ -13,6 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import PicklePete from '../components/PicklePete';
 import { shuffleTeams } from '../utils/shuffleTeams';
+import { getMatchDocument } from '../config/firebase';
 
 type MatchDetailsRouteProp = RouteProp<RootStackParamList, 'MatchDetails'>;
 type MatchDetailsNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -22,7 +24,46 @@ const MatchDetailsScreen = () => {
   const navigation = useNavigation<MatchDetailsNavigationProp>();
   const { matches, players, deleteMatch, currentUser, getPlayerName, getNotificationsForMatch, sendMatchNotifications } = useData();
   const { showToast } = useToast();
-  const match = matches.find(m => m.id === route.params.matchId);
+  const [directMatch, setDirectMatch] = useState<Match | null>(null);
+  const [loading, setLoading] = useState(false);
+  const match = matches.find(m => m.id === route.params.matchId) || directMatch;
+
+  const getUserTeamNumber = useCallback((userId: string, match: Match): number | null => {
+    if (match.team1PlayerIds.includes(userId)) return 1;
+    if (match.team2PlayerIds.includes(userId)) return 2;
+    return null;
+  }, []);
+
+  const isCurrentUserWinner = useCallback((match: Match): boolean => {
+    if (!match.winnerTeam) return false;
+    if (!currentUser) return false;
+
+    const userTeam = getUserTeamNumber(currentUser.id, match);
+    return match.winnerTeam === userTeam;
+  }, [currentUser, getUserTeamNumber]);
+
+  const isTeam1Winner = useCallback((match: Match): boolean => {
+    return match.winnerTeam === 1;
+  }, []);
+
+  useEffect(() => {
+    if (!matches.find(m => m.id === route.params.matchId) && !directMatch) {
+      setLoading(true);
+      getMatchDocument(route.params.matchId)
+        .then(m => { if (m) setDirectMatch(m); })
+        .finally(() => setLoading(false));
+    }
+  }, [route.params.matchId, matches.length]);
+
+  if (loading) {
+    return (
+      <Layout title="Match Details" showBackButton={true}>
+        <View style={styles.errorContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </Layout>
+    );
+  }
 
   if (!match) {
     return (
@@ -129,44 +170,10 @@ const MatchDetailsScreen = () => {
     }
   };
 
-  const getTeamLabel = (teamNumber: 1 | 2) => {
-    try {
-      const playerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
-
-      return playerIds
-        .map((id) => {
-          if (currentUser && id === currentUser.id) return 'Me';
-          return formatPlayerNameWithInitial(getPlayerName(id));
-        })
-        .join(' & ');
-    } catch (error) {
-      console.error('Error in getTeamLabel:', error);
-      return `Team ${teamNumber}`;
-    }
-  };
-
   const isUserInMatch = () => {
     if (!currentUser) return false;
     return match.allPlayerIds.includes(currentUser.id);
   };
-
-  const getUserTeamNumber = useCallback((userId: string, match: Match): number | null => {
-    if (match.team1PlayerIds.includes(userId)) return 1;
-    if (match.team2PlayerIds.includes(userId)) return 2;
-    return null;
-  }, []);
-
-  const isCurrentUserWinner = useCallback((match: Match): boolean => {
-    if (!match.winnerTeam) return false;
-    if (!currentUser) return false;
-
-    const userTeam = getUserTeamNumber(currentUser.id, match);
-    return match.winnerTeam === userTeam;
-  }, [currentUser, getUserTeamNumber]);
-
-  const isTeam1Winner = useCallback((match: Match): boolean => {
-    return match.winnerTeam === 1;
-  }, []);
 
   const getMatchResult = () => {
     if (!currentUser || match.status !== 'completed') return null;
@@ -213,46 +220,81 @@ const MatchDetailsScreen = () => {
     }
   };
 
-  const renderTeamWithStatus = (teamNumber: 1 | 2) => {
+  const getTeamCardVariant = (teamNumber: 1 | 2): 'winner' | 'loser' | 'scheduled' | 'default' => {
+    if (match.status === 'completed' && match.winnerTeam !== null) {
+      const isWinner = teamNumber === 1 ? isTeam1Winner(match) : !isTeam1Winner(match);
+      return isWinner ? 'winner' : 'loser';
+    }
+    if (match.status === 'scheduled') return 'scheduled';
+    return 'default';
+  };
+
+  const renderTeamCard = (teamNumber: 1 | 2, showNotificationStatus: boolean) => {
     const playerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
-    const isWinner = teamNumber === 1 ? isTeam1Winner(match) : !isTeam1Winner(match);
+    const variant = getTeamCardVariant(teamNumber);
+    const isWinner = variant === 'winner';
 
     return (
-      <View>
-        <Text style={styles.teamLabel}>Team {teamNumber}{match.status === 'completed' && isWinner ? ' (Winner)' : ''}</Text>
+      <View
+        style={[
+          styles.teamCard,
+          variant === 'winner' && styles.teamCardWinner,
+          variant === 'loser' && styles.teamCardLoser,
+          variant === 'scheduled' && styles.teamCardScheduled,
+        ]}
+        accessibilityLabel={`Team ${teamNumber}: ${getTeamNames(teamNumber)}${isWinner ? ', Winner' : ''}`}
+      >
+        <View style={styles.teamCardHeader}>
+          <Text style={styles.teamLabel}>Team {teamNumber}</Text>
+          {match.status === 'completed' && isWinner && (
+            <View style={styles.winnerBadge}>
+              <Icon name="trophy" size={12} color={colors.win} />
+              <Text style={styles.winnerBadgeText}>Winner</Text>
+            </View>
+          )}
+        </View>
+
         {playerIds.map(playerId => {
           const isMe = currentUser && playerId === currentUser.id;
           const name = isMe ? 'Me' : formatPlayerNameWithInitial(getPlayerName(playerId));
-          const notifStatus = isMe ? null : getPlayerNotificationStatus(playerId);
+
+          let notifStatus: string | null = null;
+          if (showNotificationStatus) {
+            const player = players.find(p => p.id === playerId);
+            const hasEmail = player?.email;
+            notifStatus = isMe || !hasEmail ? null : getPlayerNotificationStatus(playerId);
+          }
 
           return (
-            <View key={playerId} style={styles.playerRow}>
+            <View key={playerId} style={styles.playerRowRedesigned}>
+              <Icon
+                name="user"
+                size={16}
+                color={
+                  variant === 'winner' ? colors.win :
+                  variant === 'loser' ? colors.loss :
+                  colors.gray400
+                }
+                style={styles.playerIcon}
+              />
               <Text
                 style={[
                   styles.playerName,
-                  match.status === 'completed' && isWinner && styles.winningTeamText,
-                  match.status === 'completed' && !isWinner && styles.losingTeamText,
+                  variant === 'winner' && styles.winningTeamText,
+                  variant === 'loser' && styles.losingTeamText,
                 ]}
               >
                 {name}
               </Text>
-              {notifStatus && (
+              {showNotificationStatus && notifStatus === 'sent' && (
                 <View style={styles.notifStatusRow}>
-                  <View style={[styles.notifBadge, notifStatus === 'read' ? styles.notifRead : styles.notifSent]}>
-                    <Icon
-                      name={notifStatus === 'read' ? 'check-circle' : 'mail'}
-                      size={12}
-                      color={notifStatus === 'read' ? colors.primary : colors.gray400}
-                    />
-                    <Text style={[styles.notifBadgeText, notifStatus === 'read' ? styles.notifReadText : styles.notifSentText]}>
-                      {notifStatus === 'read' ? 'Seen' : 'Sent'}
-                    </Text>
+                  <View style={[styles.notifBadge, styles.notifSent]}>
+                    <Icon name="mail" size={12} color={colors.gray400} />
+                    <Text style={[styles.notifBadgeText, styles.notifSentText]}>Sent</Text>
                   </View>
-                  {notifStatus === 'sent' && (
-                    <TouchableOpacity onPress={handleResendNotifications} style={styles.resendButton}>
-                      <Text style={styles.resendText}>Resend</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity onPress={handleResendNotifications} style={styles.resendButton}>
+                    <Text style={styles.resendText}>Resend</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -332,29 +374,13 @@ const MatchDetailsScreen = () => {
           )}
 
           <View style={styles.matchTypeContainer}>
-            <View style={styles.chipContainer}>
-              <Text style={styles.chipText}>
-                {match.matchType === 'doubles' ? 'Doubles' : 'Singles'}
-              </Text>
-            </View>
-
-            <View style={styles.chipContainer}>
-              <Text style={styles.chipText}>
-                {match.pointsToWin} pts
-              </Text>
-            </View>
-
-            <View style={styles.chipContainer}>
-              <Text style={styles.chipText}>
-                Best of {match.numberOfGames}
-              </Text>
-            </View>
-
-            <View style={[styles.chipContainer, match.status === 'completed' ? styles.completedChip : match.status === 'expired' ? styles.expiredChip : styles.scheduledChip]}>
-              <Text style={[styles.chipText, match.status === 'completed' ? styles.completedChipText : match.status === 'expired' ? styles.expiredChipText : styles.scheduledChipText]}>
-                {match.status === 'completed' ? 'Completed' : match.status === 'expired' ? 'Expired' : 'Scheduled'}
-              </Text>
-            </View>
+            <Chip label={match.matchType === 'doubles' ? 'Doubles' : 'Singles'} />
+            <Chip label={`${match.pointsToWin} pts`} />
+            <Chip label={`Best of ${match.numberOfGames}`} />
+            <Chip
+              variant={match.status === 'completed' ? 'success' : match.status === 'expired' ? 'warning' : 'info'}
+              label={match.status === 'completed' ? 'Completed' : match.status === 'expired' ? 'Expired' : 'Scheduled'}
+            />
           </View>
         </View>
 
@@ -365,41 +391,17 @@ const MatchDetailsScreen = () => {
             <Text style={styles.sectionTitle}>Teams</Text>
           </View>
 
-          {currentUser?.id === match.createdBy ? (
-            // Creator view: show individual players with notification status
-            <View style={styles.teamsContainer}>
-              {renderTeamWithStatus(1)}
-              <Text style={styles.teamSeparator}>vs</Text>
-              {renderTeamWithStatus(2)}
+          <View style={styles.teamsContainer}>
+            {renderTeamCard(1, currentUser?.id === match.createdBy)}
+
+            <View style={styles.vsSeparator}>
+              <View style={styles.vsSeparatorLine} />
+              <Text style={styles.vsSeparatorText}>vs</Text>
+              <View style={styles.vsSeparatorLine} />
             </View>
-          ) : (
-            // Non-creator view: show team names as before
-            <View style={styles.teamsContainer}>
-              <Text
-                style={[
-                  styles.teamName,
-                  match.status === 'completed' && isTeam1Winner(match) && styles.winningTeamText,
-                  match.status === 'completed' && !isTeam1Winner(match) && styles.losingTeamText,
-                ]}
-                accessibilityLabel={`Team 1: ${getTeamNames(1)}${match.status === 'completed' && isTeam1Winner(match) ? ', Winner' : ''}`}
-              >
-                {getTeamLabel(1)}
-                {match.status === 'completed' && isTeam1Winner(match) && ' (Winner)'}
-              </Text>
-              <Text style={styles.teamSeparator}>vs</Text>
-              <Text
-                style={[
-                  styles.teamName,
-                  match.status === 'completed' && !isTeam1Winner(match) && styles.winningTeamText,
-                  match.status === 'completed' && isTeam1Winner(match) && styles.losingTeamText,
-                ]}
-                accessibilityLabel={`Team 2: ${getTeamNames(2)}${match.status === 'completed' && !isTeam1Winner(match) ? ', Winner' : ''}`}
-              >
-                {getTeamLabel(2)}
-                {match.status === 'completed' && !isTeam1Winner(match) && ' (Winner)'}
-              </Text>
-            </View>
-          )}
+
+            {renderTeamCard(2, currentUser?.id === match.createdBy)}
+          </View>
         </View>
 
         {/* Results Section - Only for completed matches */}
@@ -614,60 +616,52 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     gap: spacing.sm,
   },
-  chipContainer: {
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.lg,
-    marginRight: spacing.sm,
+  teamsContainer: {
+  },
+  teamCard: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: borderRadius.md,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  teamCardWinner: {
+    backgroundColor: colors.winOverlay,
+    borderColor: '#81C784',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.win,
+  },
+  teamCardLoser: {
+    backgroundColor: colors.lossOverlay,
+    borderColor: '#E57373',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.loss,
+  },
+  teamCardScheduled: {
+    borderLeftWidth: 4,
+    borderLeftColor: colors.secondary,
+  },
+  teamCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  chipText: {
-    ...typography.bodySmall,
-    color: colors.neutral,
-  },
-  completedChip: {
-    backgroundColor: colors.winOverlay,
-    borderWidth: 1,
-    borderColor: '#81C784',
-  },
-  scheduledChip: {
-    backgroundColor: colors.secondaryOverlay,
-    borderWidth: 1,
-    borderColor: '#90CAF9',
-  },
-  expiredChip: {
-    backgroundColor: colors.actionOverlay,
-    borderWidth: 1,
-    borderColor: '#FFB74D',
-  },
-  completedChipText: {
-    color: '#388E3C',
-  },
-  scheduledChipText: {
-    color: colors.secondary,
-  },
-  expiredChipText: {
-    color: '#E65100',
-  },
-  teamsContainer: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.sm,
-    padding: spacing.md,
-  },
-  teamName: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.neutral,
-    textAlign: 'center',
+  vsSeparator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginVertical: spacing.xs,
   },
-  teamSeparator: {
-    ...typography.bodySmall,
-    color: colors.gray500,
-    textAlign: 'center',
-    marginVertical: spacing.sm,
-    fontWeight: '500',
+  vsSeparatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.gray300,
+  },
+  vsSeparatorText: {
+    ...typography.h3,
+    color: colors.gray400,
+    marginHorizontal: spacing.md,
   },
   winningTeamText: {
     color: colors.primary,
@@ -746,15 +740,19 @@ const styles = StyleSheet.create({
   footer: {
     padding: spacing.lg,
   },
-  winnerTeam: {
+  winnerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.winOverlay,
-    borderWidth: 1,
-    borderColor: '#81C784',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.sm,
+    gap: 4,
   },
-  loserTeam: {
-    backgroundColor: colors.lossOverlay,
-    borderWidth: 1,
-    borderColor: '#E57373',
+  winnerBadgeText: {
+    ...typography.caption,
+    color: colors.win,
+    fontWeight: '600',
   },
   teamLabel: {
     ...typography.bodySmall,
@@ -764,16 +762,19 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  playerRow: {
+  playerRowRedesigned: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
+    paddingVertical: 6,
+  },
+  playerIcon: {
+    marginRight: spacing.sm,
   },
   playerName: {
-    fontSize: 17,
-    fontWeight: '600',
+    ...typography.bodyLarge,
     color: colors.neutral,
+    fontWeight: '600',
+    flex: 1,
   },
   notifBadge: {
     flexDirection: 'row',
@@ -786,18 +787,12 @@ const styles = StyleSheet.create({
   notifSent: {
     backgroundColor: colors.surface,
   },
-  notifRead: {
-    backgroundColor: colors.winOverlay,
-  },
   notifBadgeText: {
     ...typography.caption,
     fontSize: 11,
   },
   notifSentText: {
     color: colors.gray400,
-  },
-  notifReadText: {
-    color: colors.primary,
   },
   notifStatusRow: {
     flexDirection: 'row',

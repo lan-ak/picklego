@@ -1,139 +1,103 @@
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { https, firestore } from 'firebase-functions/v1';
 import { initializeApp } from 'firebase-admin/app';
 
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import Expo, { ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 
-initializeApp();
+const app = initializeApp();
 
-const db = getFirestore();
+const db = getFirestore(app);
 const expo = new Expo();
 
-interface MatchNotification {
-  id: string;
-  type: string;
-  status: 'sent' | 'read';
-  recipientId: string;
-  senderId: string;
-  senderName: string;
-  matchId?: string;
-  matchDate?: string;
-  matchLocation?: string;
-  matchType?: 'singles' | 'doubles';
-  team?: 1 | 2;
-  message?: string;
-  createdAt: number;
-  readAt?: number;
-}
-
-interface PlayerDoc {
-  id: string;
-  name: string;
-  pushTokens?: string[];
-}
-
-export const sendPushOnNotification = onDocumentCreated(
-  'notifications/{notificationId}',
-  async (event) => {
-    const snapshot = event.data;
-    if (!snapshot) {
-      console.log('No data in notification document');
-      return;
-    }
-
-    const notification = snapshot.data() as MatchNotification;
-
-    if (notification.type !== 'match_invite' && notification.type !== 'player_invite') {
-      console.log(`Skipping notification type: ${notification.type}`);
-      return;
-    }
-
-    const recipientDoc = await db.collection('players').doc(notification.recipientId).get();
-    if (!recipientDoc.exists) {
-      console.log(`Recipient ${notification.recipientId} not found`);
-      return;
-    }
-
-    const recipient = recipientDoc.data() as PlayerDoc;
-    const tokens = (recipient.pushTokens ?? []).filter(t => Expo.isExpoPushToken(t));
-
-    if (tokens.length === 0) {
-      console.log(`No push tokens for recipient ${notification.recipientId}`);
-      return;
-    }
-
-    let title: string;
-    let body: string;
-
-    if (notification.type === 'match_invite') {
-      const matchTypeLabel = notification.matchType === 'doubles' ? 'doubles' : 'singles';
-      const dateStr = notification.matchDate
-        ? new Date(notification.matchDate).toLocaleDateString('en-US', {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-          })
-        : 'TBD';
-      title = 'New Match Invite';
-      body = `${notification.senderName} invited you to a ${matchTypeLabel} match on ${dateStr}`;
-    } else {
-      title = 'New Player Invite';
-      body = notification.message || `${notification.senderName} wants to add you as a player on PickleGo!`;
-    }
-
-    const messages: ExpoPushMessage[] = tokens.map(token => ({
-      to: token,
-      sound: 'default' as const,
-      title,
-      body,
-      channelId: 'match-invites',
-      data: {
-        ...(notification.matchId ? { matchId: notification.matchId } : {}),
-        screen: notification.type === 'match_invite' ? 'MatchDetails' : 'Notifications',
-        notificationId: notification.id,
-      },
-    }));
-
-    try {
-      const chunks = expo.chunkPushNotifications(messages);
-      let successCount = 0;
-      let failureCount = 0;
-      const staleTokens: string[] = [];
-
-      for (const chunk of chunks) {
-        const ticketChunk: ExpoPushTicket[] = await expo.sendPushNotificationsAsync(chunk);
-
-        ticketChunk.forEach((ticket, index) => {
-          if (ticket.status === 'ok') {
-            successCount++;
-          } else {
-            failureCount++;
-            if (ticket.details?.error === 'DeviceNotRegistered') {
-              staleTokens.push(chunk[index].to as string);
-            }
-          }
-        });
-      }
-
-      console.log(
-        `Push to ${notification.recipientId}: ` +
-        `${successCount} success, ${failureCount} failure`
-      );
-
-      if (staleTokens.length > 0) {
-        console.log(`Removing ${staleTokens.length} stale tokens for ${notification.recipientId}`);
-        await db.collection('players').doc(notification.recipientId).update({
-          pushTokens: FieldValue.arrayRemove(...staleTokens),
-        });
-      }
-    } catch (error) {
-      console.error('Error sending push notification:', error);
-    }
+/**
+ * Callable function to accept a player invite.
+ * Validates the invite exists and is pending, then atomically:
+ * 1. Adds bidirectional connections via Admin SDK
+ * 2. Updates the invite notification status to 'accepted'
+ * 3. Creates an invite_accepted notification for the sender
+ */
+export const acceptPlayerInvite = https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new https.HttpsError('unauthenticated', 'Must be authenticated');
   }
-);
+
+  const callerUid = context.auth.uid;
+  const notificationId = data?.notificationId as string | undefined;
+
+  if (!notificationId || typeof notificationId !== 'string') {
+    throw new https.HttpsError('invalid-argument', 'notificationId is required');
+  }
+
+  // Fetch and validate the notification
+  const notifRef = db.collection('notifications').doc(notificationId);
+  const notifDoc = await notifRef.get();
+
+  if (!notifDoc.exists) {
+    throw new https.HttpsError('not-found', 'Notification not found');
+  }
+
+  const notif = notifDoc.data()!;
+
+  if (notif.type !== 'player_invite') {
+    throw new https.HttpsError('failed-precondition', 'Not a player invite');
+  }
+  if (notif.status !== 'sent') {
+    throw new https.HttpsError('failed-precondition', 'Invite already responded to');
+  }
+  if (notif.recipientId !== callerUid) {
+    throw new https.HttpsError('permission-denied', 'Not the invite recipient');
+  }
+
+  const senderId = notif.senderId;
+  const now = Date.now();
+
+  // Look up the caller's name for the accept notification
+  const callerDoc = await db.collection('players').doc(callerUid).get();
+  const callerName = callerDoc.exists ? (callerDoc.data()!.name || 'A player') : 'A player';
+  const callerProfilePic = callerDoc.exists ? callerDoc.data()!.profilePic : undefined;
+
+  const batch = db.batch();
+
+  // Add bidirectional connections
+  batch.update(db.collection('players').doc(callerUid), {
+    connections: FieldValue.arrayUnion(senderId),
+    updatedAt: now,
+  });
+  batch.update(db.collection('players').doc(senderId), {
+    connections: FieldValue.arrayUnion(callerUid),
+    updatedAt: now,
+  });
+
+  // Update the invite notification to accepted
+  batch.update(notifRef, {
+    status: 'accepted',
+    respondedAt: now,
+  });
+
+  // Create invite_accepted notification for the sender
+  const acceptNotifId = `invite_accepted_${callerUid}_${senderId}_${now}`;
+  const acceptNotifData: Record<string, any> = {
+    id: acceptNotifId,
+    type: 'invite_accepted',
+    status: 'sent',
+    recipientId: senderId,
+    senderId: callerUid,
+    senderName: callerName,
+    message: `${callerName} accepted your player invite!`,
+    createdAt: now,
+  };
+  if (callerProfilePic) {
+    acceptNotifData.senderProfilePic = callerProfilePic;
+  }
+  batch.set(db.collection('notifications').doc(acceptNotifId), acceptNotifData);
+
+  await batch.commit();
+
+  console.log(`Player invite accepted: ${callerUid} <-> ${senderId}`);
+
+  return { accepted: true, senderId, acceptNotificationId: acceptNotifId };
+});
 
 /**
  * Callable function to claim a placeholder profile.
@@ -141,21 +105,24 @@ export const sendPushOnNotification = onDocumentCreated(
  * this function atomically transfers match history, merges stats, and
  * deletes the placeholder — all via Admin SDK to bypass security rules.
  */
-export const claimPlaceholderProfile = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Must be authenticated');
+export const claimPlaceholderProfile = https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new https.HttpsError('unauthenticated', 'Must be authenticated');
   }
 
-  const realUid = request.auth.uid;
-  const realEmail = request.auth.token.email;
+  const realUid = context.auth.uid;
+  const realEmail = context.auth.token.email;
 
-  const realName = request.data?.name as string | undefined;
+  const realName = data?.name as string | undefined;
 
   if (!realEmail) {
-    throw new HttpsError('failed-precondition', 'User must have an email');
+    throw new https.HttpsError('failed-precondition', 'User must have an email');
+  }
+  if (!context.auth.token.email_verified) {
+    throw new https.HttpsError('failed-precondition', 'Email must be verified to claim a profile');
   }
   if (!realName || typeof realName !== 'string') {
-    throw new HttpsError('invalid-argument', 'Name is required');
+    throw new https.HttpsError('invalid-argument', 'Name is required');
   }
 
   const normalizedEmail = realEmail.trim().toLowerCase();
@@ -211,6 +178,21 @@ export const claimPlaceholderProfile = onCall(async (request) => {
     });
   }
 
+  // Migrate notifications: swap placeholder ID for real UID
+  const notifAsRecipient = await db.collection('notifications')
+    .where('recipientId', '==', placeholderId)
+    .get();
+  for (const notifDoc of notifAsRecipient.docs) {
+    batch.update(notifDoc.ref, { recipientId: realUid });
+  }
+
+  const notifAsSender = await db.collection('notifications')
+    .where('senderId', '==', placeholderId)
+    .get();
+  for (const notifDoc of notifAsSender.docs) {
+    batch.update(notifDoc.ref, { senderId: realUid });
+  }
+
   // Merge stats from placeholder into the real player
   const pStats = placeholderData.stats;
   if (pStats && pStats.totalMatches > 0) {
@@ -241,8 +223,277 @@ export const claimPlaceholderProfile = onCall(async (request) => {
   await batch.commit();
 
   console.log(
-    `Claimed placeholder ${placeholderId} -> ${realUid} (${matchesSnapshot.size} matches updated)`
+    `Claimed placeholder ${placeholderId} -> ${realUid} ` +
+    `(${matchesSnapshot.size} matches, ${notifAsRecipient.size + notifAsSender.size} notifications updated)`
   );
 
   return { claimed: true, matchesUpdated: matchesSnapshot.size };
 });
+
+/**
+ * v1 Firestore trigger: send push notifications when a notification document
+ * is created or updated with status 'sent'.
+ * Uses onWrite so it fires for both new notifications AND re-sends
+ * (match edits use setDoc which overwrites existing docs).
+ */
+export const sendPushOnNotificationWrite = firestore
+  .document('notifications/{notificationId}')
+  .onWrite(async (change, context) => {
+    // Skip deletes
+    if (!change.after.exists) return;
+
+    const notification = change.after.data()!;
+
+    // Only send push for notifications with status 'sent'
+    if (notification.status !== 'sent') return;
+
+    // Only send push for types that warrant a push
+    if (!['match_invite', 'player_invite'].includes(notification.type)) return;
+
+    // If this is an update, skip if nothing meaningful changed
+    if (change.before.exists) {
+      const before = change.before.data()!;
+      if (before.status === 'sent' && before.createdAt === notification.createdAt) return;
+    }
+
+    // Look up recipient's push tokens
+    const recipientDoc = await db.collection('players').doc(notification.recipientId).get();
+    if (!recipientDoc.exists) return;
+    const pushTokens: string[] = (recipientDoc.data()!.pushTokens || [])
+      .filter((t: string) => Expo.isExpoPushToken(t));
+    if (pushTokens.length === 0) return;
+
+    // Build message based on notification type
+    let title: string;
+    let body: string;
+
+    if (notification.type === 'match_invite') {
+      const matchTypeLabel = notification.matchType === 'doubles' ? 'doubles' : 'singles';
+      const dateStr = notification.matchDate
+        ? new Date(notification.matchDate).toLocaleDateString('en-US', {
+            weekday: 'short', month: 'short', day: 'numeric',
+            hour: 'numeric', minute: '2-digit',
+          })
+        : 'TBD';
+      title = 'New Match Invite';
+      body = `${notification.senderName} invited you to a ${matchTypeLabel} match on ${dateStr}`;
+    } else {
+      title = 'New Player Invite';
+      body = notification.message || `${notification.senderName} wants to add you as a player!`;
+    }
+
+    // Send via Expo
+    const messages: ExpoPushMessage[] = pushTokens.map((token: string) => ({
+      to: token, sound: 'default' as const, title, body,
+      channelId: 'match-invites',
+      data: {
+        ...(notification.matchId ? { matchId: notification.matchId } : {}),
+        screen: notification.type === 'match_invite' ? 'MatchDetails' : 'Notifications',
+        notificationId: notification.id,
+      },
+    }));
+
+    const chunks = expo.chunkPushNotifications(messages);
+    const staleTokens: string[] = [];
+    for (const chunk of chunks) {
+      const tickets: ExpoPushTicket[] = await expo.sendPushNotificationsAsync(chunk);
+      tickets.forEach((ticket, i) => {
+        if (ticket.status !== 'ok' && 'details' in ticket && ticket.details?.error === 'DeviceNotRegistered') {
+          staleTokens.push(chunk[i].to as string);
+        }
+      });
+    }
+
+    // Clean up stale tokens
+    if (staleTokens.length > 0) {
+      await db.collection('players').doc(notification.recipientId).update({
+        pushTokens: FieldValue.arrayRemove(...staleTokens),
+      });
+    }
+
+    console.log(
+      `sendPushOnNotificationWrite: sent push for ${notification.type} to ${notification.recipientId} (${pushTokens.length} tokens)`
+    );
+  });
+
+// ---- Server-side stats calculation helpers ----
+// Mirrors client-side logic in src/utils/statsCalculator.ts
+
+interface GameData {
+  team1Score: number;
+  team2Score: number;
+  winnerTeam: 1 | 2;
+  team1PlayerIds?: string[];
+  team2PlayerIds?: string[];
+}
+
+interface MatchDataForStats {
+  status: string;
+  matchType: string;
+  scheduledDate: string;
+  team1PlayerIds: string[];
+  team2PlayerIds: string[];
+  allPlayerIds: string[];
+  winnerTeam: 1 | 2 | null;
+  games: GameData[];
+}
+
+interface PlayerStatsResult {
+  totalMatches: number;
+  wins: number;
+  losses: number;
+  winPercentage: number;
+  totalGames: number;
+  gameWins: number;
+  gameLosses: number;
+  currentWinStreak: number;
+  bestWinStreak: number;
+}
+
+function emptyPlayerStats(): PlayerStatsResult {
+  return {
+    totalMatches: 0, wins: 0, losses: 0, winPercentage: 0,
+    totalGames: 0, gameWins: 0, gameLosses: 0,
+    currentWinStreak: 0, bestWinStreak: 0,
+  };
+}
+
+function computeWinStreaks(results: boolean[]): { current: number; best: number } {
+  let best = 0;
+  let streak = 0;
+  for (const won of results) {
+    if (won) {
+      streak++;
+      if (streak > best) best = streak;
+    } else {
+      streak = 0;
+    }
+  }
+  return { current: streak, best };
+}
+
+function buildStatsBreakdown(
+  matches: MatchDataForStats[],
+  playerId: string,
+): PlayerStatsResult {
+  const stats = emptyPlayerStats();
+  if (matches.length === 0) return stats;
+
+  const sorted = [...matches].sort(
+    (a, b) =>
+      new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime(),
+  );
+
+  const results: boolean[] = [];
+
+  for (const match of sorted) {
+    const userTeam = match.team1PlayerIds.includes(playerId) ? 1 : 2;
+    const won = match.winnerTeam === userTeam;
+
+    stats.totalMatches++;
+    if (won) stats.wins++;
+    else stats.losses++;
+    results.push(won);
+
+    for (const game of match.games) {
+      stats.totalGames++;
+      if (game.winnerTeam === userTeam) stats.gameWins++;
+      else stats.gameLosses++;
+    }
+  }
+
+  stats.winPercentage =
+    stats.totalMatches > 0
+      ? Math.round((stats.wins / stats.totalMatches) * 1000) / 10
+      : 0;
+
+  const streaks = computeWinStreaks(results);
+  stats.currentWinStreak = streaks.current;
+  stats.bestWinStreak = streaks.best;
+
+  return stats;
+}
+
+function calculateOverallStats(
+  matchDocs: FirebaseFirestore.DocumentData[],
+  playerId: string,
+): PlayerStatsResult {
+  const completedMatches = matchDocs.filter(
+    (m) => m.status === 'completed' && (m.allPlayerIds || []).includes(playerId),
+  ) as unknown as MatchDataForStats[];
+
+  return buildStatsBreakdown(completedMatches, playerId);
+}
+
+/**
+ * Firestore trigger: recalculate player stats when a match is completed,
+ * edited while completed, or uncompleted. Uses Admin SDK to write stats
+ * to all player documents, bypassing client-side security rules.
+ */
+export const recalculateStatsOnMatchUpdate = onDocumentUpdated(
+  'matches/{matchId}',
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+
+    if (!before || !after) return;
+
+    const justCompleted =
+      before.status !== 'completed' && after.status === 'completed';
+    const completedMatchEdited =
+      after.status === 'completed' &&
+      (JSON.stringify(before.games) !== JSON.stringify(after.games) ||
+        before.winnerTeam !== after.winnerTeam);
+    const wasUncompleted =
+      before.status === 'completed' && after.status !== 'completed';
+
+    if (!justCompleted && !completedMatchEdited && !wasUncompleted) return;
+
+    // Union of before/after player IDs in case roster changed
+    const playerIdSet = new Set<string>([
+      ...(before.allPlayerIds || []),
+      ...(after.allPlayerIds || []),
+    ]);
+    const allPlayerIds = Array.from(playerIdSet);
+
+    if (allPlayerIds.length === 0) return;
+
+    console.log(
+      `recalculateStatsOnMatchUpdate: match=${event.params.matchId} ` +
+        `players=[${allPlayerIds.join(',')}]`,
+    );
+
+    const batch = db.batch();
+    let updatedCount = 0;
+
+    for (const playerId of allPlayerIds) {
+      try {
+        const matchesSnapshot = await db
+          .collection('matches')
+          .where('allPlayerIds', 'array-contains', playerId)
+          .get();
+
+        const playerMatches = matchesSnapshot.docs.map((d) => d.data());
+        const stats = calculateOverallStats(playerMatches, playerId);
+
+        batch.update(db.collection('players').doc(playerId), {
+          stats,
+          updatedAt: Date.now(),
+        });
+        updatedCount++;
+      } catch (error) {
+        console.error(
+          `recalculateStatsOnMatchUpdate: error for player ${playerId}:`,
+          error,
+        );
+      }
+    }
+
+    if (updatedCount > 0) {
+      await batch.commit();
+      console.log(
+        `recalculateStatsOnMatchUpdate: updated stats for ${updatedCount} players`,
+      );
+    }
+  },
+);

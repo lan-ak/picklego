@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { format } from 'date-fns';
 import { Icon } from './Icon';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { Match, Game } from '../types';
@@ -62,10 +63,7 @@ const MatchCard = ({
       {/* Top row: date + status badge */}
       <View style={styles.topRow}>
         <Text style={styles.date}>
-          {new Date(match.scheduledDate).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-          })}
+          {format(new Date(match.scheduledDate), 'MMM d, yyyy - h:mm a')}
         </Text>
         {isWinner && (
           <View style={[styles.badge, styles.winBadge]}>
@@ -83,28 +81,42 @@ const MatchCard = ({
             <Text style={[styles.badgeText, { color: colors.secondary }]}>Scheduled</Text>
           </View>
         )}
+        {isCompleted && userTeam === null && (
+          <View style={[styles.badge, styles.completedBadge]}>
+            <Icon name="check-circle" size={14} color={colors.primary} />
+            <Text style={[styles.badgeText, { color: colors.primary }]}>Completed</Text>
+          </View>
+        )}
       </View>
 
-      {/* Center: teams + "vs" with scores */}
-      <View style={styles.teamsRow}>
+      {/* Match type info */}
+      <Text style={styles.matchTypeInfo}>
+        {match.matchType === 'doubles' ? 'Doubles' : 'Singles'} {'\u00B7'} {match.pointsToWin} pts {'\u00B7'} Best of {match.numberOfGames}
+      </Text>
+
+      {/* Teams in gray surface container */}
+      <View style={styles.teamsContainer}>
         <Text style={styles.teamName}>{team1Label}</Text>
         <Text style={styles.vs}>vs</Text>
         <Text style={styles.teamName}>{team2Label}</Text>
       </View>
 
-      {scoreText && <Text style={styles.score}>{scoreText}</Text>}
+      {/* Score with green overlay background */}
+      {isCompleted && scoreText && (
+        <View style={styles.scoreContainer}>
+          <Text style={styles.score}>{scoreText}</Text>
+        </View>
+      )}
 
-      {/* Bottom: location + GG placeholder */}
-      <View style={styles.bottomRow}>
-        {match.location ? (
+      {/* Bottom: location */}
+      {match.location ? (
+        <View style={styles.bottomRow}>
           <View style={styles.locationRow}>
             <Icon name="map-pin" size={14} color={colors.gray400} />
             <Text style={styles.location}>{match.location}</Text>
           </View>
-        ) : (
-          <View />
-        )}
-      </View>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 };
@@ -138,8 +150,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   date: {
-    ...typography.bodySmall,
-    color: colors.gray500,
+    ...typography.label,
+    color: colors.primary,
   },
   badge: {
     flexDirection: 'row',
@@ -157,30 +169,51 @@ const styles = StyleSheet.create({
   scheduledBadge: {
     backgroundColor: colors.secondaryOverlay,
   },
+  completedBadge: {
+    backgroundColor: colors.winOverlay,
+  },
   badgeText: {
     ...typography.caption,
     fontWeight: '600',
     marginLeft: 4,
   },
-  teamsRow: {
-    alignItems: 'center',
+  matchTypeInfo: {
+    ...typography.label,
+    color: colors.primary,
     marginBottom: spacing.sm,
   },
+  teamsContainer: {
+    marginVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
   teamName: {
-    ...typography.bodyLarge,
+    fontSize: 17,
+    fontWeight: '600',
     color: colors.neutral,
     textAlign: 'center',
+    marginVertical: spacing.xs,
   },
   vs: {
-    ...typography.h3,
-    color: colors.gray400,
-    marginVertical: spacing.xs,
+    ...typography.bodySmall,
+    color: colors.gray500,
+    textAlign: 'center',
+    marginVertical: spacing.sm,
+    fontWeight: '500',
+  },
+  scoreContainer: {
+    marginTop: spacing.md,
+    backgroundColor: colors.primaryOverlay,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    alignItems: 'center',
   },
   score: {
     ...typography.scoreDisplay,
     color: colors.neutral,
     textAlign: 'center',
-    marginBottom: spacing.sm,
   },
   bottomRow: {
     flexDirection: 'row',

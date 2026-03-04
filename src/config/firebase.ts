@@ -266,6 +266,16 @@ export const getMatchesForPlayer = async (playerId: string): Promise<Match[]> =>
   }
 };
 
+export const getMatchDocument = async (matchId: string): Promise<Match | null> => {
+  try {
+    const snap = await getDoc(doc(db, 'matches', matchId));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() } as Match;
+  } catch {
+    return null;
+  }
+};
+
 export const deletePlayerDocument = async (playerId: string) => {
   try {
     await deleteDoc(doc(db, 'players', playerId));
@@ -274,10 +284,10 @@ export const deletePlayerDocument = async (playerId: string) => {
   }
 };
 
-// Notification CRUD functions
+// Notification functions
 export const createNotificationDocument = async (notification: MatchNotification) => {
   try {
-    await setDoc(doc(db, 'notifications', notification.id), stripUndefined(notification));
+    await setDoc(doc(db, 'notifications', notification.id), stripUndefined(notification as unknown as Record<string, any>));
   } catch (error: any) {
     throw new Error('Failed to create notification document: ' + error.message);
   }
@@ -285,9 +295,17 @@ export const createNotificationDocument = async (notification: MatchNotification
 
 export const updateNotificationDocument = async (notificationId: string, data: Partial<MatchNotification>) => {
   try {
-    await updateDoc(doc(db, 'notifications', notificationId), stripUndefined(data));
+    await updateDoc(doc(db, 'notifications', notificationId), stripUndefined(data as unknown as Record<string, any>));
   } catch (error: any) {
     throw new Error('Failed to update notification document: ' + error.message);
+  }
+};
+
+export const deleteNotificationDocument = async (notificationId: string) => {
+  try {
+    await deleteDoc(doc(db, 'notifications', notificationId));
+  } catch (error: any) {
+    throw new Error('Failed to delete notification document: ' + error.message);
   }
 };
 
@@ -318,14 +336,6 @@ export const getNotificationsBySender = async (senderId: string): Promise<MatchN
     return querySnapshot.docs.map(doc => doc.data() as MatchNotification);
   } catch (error: any) {
     throw new Error('Failed to get notifications by sender: ' + error.message);
-  }
-};
-
-export const deleteNotificationDocument = async (notificationId: string) => {
-  try {
-    await deleteDoc(doc(db, 'notifications', notificationId));
-  } catch (error: any) {
-    throw new Error('Failed to delete notification document: ' + error.message);
   }
 };
 
@@ -458,17 +468,27 @@ export const removeConnection = async (playerId: string, connectionId: string) =
   }
 };
 
-// Cloud Function callables
-export const callClaimPlaceholderProfile = async (
-  name: string,
-): Promise<{ claimed: boolean; matchesUpdated: number }> => {
+// Cloud Function callables — centralised auth + token refresh
+const authenticatedCallable = async <TData, TResult>(
+  functionName: string,
+  data: TData,
+): Promise<TResult> => {
   if (!auth.currentUser) {
-    return { claimed: false, matchesUpdated: 0 };
+    throw new Error('Must be authenticated');
   }
-  // Force-refresh the ID token so the callable sends valid credentials.
-  // On fresh sign-up the token may not be cached yet, causing "unauthenticated".
-  await auth.currentUser.getIdToken(true);
-  const claimFn = httpsCallable(functions, 'claimPlaceholderProfile');
-  const result = await claimFn({ name });
-  return result.data as { claimed: boolean; matchesUpdated: number };
+  await auth.currentUser.getIdToken();
+  const fn = httpsCallable(functions, functionName);
+  const result = await fn(data);
+  return result.data as TResult;
 };
+
+export const callAcceptPlayerInvite = (notificationId: string) =>
+  authenticatedCallable<{ notificationId: string }, { accepted: boolean; senderId: string; acceptNotificationId: string }>(
+    'acceptPlayerInvite', { notificationId },
+  );
+
+export const callClaimPlaceholderProfile = (name: string) =>
+  authenticatedCallable<{ name: string }, { claimed: boolean; matchesUpdated: number }>(
+    'claimPlaceholderProfile', { name },
+  );
+

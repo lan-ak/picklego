@@ -20,13 +20,14 @@ import {
   signInWithGoogle,
   signInWithApple,
   getCurrentUser,
-  createNotificationDocument,
-  updateNotificationDocument,
   getNotificationsForPlayer,
   getNotificationsBySender,
-  addConnectionsBatch,
   removeConnection,
+  addConnectionsBatch,
   callClaimPlaceholderProfile,
+  createNotificationDocument,
+  updateNotificationDocument,
+  deleteNotificationDocument,
   getPlaceholderByEmail,
 } from '../config/firebase';
 import { registerPushToken, unregisterPushToken } from '../services/pushNotifications';
@@ -235,6 +236,64 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadNotifications(currentUser.id);
   };
 
+  // Refresh connected players from Firestore, load missing docs, and prune stale placeholders
+  const refreshConnectedPlayers = async () => {
+    if (!currentUser) return;
+    try {
+      const freshUserDoc = await getPlayerDocument(currentUser.id);
+      if (!freshUserDoc) return;
+
+      setCurrentUser(freshUserDoc);
+      setPlayers(prev => prev.map(p => p.id === freshUserDoc.id ? freshUserDoc : p));
+
+      const connectionIds = freshUserDoc.connections || [];
+      if (connectionIds.length === 0) return;
+
+      // Load any connected player docs not already in local state
+      const existingIds = new Set(playersRef.current.map(p => p.id));
+      const missingIds = connectionIds.filter((id: string) => !existingIds.has(id));
+      let newConnectedPlayers: Player[] = [];
+
+      if (missingIds.length > 0) {
+        const docs = await Promise.all(
+          missingIds.map((id: string) => getPlayerDocument(id))
+        );
+        newConnectedPlayers = docs.filter((d): d is Player => d !== null);
+      }
+
+      // Build email set of real connected players to prune stale placeholders
+      const allConnected = [
+        ...playersRef.current.filter(p => connectionIds.includes(p.id)),
+        ...newConnectedPlayers,
+      ];
+      const connectedEmails = new Set(
+        allConnected
+          .filter(p => p.email && !p.pendingClaim)
+          .map(p => p.email!.trim().toLowerCase())
+      );
+
+      setPlayers(prev => {
+        let updated = prev.filter(p => {
+          if (!p.pendingClaim) return true;
+          if (!p.email) return true;
+          return !connectedEmails.has(p.email.trim().toLowerCase());
+        });
+
+        if (newConnectedPlayers.length > 0) {
+          const currentIds = new Set(updated.map(p => p.id));
+          const toAdd = newConnectedPlayers.filter(p => !currentIds.has(p.id));
+          if (toAdd.length > 0) {
+            updated = [...updated, ...toAdd];
+          }
+        }
+
+        return updated;
+      });
+    } catch (error) {
+      console.error('Error refreshing connected players:', error);
+    }
+  };
+
   // Initialize Firebase auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(async (firebaseUser) => {
@@ -280,10 +339,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               );
               const validPlayers = connectedDocs.filter((d): d is Player => d !== null);
               if (validPlayers.length > 0) {
+                // Build email set of real connected players to prune stale placeholders
+                const allConnected = [
+                  ...playersRef.current.filter(p => playerDoc.connections!.includes(p.id)),
+                  ...validPlayers,
+                ];
+                const connectedEmails = new Set(
+                  allConnected
+                    .filter(p => p.email && !p.pendingClaim)
+                    .map(p => p.email!.trim().toLowerCase())
+                );
+
                 setPlayers(prev => {
-                  const currentIds = new Set(prev.map(p => p.id));
+                  // Remove stale placeholders whose email matches a real connected player
+                  let updated = prev.filter(p => {
+                    if (!p.pendingClaim) return true;
+                    if (!p.email) return true;
+                    return !connectedEmails.has(p.email.trim().toLowerCase());
+                  });
+                  // Add newly loaded connected players
+                  const currentIds = new Set(updated.map(p => p.id));
                   const newPlayers = validPlayers.filter(p => !currentIds.has(p.id));
-                  return newPlayers.length > 0 ? [...prev, ...newPlayers] : prev;
+                  return newPlayers.length > 0 ? [...updated, ...newPlayers] : updated;
                 });
               }
             }
@@ -516,7 +593,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Recalculate stats when a match is completed or a completed match is edited
     if (updates.status === 'completed' || (matchToUpdate.status === 'completed' && (updates.games || updates.winnerTeam))) {
       const updatedMatches = matches.map(m => m.id === matchId ? updatedMatch : m);
-      await recalculateStatsForPlayers(updatedMatch.allPlayerIds, updatedMatches);
+      recalculateStatsForPlayers(updatedMatch.allPlayerIds, updatedMatches);
     }
   };
 
@@ -541,7 +618,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: Date.now(),
         updatedAt: Date.now(),
         ...(!isPlaceholder ? { authProvider: 'email' as const } : {}),
-        ...(isPlaceholder && currentUser ? {
+        ...(isPlaceholder && currentUser && playerData.email ? {
           pendingClaim: true,
           invitedBy: currentUser.id,
           isInvited: true,
@@ -612,7 +689,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Recalculate stats only for the current user
     if (matchToDelete && matchToDelete.status === 'completed') {
       const remainingMatches = matches.filter(m => m.id !== matchId);
-      await recalculateStatsForPlayers([currentUser.id], remainingMatches);
+      recalculateStatsForPlayers([currentUser.id], remainingMatches);
     }
   };
 
@@ -634,7 +711,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const recalculateStatsForPlayers = async (playerIds: string[], currentMatches: Match[]) => {
+  const recalculateStatsForPlayers = (playerIds: string[], currentMatches: Match[]) => {
+    // Optimistic local-only update. Firestore persistence is handled by the
+    // recalculateStatsOnMatchUpdate Cloud Function triggered by match writes.
     for (const playerId of playerIds) {
       const derived = calculatePlayerStats(currentMatches, playerId);
       const statsUpdate: PlayerStats = {
@@ -648,11 +727,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentWinStreak: derived.overall.currentWinStreak,
         bestWinStreak: derived.overall.bestWinStreak,
       };
-      try {
-        await updatePlayerDocument(playerId, { stats: statsUpdate });
-      } catch (error) {
-        console.error(`Error updating stats for player ${playerId}:`, error);
-      }
       setPlayers(prev => prev.map(p =>
         p.id === playerId ? { ...p, stats: statsUpdate } : p
       ));
@@ -689,17 +763,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Don't invite yourself
         if (existingPlayer.id === currentUser.id) return { type: 'error' };
 
-        // Send a connection invite if not already connected and no pending invite
+        // Send a connection invite if not already connected (sendPlayerInvite handles duplicate check)
         if (!currentUser.connections?.includes(existingPlayer.id)) {
-          const existingRequest = notifications.find(n =>
-            n.type === 'player_invite' &&
-            n.status === 'sent' &&
-            ((n.senderId === currentUser.id && n.recipientId === existingPlayer.id) ||
-             (n.senderId === existingPlayer.id && n.recipientId === currentUser.id))
-          );
-          if (!existingRequest) {
-            await sendPlayerInvite(existingPlayer.id);
-          }
+          await sendPlayerInvite(existingPlayer.id);
         }
 
         // Ensure the existing player is in local state for name resolution
@@ -728,7 +794,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Get all players invited by the current user
   const getInvitedPlayers = (): Player[] => {
     if (!currentUser) return [];
-    return players.filter(player => player.invitedBy === currentUser.id);
+    return players.filter(player => player.invitedBy === currentUser.id && player.email);
   };
 
   // Claim an invitation - used when a new player registers from an invitation
@@ -941,44 +1007,51 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendMatchNotifications = async (match: Match): Promise<{ sent: number; failed: number }> => {
     if (!currentUser) return { sent: 0, failed: 0 };
 
-    const recipientIds = match.allPlayerIds.filter(id => id !== currentUser.id);
-    const newNotifications: MatchNotification[] = [];
+    let sent = 0;
     let failed = 0;
+    const newNotifications: MatchNotification[] = [];
 
-    for (const recipientId of recipientIds) {
-      const team = match.team1PlayerIds.includes(recipientId) ? 1 : 2;
-      const notification: MatchNotification = {
-        id: `notif_${match.id}_${recipientId}`,
-        type: 'match_invite',
-        status: 'sent',
-        recipientId,
-        senderId: currentUser.id,
-        senderName: currentUser.name,
-        matchId: match.id,
-        matchDate: match.scheduledDate,
-        matchLocation: match.location,
-        matchType: match.matchType,
-        team: team as 1 | 2,
-        createdAt: Date.now(),
-      };
+    for (const recipientId of match.allPlayerIds) {
+      if (recipientId === currentUser.id) continue;
 
       try {
+        const team = (match.team1PlayerIds || []).includes(recipientId) ? 1 : 2;
+        const notifId = `notif_${match.id}_${recipientId}`;
+        const notification: MatchNotification = {
+          id: notifId,
+          type: 'match_invite',
+          status: 'sent',
+          recipientId,
+          senderId: currentUser.id,
+          senderName: currentUser.name,
+          senderProfilePic: currentUser.profilePic,
+          matchId: match.id,
+          matchDate: match.scheduledDate,
+          matchLocation: match.location,
+          matchType: match.matchType,
+          team: team as 1 | 2,
+          createdAt: Date.now(),
+        };
+
         await createNotificationDocument(notification);
         newNotifications.push(notification);
+        sent++;
       } catch (error) {
         console.error(`Error sending notification to ${recipientId}:`, error);
         failed++;
       }
     }
 
-    // Add sent notifications to local state so the creator sees them immediately
     if (newNotifications.length > 0) {
-      setNotifications(prev =>
-        [...newNotifications, ...prev].sort((a, b) => b.createdAt - a.createdAt)
-      );
+      setNotifications(prev => {
+        const merged = new Map<string, MatchNotification>();
+        for (const n of prev) merged.set(n.id, n);
+        for (const n of newNotifications) merged.set(n.id, n);
+        return Array.from(merged.values()).sort((a, b) => b.createdAt - a.createdAt);
+      });
     }
 
-    return { sent: newNotifications.length, failed };
+    return { sent, failed };
   };
 
   // Mark a single notification as read
@@ -996,27 +1069,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Mark all notifications as read (skip player_invite — those need explicit accept/decline)
   const markAllNotificationsRead = async () => {
+    if (!currentUser) return;
     const now = Date.now();
-    const toMark = notifications.filter(
-      n => n.status === 'sent'
-        && n.recipientId === currentUser?.id
-        && n.type !== 'player_invite'
-    );
-    const successIds = new Set<string>();
-
-    for (const n of toMark) {
-      try {
-        await updateNotificationDocument(n.id, { status: 'read', readAt: now });
-        successIds.add(n.id);
-      } catch (error) {
-        console.error(`Error marking notification ${n.id} as read:`, error);
-      }
-    }
-
-    if (successIds.size > 0) {
-      setNotifications(prev =>
-        prev.map(n => successIds.has(n.id) ? { ...n, status: 'read' as const, readAt: now } : n)
+    try {
+      const toMark = notifications.filter(
+        n => n.status === 'sent' && n.recipientId === currentUser.id && n.type !== 'player_invite'
       );
+      await Promise.all(
+        toMark.map(n => updateNotificationDocument(n.id, { status: 'read', readAt: now }))
+      );
+      if (toMark.length > 0) {
+        setNotifications(prev =>
+          prev.map(n =>
+            n.status === 'sent' && n.recipientId === currentUser.id && n.type !== 'player_invite'
+              ? { ...n, status: 'read' as const, readAt: now }
+              : n
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
     }
   };
 
@@ -1031,28 +1103,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (recipientId === currentUser.id) return false;
     if (currentUser.connections?.includes(recipientId)) return false;
 
-    // Check for existing pending invite in either direction
-    const existingRequest = notifications.find(n =>
-      n.type === 'player_invite' &&
-      n.status === 'sent' &&
-      ((n.senderId === currentUser.id && n.recipientId === recipientId) ||
-       (n.senderId === recipientId && n.recipientId === currentUser.id))
-    );
-    if (existingRequest) return false;
-
-    const notification: MatchNotification = {
-      id: `player_invite_${currentUser.id}_${recipientId}`,
-      type: 'player_invite',
-      status: 'sent',
-      recipientId,
-      senderId: currentUser.id,
-      senderName: currentUser.name,
-      senderProfilePic: currentUser.profilePic,
-      message: `${currentUser.name} wants to add you as a player on PickleGo!`,
-      createdAt: Date.now(),
-    };
-
     try {
+      const now = Date.now();
+      const notifId = `player_invite_${currentUser.id}_${recipientId}_${now}`;
+      const notification: MatchNotification = {
+        id: notifId,
+        type: 'player_invite',
+        status: 'sent',
+        recipientId,
+        senderId: currentUser.id,
+        senderName: currentUser.name,
+        senderProfilePic: currentUser.profilePic,
+        message: `${currentUser.name} wants to add you as a player on PickleGo!`,
+        createdAt: now,
+      };
+
       await createNotificationDocument(notification);
       setNotifications(prev =>
         [notification, ...prev].sort((a, b) => b.createdAt - a.createdAt)
@@ -1064,81 +1129,86 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Respond to a player invite: accept adds both as connections, decline updates status
+  // Respond to a player invite: accept adds connections + creates accept notification, decline updates status
   const respondToPlayerInvite = async (notificationId: string, accept: boolean): Promise<void> => {
     if (!currentUser) return;
 
     const notification = notifications.find(n => n.id === notificationId);
     if (!notification || notification.type !== 'player_invite') return;
+    if (notification.recipientId !== currentUser.id) return;
 
     const now = Date.now();
+    const senderId = notification.senderId;
 
-    if (accept) {
-      const senderId = notification.senderId;
+    try {
+      if (accept) {
+        // 1. Update the invite notification status
+        await updateNotificationDocument(notificationId, { status: 'accepted', respondedAt: now });
 
-      // Add each other as connections atomically
-      await addConnectionsBatch(currentUser.id, senderId);
+        // 2. Add bidirectional connections
+        await addConnectionsBatch(currentUser.id, senderId);
 
-      // Update the player invite notification to accepted
-      await updateNotificationDocument(notificationId, {
-        status: 'accepted',
-        respondedAt: now,
-      });
+        // 3. Create invite_accepted notification for the sender
+        const acceptNotifId = `invite_accepted_${currentUser.id}_${senderId}_${now}`;
+        const acceptNotification: MatchNotification = {
+          id: acceptNotifId,
+          type: 'invite_accepted',
+          status: 'sent',
+          recipientId: senderId,
+          senderId: currentUser.id,
+          senderName: currentUser.name,
+          senderProfilePic: currentUser.profilePic,
+          message: `${currentUser.name} accepted your player invite!`,
+          createdAt: now,
+        };
+        await createNotificationDocument(acceptNotification);
 
-      // Create an invite_accepted notification for the sender
-      const acceptNotification: MatchNotification = {
-        id: `invite_accepted_${currentUser.id}_${senderId}_${now}`,
-        type: 'invite_accepted',
-        status: 'sent',
-        recipientId: senderId,
-        senderId: currentUser.id,
-        senderName: currentUser.name,
-        senderProfilePic: currentUser.profilePic,
-        message: `${currentUser.name} accepted your player invite!`,
-        createdAt: now,
-      };
-      await createNotificationDocument(acceptNotification);
+        // Update local notification state
+        setNotifications(prev =>
+          [acceptNotification, ...prev.map(n =>
+            n.id === notificationId ? { ...n, status: 'accepted' as const, respondedAt: now } : n
+          )].sort((a, b) => b.createdAt - a.createdAt)
+        );
 
-      // Update local notification state
-      setNotifications(prev =>
-        [acceptNotification, ...prev.map(n =>
-          n.id === notificationId ? { ...n, status: 'accepted' as const, respondedAt: now } : n
-        )].sort((a, b) => b.createdAt - a.createdAt)
-      );
+        // Update local player connections arrays
+        setCurrentUser(prev => prev ? {
+          ...prev,
+          connections: [...(prev.connections || []), senderId],
+        } : prev);
 
-      // Update local player connections arrays
-      setCurrentUser(prev => prev ? {
-        ...prev,
-        connections: [...(prev.connections || []), senderId],
-      } : prev);
+        setPlayers(prev => prev.map(p => {
+          if (p.id === currentUser.id) return { ...p, connections: [...(p.connections || []), senderId] };
+          if (p.id === senderId) return { ...p, connections: [...(p.connections || []), currentUser.id] };
+          return p;
+        }));
 
-      setPlayers(prev => prev.map(p => {
-        if (p.id === currentUser.id) return { ...p, connections: [...(p.connections || []), senderId] };
-        if (p.id === senderId) return { ...p, connections: [...(p.connections || []), currentUser.id] };
-        return p;
-      }));
-
-      // Ensure the sender's player doc is in local state
-      const senderInLocal = players.find(p => p.id === senderId);
-      if (!senderInLocal) {
-        const senderDoc = await getPlayerDocument(senderId);
-        if (senderDoc) {
-          setPlayers(prev => [...prev, senderDoc]);
+        // Ensure the sender's player doc is in local state
+        const senderInLocal = players.find(p => p.id === senderId);
+        if (!senderInLocal) {
+          const senderDoc = await getPlayerDocument(senderId);
+          if (senderDoc) {
+            setPlayers(prev => [...prev, senderDoc]);
+          }
         }
-      }
-    } else {
-      // Decline: just update the notification status
-      await updateNotificationDocument(notificationId, {
-        status: 'declined',
-        respondedAt: now,
-      });
+      } else {
+        // Decline: update the notification status
+        await updateNotificationDocument(notificationId, { status: 'declined', respondedAt: now });
 
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId ? { ...n, status: 'declined' as const, respondedAt: now } : n
-        )
-      );
+        setNotifications(prev =>
+          prev.map(n =>
+            n.id === notificationId ? { ...n, status: 'declined' as const, respondedAt: now } : n
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error responding to player invite:', error);
+      throw error;
     }
+  };
+
+  const deleteNotification = async (notificationId: string): Promise<void> => {
+    await deleteNotificationDocument(notificationId);
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
   };
 
   // Only count notifications where the current user is the recipient and status is 'sent'
@@ -1177,8 +1247,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getNotificationsForMatch,
     sendPlayerInvite,
     respondToPlayerInvite,
+    deleteNotification,
     refreshMatches,
     refreshNotifications,
+    refreshConnectedPlayers,
   };
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Icon } from '../components/Icon';
+import MatchCard from '../components/MatchCard';
 import { useData } from '../context/DataContext';
-import { format } from 'date-fns';
 import Layout from '../components/Layout';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import type { CompositeNavigationProp } from '@react-navigation/native';
@@ -20,8 +20,15 @@ type MatchesTab = 'all' | 'upcoming' | 'completed' | 'won' | 'lost';
 
 const MatchesScreen = () => {
   const navigation = useNavigation<MatchesScreenNavigationProp>();
-  const { matches, players, currentUser, getPlayerName } = useData();
+  const { matches, players, currentUser, getPlayerName, refreshMatches } = useData();
   const [activeTab, setActiveTab] = useState<MatchesTab>('all');
+
+  // Refresh matches from Firestore whenever this screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      refreshMatches();
+    }, [])
+  );
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   // Sort comparator based on sort order
@@ -86,42 +93,6 @@ const MatchesScreen = () => {
 
   const filteredMatches = getFilteredMatches();
 
-  const getTeamNames = (match: Match, teamNumber: 1 | 2) => {
-    const teamPlayerIds = teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds;
-    if (match.matchType !== 'doubles') {
-      const playerId = teamPlayerIds[0];
-      if (currentUser && playerId === currentUser.id) return 'Me';
-      return formatPlayerNameWithInitial(getPlayerName(playerId));
-    }
-    return teamPlayerIds.map(id => {
-      if (currentUser && id === currentUser.id) return 'Me';
-      return formatPlayerNameWithInitial(getPlayerName(id));
-    }).join(' & ');
-  };
-
-  const isTeamWinner = (match: Match, teamNumber: 1 | 2) => {
-    return match.winnerTeam === teamNumber;
-  };
-
-  // Helper function to determine which team the user is on
-  const getUserTeamNumber = (match: Match, userId: string): 1 | 2 | null => {
-    if (!userId) return null;
-    if (match.team1PlayerIds.includes(userId)) return 1;
-    if (match.team2PlayerIds.includes(userId)) return 2;
-    return null;
-  };
-
-  // Add this helper function for formatting names with first name and last initial
-  const formatPlayerNameWithInitial = (fullName: string) => {
-    const parts = fullName.trim().split(' ');
-    if (parts.length < 2) return fullName; // Return as is if no space found
-
-    const firstName = parts[0];
-    const lastInitial = parts[parts.length - 1][0]; // First character of last name
-
-    return `${firstName} ${lastInitial}.`;
-  };
-
   const renderTabs = () => (
     <View style={styles.tabsContainer}>
       <ScrollView
@@ -182,103 +153,15 @@ const MatchesScreen = () => {
     </View>
   );
 
-  const renderMatch = (match: typeof matches[0]) => {
-    const userTeam = currentUser ? getUserTeamNumber(match, currentUser.id) : null;
-    const isUserMatch = userTeam !== null;
-    const didUserWin = isUserMatch && match.status === 'completed' && isUserWinner(match, currentUser!.id);
-    const didUserLose = isUserMatch && match.status === 'completed' && !isUserWinner(match, currentUser!.id);
-
-    return (
-      <TouchableOpacity
-        key={match.id}
-        style={[
-          styles.matchCard,
-          didUserWin && styles.winMatchCard,
-          didUserLose && styles.lossMatchCard
-        ]}
-        onPress={() => {
-          navigation.navigate('MatchDetails', { matchId: match.id });
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={`${getTeamNames(match, 1)} vs ${getTeamNames(match, 2)}, ${format(new Date(match.scheduledDate), 'MMM d, yyyy')}`}
-        accessibilityHint="View match details"
-      >
-        <View style={styles.matchHeader}>
-          <Text style={styles.matchDate}>
-            {format(new Date(match.scheduledDate), 'MMM d, yyyy - h:mm a')}
-          </Text>
-          {match.status === 'completed' && (
-            <View style={[
-              styles.statusBadge,
-              didUserWin && styles.winStatusBadge,
-              didUserLose && styles.lossStatusBadge
-            ]}>
-              {didUserWin && (
-                <>
-                  <Icon name="trophy" size={16} color={colors.primary} />
-                  <Text style={styles.winStatusText}>Won</Text>
-                </>
-              )}
-              {didUserLose && (
-                <>
-                  <Icon name="x-circle" size={16} color={colors.loss} />
-                  <Text style={styles.lossStatusText}>Lost</Text>
-                </>
-              )}
-              {!isUserMatch && (
-                <>
-                  <Icon name="check-circle" size={16} color={colors.primary} />
-                  <Text style={styles.statusText}>Completed</Text>
-                </>
-              )}
-            </View>
-          )}
-        </View>
-
-        <Text style={styles.matchType}>
-          {match.matchType === 'doubles' ? 'Doubles' : 'Singles'} • {match.pointsToWin} pts • Best of {match.numberOfGames}
-        </Text>
-
-        <View style={styles.teamsContainer}>
-          <Text style={[
-            styles.teamName,
-            match.status === 'completed' && isTeamWinner(match, 1) && styles.winningTeam,
-            userTeam === 1 && styles.userTeam,
-            userTeam === 1 && didUserWin && styles.userWonTeam,
-            userTeam === 1 && didUserLose && styles.userLostTeam
-          ]}>
-            {getTeamNames(match, 1)}
-            {match.status === 'completed' && isTeamWinner(match, 1) && ' (Winner)'}
-            {userTeam === 1 && ' (Me)'}
-          </Text>
-          <Text style={styles.teamSeparator}>vs</Text>
-          <Text style={[
-            styles.teamName,
-            match.status === 'completed' && isTeamWinner(match, 2) && styles.winningTeam,
-            userTeam === 2 && styles.userTeam,
-            userTeam === 2 && didUserWin && styles.userWonTeam,
-            userTeam === 2 && didUserLose && styles.userLostTeam
-          ]}>
-            {getTeamNames(match, 2)}
-            {match.status === 'completed' && isTeamWinner(match, 2) && ' (Winner)'}
-            {userTeam === 2 && ' (Me)'}
-          </Text>
-        </View>
-
-        {match.location && (
-          <Text style={styles.matchLocation}>
-            <Icon name="map-pin" size={14} color={colors.gray500} /> {match.location}
-          </Text>
-        )}
-
-        {match.status === 'completed' && match.games.length > 0 && (
-          <Text style={styles.matchScore}>
-            {match.games.map(game => `${game.team1Score}-${game.team2Score}`).join(', ')}
-          </Text>
-        )}
-      </TouchableOpacity>
-    );
-  };
+  const renderMatch = (match: Match) => (
+    <MatchCard
+      key={match.id}
+      match={match}
+      currentUserId={currentUser?.id || ''}
+      getPlayerName={getPlayerName}
+      onPress={() => navigation.navigate('MatchDetails', { matchId: match.id })}
+    />
+  );
 
   return (
     <Layout
@@ -405,120 +288,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: spacing.xxxl,
   },
-  matchCard: {
-    padding: spacing.lg,
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.lg,
-    ...shadows.md,
-  },
-  winMatchCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  lossMatchCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: colors.loss,
-  },
-  matchHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  matchDate: {
-    ...typography.label,
-    color: colors.primary,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.winOverlay,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.md,
-  },
-  winStatusBadge: {
-    backgroundColor: colors.winOverlay,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: spacing.xs,
-    marginLeft: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  lossStatusBadge: {
-    backgroundColor: colors.lossOverlay,
-  },
-  statusText: {
-    ...typography.caption,
-    color: colors.primary,
-    marginLeft: spacing.xs,
-    fontWeight: '600',
-  },
-  winStatusText: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  lossStatusText: {
-    ...typography.caption,
-    color: colors.loss,
-    marginLeft: spacing.xs,
-    fontWeight: '600',
-  },
-  matchType: {
-    ...typography.label,
-    color: colors.primary,
-    marginBottom: spacing.sm,
-  },
-  teamsContainer: {
-    marginVertical: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.sm,
-    padding: spacing.md,
-  },
-  teamName: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.neutral,
-    textAlign: 'center',
-    marginVertical: spacing.xs,
-  },
-  teamSeparator: {
-    ...typography.bodySmall,
-    color: colors.gray500,
-    textAlign: 'center',
-    marginVertical: spacing.sm,
-    fontWeight: '500',
-  },
-  winningTeam: {
-    color: colors.primary,
-    fontWeight: 'bold',
-  },
-  userTeam: {
-    fontWeight: '700',
-  },
-  userWonTeam: {
-    color: colors.primary,
-  },
-  userLostTeam: {
-    color: colors.loss,
-  },
-  matchLocation: {
-    ...typography.bodySmall,
-    color: colors.gray500,
-    marginTop: spacing.sm,
-  },
-  matchScore: {
-    ...typography.scoreDisplay,
-    color: colors.neutral,
-    marginTop: spacing.md,
-    textAlign: 'center',
-    backgroundColor: colors.primaryOverlay,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.sm,
-  },
   headerButton: {
     padding: spacing.sm,
   },
@@ -543,35 +312,6 @@ const styles = StyleSheet.create({
   addButtonText: {
     ...typography.button,
     color: colors.white,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    color: colors.primary,
-    marginLeft: spacing.sm,
-  },
-  gameNumber: {
-    ...typography.bodyLarge,
-    fontWeight: '600',
-    color: colors.primary,
-    marginBottom: spacing.sm,
-  },
-  activeTabIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    backgroundColor: colors.primary,
-  },
-  playerNames: {
-    ...typography.bodyLarge,
-    color: colors.neutral,
-    marginBottom: spacing.xs,
-  },
-  scoreText: {
-    ...typography.bodySmall,
-    color: colors.primary,
-    fontWeight: '500',
   },
 });
 
