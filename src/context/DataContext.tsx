@@ -674,11 +674,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Optimistically remove from local state
     setMatches(prev => prev.filter(match => match.id !== matchId));
 
-    // Soft-delete in Firestore (add current user to deletedByPlayerIds)
+    const isScheduled = matchToDelete?.status === 'scheduled';
+
     try {
-      await softDeleteMatch(matchId, currentUser.id);
+      if (isScheduled) {
+        // Hard-delete scheduled matches for everyone
+        await deleteMatchDocument(matchId);
+      } else {
+        // Soft-delete completed matches (only hide for current user)
+        await softDeleteMatch(matchId, currentUser.id);
+      }
     } catch (error) {
-      console.error('Error soft-deleting match from Firestore:', error);
+      console.error('Error deleting match from Firestore:', error);
       // Restore on failure
       if (matchToDelete) {
         setMatches(prev => [...prev, matchToDelete]);
@@ -686,10 +693,59 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Recalculate stats only for the current user
+    // Recalculate stats only for completed matches
     if (matchToDelete && matchToDelete.status === 'completed') {
       const remainingMatches = matches.filter(m => m.id !== matchId);
       recalculateStatsForPlayers([currentUser.id], remainingMatches);
+    }
+
+    // Send match_cancelled notifications only for upcoming matches (not completed ones)
+    if (matchToDelete && matchToDelete.status === 'scheduled') {
+      const now = Date.now();
+      const dateStr = new Date(matchToDelete.scheduledDate).toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric',
+      });
+      const matchTypeLabel = matchToDelete.matchType === 'doubles' ? 'doubles' : 'singles';
+
+      for (const recipientId of matchToDelete.allPlayerIds) {
+        if (recipientId === currentUser.id) continue;
+        try {
+          const notifId = `notif_cancelled_${matchId}_${recipientId}_${now}`;
+          const notification: MatchNotification = {
+            id: notifId,
+            type: 'match_cancelled',
+            status: 'sent',
+            recipientId,
+            senderId: currentUser.id,
+            senderName: currentUser.name,
+            senderProfilePic: currentUser.profilePic,
+            matchId: matchToDelete.id,
+            matchDate: matchToDelete.scheduledDate,
+            matchLocation: matchToDelete.location,
+            matchType: matchToDelete.matchType,
+            message: `${currentUser.name} cancelled the ${matchTypeLabel} match on ${dateStr}`,
+            createdAt: now,
+          };
+          await createNotificationDocument(notification);
+        } catch (error) {
+          console.error(`Error sending match_cancelled notification to ${recipientId}:`, error);
+        }
+      }
+    }
+
+    // Clean up orphaned notifications for this match where current user is recipient
+    const orphanedNotifs = notifications.filter(
+      n => n.matchId === matchId && n.recipientId === currentUser.id
+    );
+    if (orphanedNotifs.length > 0) {
+      for (const n of orphanedNotifs) {
+        try {
+          await deleteNotificationDocument(n.id);
+        } catch (error) {
+          console.error(`Error cleaning up notification ${n.id}:`, error);
+        }
+      }
+      setNotifications(prev => prev.filter(n => !(n.matchId === matchId && n.recipientId === currentUser.id)));
     }
   };
 
@@ -1054,6 +1110,61 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { sent, failed };
   };
 
+  // Send update notifications to all players in a match (except the editor)
+  const sendMatchUpdateNotifications = async (match: Match): Promise<{ sent: number; failed: number }> => {
+    if (!currentUser) return { sent: 0, failed: 0 };
+
+    let sent = 0;
+    let failed = 0;
+    const newNotifications: MatchNotification[] = [];
+    const now = Date.now();
+    const dateStr = new Date(match.scheduledDate).toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric',
+    });
+    const matchTypeLabel = match.matchType === 'doubles' ? 'doubles' : 'singles';
+
+    for (const recipientId of match.allPlayerIds) {
+      if (recipientId === currentUser.id) continue;
+
+      try {
+        const notifId = `notif_updated_${match.id}_${recipientId}_${now}`;
+        const notification: MatchNotification = {
+          id: notifId,
+          type: 'match_updated',
+          status: 'sent',
+          recipientId,
+          senderId: currentUser.id,
+          senderName: currentUser.name,
+          senderProfilePic: currentUser.profilePic,
+          matchId: match.id,
+          matchDate: match.scheduledDate,
+          matchLocation: match.location,
+          matchType: match.matchType,
+          message: `${currentUser.name} updated the ${matchTypeLabel} match on ${dateStr}`,
+          createdAt: now,
+        };
+
+        await createNotificationDocument(notification);
+        newNotifications.push(notification);
+        sent++;
+      } catch (error) {
+        console.error(`Error sending match_updated notification to ${recipientId}:`, error);
+        failed++;
+      }
+    }
+
+    if (newNotifications.length > 0) {
+      setNotifications(prev => {
+        const merged = new Map<string, MatchNotification>();
+        for (const n of prev) merged.set(n.id, n);
+        for (const n of newNotifications) merged.set(n.id, n);
+        return Array.from(merged.values()).sort((a, b) => b.createdAt - a.createdAt);
+      });
+    }
+
+    return { sent, failed };
+  };
+
   // Mark a single notification as read
   const markNotificationRead = async (notificationId: string) => {
     const now = Date.now();
@@ -1211,6 +1322,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setNotifications(prev => prev.filter(n => n.id !== notificationId));
   };
 
+  const clearAllNotifications = async (): Promise<void> => {
+    if (!currentUser) return;
+    const toClear = notifications.filter(n => n.recipientId === currentUser.id);
+    setNotifications(prev => prev.filter(n => n.recipientId !== currentUser.id));
+    for (const n of toClear) {
+      try {
+        await deleteNotificationDocument(n.id);
+      } catch (error) {
+        console.error(`Error deleting notification ${n.id}:`, error);
+      }
+    }
+  };
+
   // Only count notifications where the current user is the recipient and status is 'sent'
   const unreadNotificationCount = notifications.filter(
     n => n.status === 'sent' && n.recipientId === currentUser?.id
@@ -1242,12 +1366,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     completeSocialSignUp,
     signOutUser,
     sendMatchNotifications,
+    sendMatchUpdateNotifications,
     markNotificationRead,
     markAllNotificationsRead,
     getNotificationsForMatch,
     sendPlayerInvite,
     respondToPlayerInvite,
     deleteNotification,
+    clearAllNotifications,
     refreshMatches,
     refreshNotifications,
     refreshConnectedPlayers,

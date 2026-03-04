@@ -31,8 +31,10 @@ service cloud.firestore {
         request.auth.uid in resource.data.allPlayerIds ||
         request.auth.uid == resource.data.createdBy
       );
-      allow delete: if request.auth != null
-        && request.auth.uid == resource.data.createdBy;
+      allow delete: if request.auth != null && (
+        request.auth.uid == resource.data.createdBy ||
+        request.auth.uid in resource.data.allPlayerIds
+      );
     }
     match /notifications/{notificationId} {
       allow read: if request.auth != null && (

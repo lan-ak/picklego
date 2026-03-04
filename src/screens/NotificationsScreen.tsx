@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
@@ -14,7 +14,7 @@ type NotificationsNavigationProp = NativeStackNavigationProp<RootStackParamList>
 
 const NotificationsScreen = () => {
   const navigation = useNavigation<NotificationsNavigationProp>();
-  const { notifications, matches, currentUser, markNotificationRead, markAllNotificationsRead, unreadNotificationCount, respondToPlayerInvite, refreshMatches, refreshNotifications } = useData();
+  const { notifications, matches, currentUser, markNotificationRead, markAllNotificationsRead, unreadNotificationCount, respondToPlayerInvite, deleteNotification, clearAllNotifications, refreshMatches, refreshNotifications } = useData();
   const { showToast } = useToast();
 
   // Refresh data when screen comes into focus
@@ -72,17 +72,46 @@ const NotificationsScreen = () => {
     }
   };
 
+  const handleDeleteNotification = async (notificationId: string) => {
+    try {
+      await deleteNotification(notificationId);
+    } catch (error) {
+      showToast('Failed to delete notification', 'error');
+    }
+  };
+
+  const handleClearAll = () => {
+    Alert.alert(
+      'Clear All Notifications',
+      'Are you sure you want to clear all notifications?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear All', style: 'destructive', onPress: clearAllNotifications },
+      ]
+    );
+  };
+
   return (
     <Layout title="Notifications" showBackButton={true}>
-      {receivedUnreadCount > 0 && (
-        <View style={styles.markAllContainer}>
+      {receivedNotifications.length > 0 && (
+        <View style={styles.actionBar}>
+          {receivedUnreadCount > 0 && (
+            <TouchableOpacity
+              onPress={markAllNotificationsRead}
+              style={styles.markAllButton}
+              accessibilityLabel="Mark all notifications as read"
+              accessibilityRole="button"
+            >
+              <Text style={styles.markAllText}>Mark all as read</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
-            onPress={markAllNotificationsRead}
-            style={styles.markAllButton}
-            accessibilityLabel="Mark all notifications as read"
+            onPress={handleClearAll}
+            style={styles.clearAllButton}
+            accessibilityLabel="Clear all notifications"
             accessibilityRole="button"
           >
-            <Text style={styles.markAllText}>Mark all as read</Text>
+            <Text style={styles.clearAllText}>Clear all</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -106,6 +135,7 @@ const NotificationsScreen = () => {
                   onPress={() => handleNotificationPress(item.id, undefined, item.type)}
                   onAccept={item.status === 'sent' ? () => handleAcceptInvite(item.id) : undefined}
                   onDecline={item.status === 'sent' ? () => handleDeclineInvite(item.id) : undefined}
+                  onDelete={() => handleDeleteNotification(item.id)}
                 />
               );
             }
@@ -114,6 +144,7 @@ const NotificationsScreen = () => {
                 <NotificationCard
                   notification={item}
                   onPress={() => handleNotificationPress(item.id, undefined, item.type)}
+                  onDelete={() => handleDeleteNotification(item.id)}
                 />
               );
             }
@@ -121,6 +152,7 @@ const NotificationsScreen = () => {
               <NotificationCard
                 notification={item}
                 onPress={() => handleNotificationPress(item.id, item.matchId, item.type)}
+                onDelete={() => handleDeleteNotification(item.id)}
               />
             );
           }}
@@ -133,11 +165,12 @@ const NotificationsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  markAllContainer: {
+  actionBar: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
+    gap: spacing.md,
   },
   markAllButton: {
     paddingVertical: spacing.xs,
@@ -146,6 +179,15 @@ const styles = StyleSheet.create({
   markAllText: {
     ...typography.bodySmall,
     color: colors.secondary,
+    fontWeight: '600',
+  },
+  clearAllButton: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  clearAllText: {
+    ...typography.bodySmall,
+    color: colors.error,
     fontWeight: '600',
   },
   listContent: {

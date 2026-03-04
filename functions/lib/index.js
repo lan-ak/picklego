@@ -204,7 +204,7 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
     if (notification.status !== 'sent')
         return;
     // Only send push for types that warrant a push
-    if (!['match_invite', 'player_invite'].includes(notification.type))
+    if (!['match_invite', 'match_updated', 'match_cancelled', 'player_invite'].includes(notification.type))
         return;
     // If this is an update, skip if nothing meaningful changed
     if (change.before.exists) {
@@ -234,6 +234,14 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
         title = 'New Match Invite';
         body = `${notification.senderName} invited you to a ${matchTypeLabel} match on ${dateStr}`;
     }
+    else if (notification.type === 'match_updated') {
+        title = 'Match Updated';
+        body = notification.message || `${notification.senderName} updated a match`;
+    }
+    else if (notification.type === 'match_cancelled') {
+        title = 'Match Cancelled';
+        body = notification.message || `${notification.senderName} cancelled a match`;
+    }
     else {
         title = 'New Player Invite';
         body = notification.message || `${notification.senderName} wants to add you as a player!`;
@@ -244,7 +252,7 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
         channelId: 'match-invites',
         data: {
             ...(notification.matchId ? { matchId: notification.matchId } : {}),
-            screen: notification.type === 'match_invite' ? 'MatchDetails' : 'Notifications',
+            screen: ['match_invite', 'match_updated'].includes(notification.type) ? 'MatchDetails' : 'Notifications',
             notificationId: notification.id,
         },
     }));

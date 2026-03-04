@@ -39,7 +39,7 @@ type AddMatchScreenNavigationProp = CompositeNavigationProp<
 const AddMatchScreen = () => {
   const navigation = useNavigation<AddMatchScreenNavigationProp>();
   const route = useRoute();
-  const { players, addMatch, addPlayer, invitePlayer, currentUser, matches, updateMatch, sendMatchNotifications, refreshConnectedPlayers } = useData();
+  const { players, addMatch, addPlayer, invitePlayer, currentUser, matches, updateMatch, sendMatchNotifications, sendMatchUpdateNotifications, refreshConnectedPlayers } = useData();
   const { showToast } = useToast();
 
   // Check if we're editing an existing match
@@ -508,10 +508,10 @@ const AddMatchScreen = () => {
           randomizeTeamsPerGame: shufflePerGame,
         });
 
-        // Re-send notifications for the updated match (uses deterministic IDs so overwrites existing)
+        // Send update notifications to all players
         const updatedMatch = matches.find(m => m.id === matchId);
         if (updatedMatch) {
-          const result = await sendMatchNotifications({
+          const result = await sendMatchUpdateNotifications({
             ...updatedMatch,
             scheduledDate: matchDate.toISOString(),
             matchType: isDoubles ? 'doubles' : 'singles',
@@ -522,9 +522,6 @@ const AddMatchScreen = () => {
           });
           if (result.failed > 0) {
             showToast(`Failed to notify ${result.failed} player${result.failed > 1 ? 's' : ''}`, 'error');
-          }
-          if (result.sent > 0) {
-            await updateMatch(String(matchId), { notificationsSent: true });
           }
         }
 

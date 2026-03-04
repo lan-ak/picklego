@@ -9,6 +9,7 @@ type NotificationCardProps = {
   onPress: () => void;
   onAccept?: () => void;
   onDecline?: () => void;
+  onDelete?: () => void;
 };
 
 const formatTimeAgo = (timestamp: number): string => {
@@ -38,11 +39,24 @@ const formatMatchDate = (dateString?: string): string => {
   });
 };
 
-const NotificationCard = ({ notification, onPress, onAccept, onDecline }: NotificationCardProps) => {
+const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete }: NotificationCardProps) => {
   const isUnread = notification.status === 'sent' && notification.type !== 'player_invite';
   const isPlayerInvite = notification.type === 'player_invite';
   const isInviteAccepted = notification.type === 'invite_accepted';
+  const isMatchUpdated = notification.type === 'match_updated';
+  const isMatchCancelled = notification.type === 'match_cancelled';
   const isPendingPlayerInvite = isPlayerInvite && notification.status === 'sent';
+
+  const deleteButton = onDelete ? (
+    <TouchableOpacity
+      onPress={onDelete}
+      style={styles.deleteButton}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      accessibilityLabel="Delete notification"
+    >
+      <Icon name="x" size={16} color={colors.gray400} />
+    </TouchableOpacity>
+  ) : null;
 
   if (isPlayerInvite) {
     return (
@@ -60,7 +74,10 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline }: Notifi
               <Text style={[styles.title, isPendingPlayerInvite && styles.unreadTitle]}>
                 Player Invite
               </Text>
-              <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+              <View style={styles.headerRight}>
+                <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+                {deleteButton}
+              </View>
             </View>
             <Text style={styles.body}>
               {notification.senderName} wants to add you as a player!
@@ -115,11 +132,56 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline }: Notifi
               <Text style={[styles.title, isUnreadAccepted && styles.unreadTitle]}>
                 Player Added
               </Text>
-              <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+              <View style={styles.headerRight}>
+                <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+                {deleteButton}
+              </View>
             </View>
             <Text style={styles.body}>
               {notification.senderName} accepted your player invite!
             </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  if (isMatchUpdated || isMatchCancelled) {
+    return (
+      <TouchableOpacity
+        style={[styles.card, isUnread && styles.unreadCard]}
+        onPress={onPress}
+        activeOpacity={0.7}
+        accessibilityLabel={`${isMatchCancelled ? 'Match cancelled' : 'Match updated'} by ${notification.senderName}`}
+        accessibilityRole="button"
+      >
+        <View style={styles.row}>
+          {isUnread && <View style={styles.unreadDot} />}
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Text style={[styles.title, isUnread && styles.unreadTitle]}>
+                {isMatchCancelled ? 'Match Cancelled' : 'Match Updated'}
+              </Text>
+              <View style={styles.headerRight}>
+                <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+                {deleteButton}
+              </View>
+            </View>
+            <Text style={styles.body}>
+              {notification.message}
+            </Text>
+            {notification.matchDate && (
+              <View style={styles.detailRow}>
+                <Icon name="calendar" size={14} color={colors.gray400} />
+                <Text style={styles.detailText}>{formatMatchDate(notification.matchDate)}</Text>
+              </View>
+            )}
+            {notification.matchLocation && (
+              <View style={styles.detailRow}>
+                <Icon name="map-pin" size={14} color={colors.gray400} />
+                <Text style={styles.detailText}>{notification.matchLocation}</Text>
+              </View>
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -142,7 +204,10 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline }: Notifi
         <View style={styles.content}>
           <View style={styles.header}>
             <Text style={[styles.title, isUnread && styles.unreadTitle]}>Match Added</Text>
-            <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+            <View style={styles.headerRight}>
+              <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+              {deleteButton}
+            </View>
           </View>
           <Text style={styles.body}>
             {notification.senderName} added you to a {matchTypeLabel} match
@@ -208,6 +273,14 @@ const styles = StyleSheet.create({
   },
   unreadTitle: {
     fontWeight: '700',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  deleteButton: {
+    padding: 2,
   },
   timeAgo: {
     ...typography.caption,

@@ -85,13 +85,16 @@ const MatchDetailsScreen = () => {
   };
 
   const handleDeleteMatch = () => {
+    const isScheduled = match.status === 'scheduled';
     Alert.alert(
-      'Remove Match',
-      'Are you sure you want to remove this match from your history? Other players in this match will not be affected.',
+      isScheduled ? 'Cancel Match' : 'Remove Match',
+      isScheduled
+        ? 'This will cancel the match for all players. They will be notified.'
+        : 'Are you sure you want to remove this match from your history? Other players in this match will not be affected.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Remove',
+          text: isScheduled ? 'Cancel Match' : 'Remove',
           style: 'destructive',
           onPress: async () => {
             await deleteMatch(match.id);

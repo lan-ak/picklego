@@ -91,7 +91,7 @@ export type InviteResult = {
 
 export interface MatchNotification {
   id: string;
-  type: 'match_invite' | 'player_invite' | 'invite_accepted';
+  type: 'match_invite' | 'match_updated' | 'match_cancelled' | 'player_invite' | 'invite_accepted';
   status: 'sent' | 'read' | 'accepted' | 'declined';
   recipientId: string;
   senderId: string;
@@ -160,12 +160,14 @@ export interface DataContextType {
   completeSocialSignUp: (name: string, provider: 'google' | 'apple') => Promise<void>;
   signOutUser: () => Promise<void>;
   sendMatchNotifications: (match: Match) => Promise<{ sent: number; failed: number }>;
+  sendMatchUpdateNotifications: (match: Match) => Promise<{ sent: number; failed: number }>;
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
   getNotificationsForMatch: (matchId: string) => MatchNotification[];
   sendPlayerInvite: (recipientId: string) => Promise<boolean>;
   respondToPlayerInvite: (notificationId: string, accept: boolean) => Promise<void>;
   deleteNotification: (notificationId: string) => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
   refreshMatches: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
   refreshConnectedPlayers: () => Promise<void>;
