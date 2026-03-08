@@ -5,12 +5,12 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Image,
   TextInput,
   Alert,
-  Platform
 } from 'react-native';
+import { AnimatedPressable } from '../components/AnimatedPressable';
+import { KeyboardAwareContainer } from '../components/KeyboardAwareContainer';
 import { Icon } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
@@ -20,11 +20,14 @@ import { RootStackParamList, Player } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useToast } from '../context/ToastContext';
 import { useProfilePicture } from '../hooks/useProfilePicture';
+import Animated from 'react-native-reanimated';
+import { useFadeIn } from '../hooks';
 
 type EditProfileScreenRouteProp = RouteProp<RootStackParamList, 'EditProfile'>;
 type EditProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const EditProfileScreen: React.FC = () => {
+  const fadeStyle = useFadeIn();
   const { currentUser, updatePlayer } = useData();
   const navigation = useNavigation<EditProfileScreenNavigationProp>();
   const route = useRoute<EditProfileScreenRouteProp>();
@@ -118,6 +121,7 @@ const EditProfileScreen: React.FC = () => {
 
   return (
     <Layout title="Edit Profile">
+      <Animated.View style={[{ flex: 1 }, fadeStyle]}>
       <ScrollView style={styles.container}>
         <View style={styles.profilePicEditContainer}>
           {currentUser?.profilePic ? (
@@ -130,7 +134,7 @@ const EditProfileScreen: React.FC = () => {
               <Icon name="user" size={50} color={colors.gray500} />
             </View>
           )}
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.changePhotoButton, uploading && { opacity: 0.6 }]}
             onPress={pickAndUploadImage}
             disabled={uploading}
@@ -140,7 +144,7 @@ const EditProfileScreen: React.FC = () => {
           >
             <Icon name="camera" size={18} color={colors.white} />
             <Text style={styles.changePhotoText}>{uploading ? 'Uploading...' : 'Change Photo'}</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
 
         <View style={styles.formContainer}>
@@ -215,7 +219,7 @@ const EditProfileScreen: React.FC = () => {
                   accessibilityLabel="New password"
                   accessibilityHint="Enter a new password, minimum 6 characters"
                 />
-                <TouchableOpacity
+                <AnimatedPressable
                   style={styles.passwordVisibilityButton}
                   onPress={() => setShowPassword(!showPassword)}
                   accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
@@ -226,7 +230,7 @@ const EditProfileScreen: React.FC = () => {
                     size={24}
                     color={colors.gray500}
                   />
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             </View>
 
@@ -249,7 +253,7 @@ const EditProfileScreen: React.FC = () => {
           </View>
         </View>
 
-        <TouchableOpacity
+        <AnimatedPressable
           style={styles.saveButton}
           onPress={handleSaveProfile}
           accessibilityLabel="Save profile changes"
@@ -257,8 +261,9 @@ const EditProfileScreen: React.FC = () => {
           accessibilityHint="Saves all profile changes and returns to the previous screen"
         >
           <Text style={styles.saveButtonText}>Save Changes</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </ScrollView>
+      </Animated.View>
     </Layout>
   );
 };

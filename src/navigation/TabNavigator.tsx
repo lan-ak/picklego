@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import type { MainTabParamList } from '../types';
 import { colors, shadows, layout, typography, spacing } from '../theme';
 
@@ -60,14 +61,14 @@ const MainTabs = () => {
           tabBarLabel: "New Match",
           tabBarIcon: ({ color, size }) => (
             <View style={styles.addButtonContainer}>
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.addButton}
                 onPress={() => navigation.navigate('AddMatch')}
                 accessibilityLabel="Create new match"
                 accessibilityRole="button"
               >
                 <Icon name="plus" color={colors.white} size={size} />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           ),
         })}

@@ -1,6 +1,7 @@
 import React from 'react';
-import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Icon, IconName } from './Icon';
+import { AnimatedPressable } from './AnimatedPressable';
 import { colors, typography, spacing, borderRadius } from '../theme';
 
 const VARIANT_STYLES = {
@@ -79,30 +80,30 @@ export const Chip = ({
         {label}
       </Text>
       {onRemove && (
-        <TouchableOpacity
+        <AnimatedPressable
           onPress={onRemove}
           style={styles.removeButton}
           accessibilityLabel={`Remove ${label}`}
           accessibilityRole="button"
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          scaleDown={0.85}
         >
           <Icon name="x-circle" size={18} color={iconColor} />
-        </TouchableOpacity>
+        </AnimatedPressable>
       )}
     </>
   );
 
   if (onPress) {
     return (
-      <TouchableOpacity
+      <AnimatedPressable
         style={containerStyle}
         onPress={onPress}
-        activeOpacity={0.7}
         accessibilityLabel={accessibilityLabel || label}
         accessibilityRole="button"
       >
         {content}
-      </TouchableOpacity>
+      </AnimatedPressable>
     );
   }
 

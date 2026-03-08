@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Animated } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, RefreshControl } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
@@ -13,6 +15,7 @@ import { format } from 'date-fns';
 import Layout from '../components/Layout';
 import MatchCard from '../components/MatchCard';
 import PicklePete from '../components/PicklePete';
+import { useFadeIn, useHaptic, staggeredEntrance } from '../hooks';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 
 type HomeScreenNavigationProp = CompositeNavigationProp<
@@ -35,13 +38,13 @@ const OnboardingView = ({ onComplete }: { onComplete: () => void }) => {
           Create your first match to get started.
         </Text>
 
-        <TouchableOpacity
+        <AnimatedPressable
           style={styles.onboardingButton}
           onPress={() => navigation.navigate('AddMatch')}
         >
           <Text style={styles.onboardingButtonText}>Create a Match</Text>
           <Icon name="arrow-right" size={20} color={colors.white} />
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
     </SafeAreaView>
   );
@@ -49,18 +52,19 @@ const OnboardingView = ({ onComplete }: { onComplete: () => void }) => {
 
 const HomeScreen = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
-  const { matches, players, currentUser, getPlayerName } = useData();
+  const { matches, players, currentUser, getPlayerName, refreshMatches } = useData();
   const [showOnboarding, setShowOnboarding] = useState(players.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
+  const triggerHaptic = useHaptic();
 
-  // Local animation values for fade-in effects
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  // Reanimated fade-in
+  const fadeStyle = useFadeIn();
 
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
+  const onRefresh = useCallback(async () => {
+    triggerHaptic('light');
+    setRefreshing(true);
+    await refreshMatches();
+    setRefreshing(false);
   }, []);
 
   // Check if the app is a new install
@@ -184,7 +188,7 @@ const HomeScreen = () => {
       isInTabNavigator={true}
       leftComponent={<NotificationBell />}
       rightComponent={
-        <TouchableOpacity
+        <AnimatedPressable
           onPress={navigateToSettings}
           style={styles.profileButton}
           accessibilityLabel="View settings"
@@ -198,11 +202,16 @@ const HomeScreen = () => {
           ) : (
             <Icon name="circle-user" size={32} color={colors.primary} />
           )}
-        </TouchableOpacity>
+        </AnimatedPressable>
       }
     >
-      <ScrollView style={styles.scrollView}>
-        <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+      >
+        <Animated.View style={[styles.container, fadeStyle]}>
           {/* Next Match Section */}
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeader}>
@@ -223,14 +232,14 @@ const HomeScreen = () => {
             ) : (
               <View style={styles.emptyStateCard}>
                 <Text style={styles.emptyStateText}>No upcoming matches scheduled</Text>
-                <TouchableOpacity
+                <AnimatedPressable
                   style={styles.actionButton}
                   onPress={() => navigation.navigate('AddMatch')}
                   accessibilityLabel="Schedule a Match"
                   accessibilityRole="button"
                 >
                   <Text style={styles.actionButtonText}>Schedule a Match</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             )}
           </View>
@@ -240,7 +249,7 @@ const HomeScreen = () => {
             <View style={styles.sectionHeader}>
               <Icon name="bar-chart-2" size={24} color={colors.primary} />
               <Text style={styles.sectionTitle}>Quick Stats</Text>
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.viewAllButton}
                 onPress={viewAllStats}
                 accessibilityLabel="View all stats"
@@ -248,7 +257,7 @@ const HomeScreen = () => {
               >
                 <Text style={styles.viewAllText}>View All</Text>
                 <Icon name="chevron-right" size={14} color={colors.primary} />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
 
             <View style={styles.statsContainerCard}>
@@ -276,7 +285,7 @@ const HomeScreen = () => {
             <View style={styles.sectionHeader}>
               <Icon name="clock" size={24} color={colors.primary} />
               <Text style={styles.sectionTitle}>Recent Matches</Text>
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.viewAllButton}
                 onPress={() => navigation.navigate('Matches')}
                 accessibilityLabel="View all matches"
@@ -284,33 +293,34 @@ const HomeScreen = () => {
               >
                 <Text style={styles.viewAllText}>View All</Text>
                 <Icon name="chevron-right" size={14} color={colors.primary} />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
 
             {recentMatches.length > 0 ? (
               <View style={styles.matchesContainer}>
-                {recentMatches.map((match) => (
-                  <MatchCard
-                    key={match.id}
-                    match={match}
-                    currentUserId={currentUser?.id || ''}
-                    getPlayerName={getPlayerName}
-                    onPress={() => goToMatchDetails(match.id)}
-                    formatPlayerNameWithInitial={formatPlayerNameWithInitial}
-                  />
+                {recentMatches.map((match, index) => (
+                  <Animated.View key={match.id} entering={staggeredEntrance(index)}>
+                    <MatchCard
+                      match={match}
+                      currentUserId={currentUser?.id || ''}
+                      getPlayerName={getPlayerName}
+                      onPress={() => goToMatchDetails(match.id)}
+                      formatPlayerNameWithInitial={formatPlayerNameWithInitial}
+                    />
+                  </Animated.View>
                 ))}
               </View>
             ) : (
               <View style={styles.emptyStateCard}>
                 <Text style={styles.emptyStateText}>No recent matches</Text>
-                <TouchableOpacity
+                <AnimatedPressable
                   style={styles.actionButton}
                   onPress={() => navigation.navigate('AddMatch')}
                   accessibilityLabel="New Match"
                   accessibilityRole="button"
                 >
                   <Text style={styles.actionButtonText}>New Match</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             )}
           </View>

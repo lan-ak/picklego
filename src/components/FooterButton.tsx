@@ -1,6 +1,7 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
 import { Icon, IconName } from './Icon';
+import { AnimatedPressable } from './AnimatedPressable';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 
 type FooterButtonProps = {
@@ -15,14 +16,13 @@ export const FooterButton: React.FC<FooterButtonProps> = ({
   label
 }) => {
   return (
-    <TouchableOpacity
+    <AnimatedPressable
       style={styles.button}
       onPress={onPress}
-      activeOpacity={0.7}
     >
       {icon && <Icon name={icon} size={24} color={colors.white} />}
       <Text style={styles.text}>{label}</Text>
-    </TouchableOpacity>
+    </AnimatedPressable>
   );
 };
 

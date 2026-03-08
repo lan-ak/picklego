@@ -32,6 +32,7 @@ export interface Player {
   authProvider?: 'email' | 'google' | 'apple';
   pushTokens?: string[];
   connections?: string[];
+  phoneNumberHash?: string;
 }
 
 export interface Coordinates {
@@ -85,9 +86,31 @@ export interface Match {
 }
 
 export type InviteResult = {
-  type: 'invited' | 'existing_player' | 'invite_sent' | 'already_connected' | 'request_pending' | 'error';
+  type: 'invited' | 'existing_player' | 'invite_sent' | 'already_connected' | 'request_pending' | 'sms_invited' | 'error';
   player?: Player;
 };
+
+export interface SMSInvite {
+  id: string;
+  inviterId: string;
+  inviterName: string;
+  recipientPhones: string[];
+  recipientNames: string[];
+  status: 'sent' | 'fully_claimed';
+  createdAt: number;
+  claimedBy: string[];
+  claimedAt?: number;
+}
+
+export interface ContactInfo {
+  name: string;
+  phone: string;
+  contactId?: string;
+  imageUri?: string;
+  isOnPickleGo?: boolean;
+  pickleGoPlayerId?: string;
+  pickleGoPlayerName?: string;
+}
 
 export interface MatchNotification {
   id: string;
@@ -171,18 +194,15 @@ export interface DataContextType {
   refreshMatches: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
   refreshConnectedPlayers: () => Promise<void>;
+  invitePlayersBySMS: (contacts: { phone: string; name: string }[]) => Promise<{ inviteId: string }>;
+  lookupContactsOnPickleGo: (phoneHashes: string[]) => Promise<Map<string, { playerId: string; playerName: string }>>;
+  claimPendingSMSInvite: () => Promise<void>;
 }
 
 export type MainTabParamList = {
   Home: undefined;
   Players: undefined;
   Matches: undefined;
-  AddMatch: undefined;
-  Settings: undefined;
-};
-
-export type RootStackParamList = {
-  MainTabs: NavigatorScreenParams<MainTabParamList>;
   AddMatch: {
     matchId?: string;
     isEditing?: boolean;
@@ -197,6 +217,12 @@ export type RootStackParamList = {
       randomizeTeamsPerGame?: boolean;
     };
   } | undefined;
+  Settings: undefined;
+};
+
+export type RootStackParamList = {
+  MainTabs: NavigatorScreenParams<MainTabParamList>;
+  AddMatch: MainTabParamList['AddMatch'];
   MatchDetails: { matchId: string };
   CompleteMatch: { matchId: string };
   PlayerStats: { playerId: string };
@@ -205,6 +231,11 @@ export type RootStackParamList = {
   EditProfile: undefined;
   CourtsDiscovery: undefined;
   Notifications: undefined;
+  InvitePlayers: {
+    context?: 'settings' | 'addMatch';
+    teamLabel?: string;
+    excludePlayerIds?: string[];
+  };
 };
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<

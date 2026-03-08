@@ -1,18 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { isValidEmail } from '../utils/validation';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
   Platform,
   Alert,
   Modal,
   Switch,
-  FlatList,
-  KeyboardAvoidingView,
   Keyboard,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -27,19 +23,36 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainTabParamList, RootStackParamList, Coordinates, Player } from '../types';
 import Layout from '../components/Layout';
+import { DismissableModal } from '../components/DismissableModal';
 import LocationPicker from '../components/LocationPicker';
 import { useVenues } from '../hooks/useVenues';
 import { shuffleTeams } from '../utils/shuffleTeams';
+import { InvitePlayersModal } from '../components/InvitePlayersModal';
+import { AnimatedPressable } from '../components/AnimatedPressable';
+import Animated from 'react-native-reanimated';
+import { useFadeIn } from '../hooks';
 
 type AddMatchScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'AddMatch'>,
   NativeStackNavigationProp<RootStackParamList>
 >;
 
+function formatSmartDate(d: Date): string {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000);
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 const AddMatchScreen = () => {
+  const fadeStyle = useFadeIn();
   const navigation = useNavigation<AddMatchScreenNavigationProp>();
   const route = useRoute();
-  const { players, addMatch, addPlayer, invitePlayer, currentUser, matches, updateMatch, sendMatchNotifications, sendMatchUpdateNotifications, refreshConnectedPlayers } = useData();
+  const { players, addMatch, currentUser, matches, updateMatch, sendMatchNotifications, sendMatchUpdateNotifications, refreshConnectedPlayers } = useData();
   const { showToast } = useToast();
 
   // Check if we're editing an existing match
@@ -69,11 +82,7 @@ const AddMatchScreen = () => {
     existingMatch ? existingMatch.team2PlayerIds :
     []
   );
-  const [newPlayerName, setNewPlayerName] = useState('');
-  const [newPlayerEmail, setNewPlayerEmail] = useState('');
-  const [newPlayerPhone, setNewPlayerPhone] = useState('');
-  const [rating, setRating] = useState(3.0);
-  const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const [isDoubles, setIsDoubles] = useState(
     rematchData ? rematchData.isDoubles :
     existingMatch ? existingMatch.matchType === 'doubles' :
@@ -89,10 +98,7 @@ const AddMatchScreen = () => {
     existingMatch ? existingMatch.numberOfGames.toString() :
     '3'
   );
-  const [sendInvite, setSendInvite] = useState(false);
-  const [showPlayerDropdown, setShowPlayerDropdown] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<1 | 2 | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [autoRandomize, setAutoRandomize] = useState(false);
   const [shufflePerGame, setShufflePerGame] = useState(
     rematchData?.randomizeTeamsPerGame ?? existingMatch?.randomizeTeamsPerGame ?? false
@@ -171,18 +177,11 @@ const AddMatchScreen = () => {
       }
 
       // Reset transient UI state
-      setSearchQuery('');
       setSelectedTeam(null);
-      setShowPlayerDropdown(false);
-      setShowAddPlayerModal(false);
+      setShowInviteModal(false);
       setShowDatePicker(false);
       setShowTimePicker(false);
       setShowLocationPicker(false);
-      setNewPlayerName('');
-      setNewPlayerEmail('');
-      setNewPlayerPhone('');
-      setRating(3.0);
-      setSendInvite(false);
 
       // Clear params so returning to this tab later doesn't re-apply
       navigation.setParams(undefined as any);
@@ -285,8 +284,6 @@ const AddMatchScreen = () => {
       }
     }
 
-    // Close the dropdown after selection
-    setShowPlayerDropdown(false);
     setSelectedTeam(null);
   };
 
@@ -323,122 +320,53 @@ const AddMatchScreen = () => {
     setAutoRandomize(value);
   };
 
-  const openPlayerDropdown = (teamNumber: 1 | 2) => {
+  const openInviteModal = (teamNumber: 1 | 2) => {
     setSelectedTeam(teamNumber);
-    setShowPlayerDropdown(true);
-    setSearchQuery('');
+    setShowInviteModal(true);
   };
 
-  const openPlayerDropdownForPool = () => {
+  const openInviteModalForPool = () => {
     setSelectedTeam(null);
-    setShowPlayerDropdown(true);
-    setSearchQuery('');
+    setShowInviteModal(true);
   };
 
-  const getFilteredPlayers = () => {
-    const selected = new Set([...team1Players, ...team2Players]);
-    const filtered = players.filter(
-      player =>
-        player.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !selected.has(player.id)
-    );
-
-    // Deduplicate by email: prefer real accounts over placeholders
-    const emailMap = new Map<string, Player>();
-    const noEmailPlayers: Player[] = [];
-
-    for (const player of filtered) {
-      if (player.email) {
-        const key = player.email.trim().toLowerCase();
-        const existing = emailMap.get(key);
-        if (!existing || (existing.pendingClaim && !player.pendingClaim)) {
-          emailMap.set(key, player);
-        }
-      } else {
-        noEmailPlayers.push(player);
-      }
-    }
-
-    return [...emailMap.values(), ...noEmailPlayers];
+  // Called from InvitePlayersModal when a contact already on PickleGo is selected
+  const handleInviteExistingPlayer = (player: Player) => {
+    addPlayerToTeam(player.id);
+    setShowInviteModal(false);
   };
 
-  const handleAddPlayer = async () => {
-    if (!newPlayerName.trim()) {
-      Alert.alert('Error', 'Please enter a player name');
-      return;
-    }
+  // Called from InvitePlayersModal when a placeholder is created for a contact
+  const handleInvitePlaceholderCreated = (player: Player) => {
+    addPlayerToTeam(player.id);
+    setShowInviteModal(false);
+  };
 
-    try {
-      let newPlayer: Player | undefined;
+  // Shared logic to add a player ID to the appropriate team
+  const addPlayerToTeam = (playerId: string) => {
+    // Don't add duplicates
+    if (team1Players.includes(playerId) || team2Players.includes(playerId)) return;
 
-      // If email is provided, use invitePlayer to check for existing users
-      if (newPlayerEmail.trim()) {
-        if (!isValidEmail(newPlayerEmail)) {
-          Alert.alert('Error', 'Please enter a valid email address');
-          return;
-        }
-
-        const result = await invitePlayer(newPlayerName.trim(), newPlayerEmail.trim());
-
-        if (result.type !== 'error' && result.player) {
-          newPlayer = result.player;
+    if (autoRandomize && isDoubles) {
+      const totalSelected = team1Players.length + team2Players.length;
+      if (totalSelected < 4) {
+        const newPool = [...team1Players, ...team2Players, playerId];
+        if (newPool.length === 4 && currentUser) {
+          const { team1, team2 } = shuffleTeams(newPool, currentUser.id);
+          setTeam1Players(team1);
+          setTeam2Players(team2);
         } else {
-          Alert.alert('Error', 'There was an error sending the invitation.');
-          return;
-        }
-      } else {
-        // No email — just add as a local player
-        newPlayer = await addPlayer({
-          name: newPlayerName,
-          phoneNumber: newPlayerPhone,
-          rating: rating || 3.0
-        });
-      }
-
-      // Reset form fields
-      setNewPlayerName('');
-      setNewPlayerEmail('');
-      setNewPlayerPhone('');
-      setRating(3.0);
-      setShowAddPlayerModal(false);
-
-      // Automatically add the player to the appropriate team/pool
-      if (newPlayer) {
-        if (autoRandomize && isDoubles) {
-          const totalSelected = team1Players.length + team2Players.length;
-          if (totalSelected < 4) {
-            const newPool = [...team1Players, ...team2Players, newPlayer.id];
-            if (newPool.length === 4 && currentUser) {
-              const { team1, team2 } = shuffleTeams(newPool, currentUser.id);
-              setTeam1Players(team1);
-              setTeam2Players(team2);
-            } else {
-              setTeam1Players(newPool);
-              setTeam2Players([]);
-              setShowPlayerDropdown(true);
-            }
-          }
-        } else if (selectedTeam) {
-          const maxPlayersPerTeam = isDoubles ? 2 : 1;
-
-          if (selectedTeam === 1 && team1Players.length < maxPlayersPerTeam) {
-            setTeam1Players(prev => [...prev, newPlayer.id]);
-          } else if (selectedTeam === 2 && team2Players.length < maxPlayersPerTeam) {
-            setTeam2Players(prev => [...prev, newPlayer.id]);
-          }
-
-          // Reopen the player dropdown if the team isn't full yet
-          if ((selectedTeam === 1 && team1Players.length + 1 < maxPlayersPerTeam) ||
-              (selectedTeam === 2 && team2Players.length + 1 < maxPlayersPerTeam)) {
-            setShowPlayerDropdown(true);
-          } else {
-            setSelectedTeam(null);
-          }
+          setTeam1Players(newPool);
+          setTeam2Players([]);
         }
       }
-    } catch (error) {
-      console.error('Error adding player:', error);
-      Alert.alert('Error', 'Failed to add player');
+    } else if (selectedTeam) {
+      const maxPlayersPerTeam = isDoubles ? 2 : 1;
+      if (selectedTeam === 1 && team1Players.length < maxPlayersPerTeam) {
+        setTeam1Players(prev => [...prev, playerId]);
+      } else if (selectedTeam === 2 && team2Players.length < maxPlayersPerTeam) {
+        setTeam2Players(prev => [...prev, playerId]);
+      }
     }
   };
 
@@ -623,45 +551,35 @@ const AddMatchScreen = () => {
     if (!isVisible) return null;
 
     return (
-      <Modal
-        animationType="slide"
-        transparent={true}
+      <DismissableModal
         visible={isVisible}
-        onRequestClose={dismissPicker}
+        onClose={dismissPicker}
+        overlayStyle={styles.pickerOverlay}
       >
-        <TouchableOpacity
-          style={styles.pickerOverlay}
-          activeOpacity={1}
-          onPress={dismissPicker}
-        >
-          <View
-            style={styles.pickerContainer}
-            onStartShouldSetResponder={() => true}
-          >
-            <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>
-                {showDatePicker ? 'Select Date' : 'Select Time'}
-              </Text>
-              <TouchableOpacity
-                style={styles.pickerDoneButton}
-                onPress={dismissPicker}
-                accessibilityLabel="Done"
-                accessibilityRole="button"
-              >
-                <Text style={styles.pickerDoneText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-            <DateTimePicker
-              value={date}
-              mode={showDatePicker ? 'date' : 'time'}
-              is24Hour={false}
-              onChange={showDatePicker ? handleDateChange : handleTimeChange}
-              display="spinner"
-              style={styles.picker}
-            />
+        <View style={styles.pickerContainer}>
+          <View style={styles.pickerHeader}>
+            <Text style={styles.pickerTitle}>
+              {showDatePicker ? 'Select Date' : 'Select Time'}
+            </Text>
+            <AnimatedPressable
+              style={styles.pickerDoneButton}
+              onPress={dismissPicker}
+              accessibilityLabel="Done"
+              accessibilityRole="button"
+            >
+              <Text style={styles.pickerDoneText}>Done</Text>
+            </AnimatedPressable>
           </View>
-        </TouchableOpacity>
-      </Modal>
+          <DateTimePicker
+            value={date}
+            mode={showDatePicker ? 'date' : 'time'}
+            is24Hour={false}
+            onChange={showDatePicker ? handleDateChange : handleTimeChange}
+            display="spinner"
+            style={styles.picker}
+          />
+        </View>
+      </DismissableModal>
     );
   };
 
@@ -690,183 +608,17 @@ const AddMatchScreen = () => {
             Create a profile to get started.
           </Text>
 
-          <TouchableOpacity
+          <AnimatedPressable
             style={styles.onboardingButton}
             onPress={onCreateProfile}
           >
             <Text style={styles.onboardingButtonText}>Create Profile</Text>
             <Icon name="arrow-right" size={20} color={colors.white} />
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       </View>
     );
   };
-
-  // Add Player Modal
-  const renderAddPlayerModal = () => (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={showAddPlayerModal}
-      onRequestClose={() => setShowAddPlayerModal(false)}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add New Player</Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowAddPlayerModal(false)}
-              >
-                <Icon name="x" size={24} color={colors.primary} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Player Name</Text>
-              <TextInput
-                style={styles.input}
-                value={newPlayerName}
-                onChangeText={setNewPlayerName}
-                placeholder="Enter player's name"
-                autoFocus
-                accessibilityLabel="Player name"
-                accessibilityHint="Enter the new player's name"
-              />
-            </View>
-
-            <View style={styles.switchContainer}>
-              <Text style={styles.switchLabel}>Send email invitation</Text>
-              <Switch
-                value={sendInvite}
-                onValueChange={setSendInvite}
-                trackColor={{ false: "#767577", true: colors.primary }}
-                thumbColor={sendInvite ? "#f4f3f4" : "#f4f3f4"}
-              />
-            </View>
-
-            {sendInvite && (
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Email Address (optional)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newPlayerEmail}
-                  onChangeText={setNewPlayerEmail}
-                  placeholder="Enter email address"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  accessibilityLabel="Player email address"
-                  accessibilityHint="Enter the email address to invite the player"
-                />
-              </View>
-            )}
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setShowAddPlayerModal(false)}
-                accessibilityLabel="Cancel"
-                accessibilityRole="button"
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalButton, styles.addButton]}
-                onPress={handleAddPlayer}
-                accessibilityLabel="Add Player"
-                accessibilityRole="button"
-                accessibilityHint="Adds the new player and closes the form"
-              >
-                <Text style={styles.addButtonText}>Add Player</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-
-  // Add this function to open the player dropdown for a specific team
-  const renderPlayerDropdown = () => (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={showPlayerDropdown}
-      onRequestClose={() => setShowPlayerDropdown(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>
-              {selectedTeam ? `Select Player for Team ${selectedTeam}` : 'Select Player'}
-            </Text>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowPlayerDropdown(false)}
-            >
-              <Icon name="x" size={24} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.searchContainer}>
-            <Icon name="search" size={20} color={colors.primary} style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search players..."
-              autoFocus
-              accessibilityLabel="Search players"
-              accessibilityHint="Type to filter the player list"
-            />
-          </View>
-
-          <FlatList
-            data={getFilteredPlayers()}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.playerItem}
-                onPress={() => togglePlayerTeamSelection(item.id)}
-                accessibilityLabel={`Add ${item.name} to Team ${selectedTeam}`}
-                accessibilityRole="button"
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                  <Text style={styles.playerName}>{item.name}</Text>
-                </View>
-                <Icon name="plus-circle" size={24} color={colors.primary} />
-              </TouchableOpacity>
-            )}
-            ListEmptyComponent={
-              <View style={styles.emptyListContainer}>
-                <Text style={styles.emptyListText}>No players found</Text>
-              </View>
-            }
-            style={styles.playerList}
-          />
-
-          <TouchableOpacity
-            style={styles.addNewPlayerFooterButton}
-            onPress={() => {
-              setShowPlayerDropdown(false);
-              setShowAddPlayerModal(true);
-            }}
-            accessibilityLabel="Add New Player"
-            accessibilityRole="button"
-            accessibilityHint="Opens form to create a new player"
-          >
-            <Icon name="user-plus" size={20} color={colors.white} />
-            <Text style={styles.addNewPlayerButtonText}>Add New Player</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
 
   const renderManualMode = () => (
     <>
@@ -884,16 +636,16 @@ const AddMatchScreen = () => {
           ))}
 
           {team1Players.length < (isDoubles ? 2 : 1) && (
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.addPlayerButton}
-              onPress={() => openPlayerDropdown(1)}
+              onPress={() => openInviteModal(1)}
               accessibilityLabel="Add player to Team 1"
               accessibilityRole="button"
               accessibilityHint="Opens player selection for Team 1"
             >
               <Icon name="plus-circle" size={24} color={colors.primary} />
               <Text style={styles.addPlayerButtonText}>Add</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
         </View>
       </View>
@@ -914,16 +666,16 @@ const AddMatchScreen = () => {
           ))}
 
           {team2Players.length < (isDoubles ? 2 : 1) && (
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.addPlayerButton}
-              onPress={() => openPlayerDropdown(2)}
+              onPress={() => openInviteModal(2)}
               accessibilityLabel="Add player to Team 2"
               accessibilityRole="button"
               accessibilityHint="Opens player selection for Team 2"
             >
               <Icon name="plus-circle" size={24} color={colors.primary} />
               <Text style={styles.addPlayerButtonText}>Add</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
         </View>
       </View>
@@ -950,16 +702,16 @@ const AddMatchScreen = () => {
             ))}
 
             {allPlayers.length < 4 && (
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.addPlayerButton}
-                onPress={openPlayerDropdownForPool}
+                onPress={openInviteModalForPool}
                 accessibilityLabel="Add player"
                 accessibilityRole="button"
                 accessibilityHint="Opens player selection"
               >
                 <Icon name="plus-circle" size={24} color={colors.primary} />
                 <Text style={styles.addPlayerButtonText}>Add</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             )}
           </View>
         </View>
@@ -969,17 +721,17 @@ const AddMatchScreen = () => {
     // Post-shuffle: show team assignments with re-shuffle button
     return (
       <>
-        <TouchableOpacity
+        <AnimatedPressable
           style={styles.shuffleButton}
           onPress={handleShuffleTeams}
-          activeOpacity={0.7}
+
           accessibilityLabel="Re-shuffle Teams"
           accessibilityRole="button"
           accessibilityHint="Randomly reassign the 4 players into new teams"
         >
           <Icon name="shuffle" size={18} color={colors.secondary} />
           <Text style={styles.shuffleButtonText}>Re-shuffle</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
         <View style={styles.teamContainer}>
           <Text style={styles.teamLabel}>{getTeamLabel(1)}</Text>
@@ -1047,6 +799,7 @@ const AddMatchScreen = () => {
 
   return (
     <Layout title={isEditing ? "Edit Match" : "New Match"} isInTabNavigator={true}>
+      <Animated.View style={[{ flex: 1 }, fadeStyle]}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -1061,7 +814,7 @@ const AddMatchScreen = () => {
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>Match Type:</Text>
             <View style={styles.typeSelector}>
-              <TouchableOpacity
+              <AnimatedPressable
                 style={[styles.typeButton, !isDoubles && styles.typeButtonSelected]}
                 onPress={() => {
                   setIsDoubles(false);
@@ -1070,7 +823,7 @@ const AddMatchScreen = () => {
                   setTeam1Players(prev => prev.slice(0, 1));
                   setTeam2Players([]);
                 }}
-                accessibilityRole="radio"
+                accessibilityRole="button"
                 accessibilityLabel="Singles"
                 accessibilityState={{ selected: !isDoubles }}
                 accessibilityHint="Select singles match type"
@@ -1078,11 +831,11 @@ const AddMatchScreen = () => {
                 <Text style={[styles.typeButtonText, !isDoubles && styles.typeButtonTextSelected]}>
                   Singles
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </AnimatedPressable>
+              <AnimatedPressable
                 style={[styles.typeButton, isDoubles && styles.typeButtonSelected]}
                 onPress={() => setIsDoubles(true)}
-                accessibilityRole="radio"
+                accessibilityRole="button"
                 accessibilityLabel="Doubles"
                 accessibilityState={{ selected: isDoubles }}
                 accessibilityHint="Select doubles match type"
@@ -1090,7 +843,7 @@ const AddMatchScreen = () => {
                 <Text style={[styles.typeButtonText, isDoubles && styles.typeButtonTextSelected]}>
                   Doubles
                 </Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           </View>
 
@@ -1159,37 +912,26 @@ const AddMatchScreen = () => {
           </View>
 
           <View style={styles.dateTimeContainer}>
-            <TouchableOpacity
-              style={styles.dateButton}
+            <Chip
+              label={`${formatSmartDate(date)} ▾`}
+              icon="calendar"
+              variant="primary"
               onPress={() => {
                 setShowTimePicker(false);
                 setShowDatePicker(true);
               }}
               accessibilityLabel={`Match date: ${date.toLocaleDateString()}`}
-              accessibilityRole="button"
-              accessibilityHint="Opens date picker to change the match date"
-            >
-              <Icon name="calendar" size={20} color={colors.primary} />
-              <Text style={styles.dateButtonText}>
-                {date.toLocaleDateString()}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.dateButton}
+            />
+            <Chip
+              label={`${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ▾`}
+              icon="clock"
+              variant="primary"
               onPress={() => {
                 setShowDatePicker(false);
                 setShowTimePicker(true);
               }}
               accessibilityLabel={`Match time: ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
-              accessibilityRole="button"
-              accessibilityHint="Opens time picker to change the match time"
-            >
-              <Icon name="clock" size={20} color={colors.primary} />
-              <Text style={styles.dateButtonText}>
-                {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-            </TouchableOpacity>
+            />
           </View>
         </View>
 
@@ -1198,10 +940,10 @@ const AddMatchScreen = () => {
             <Icon name="map-pin" size={24} color={colors.primary} />
             <Text style={styles.sectionTitle}>Location</Text>
           </View>
-          <TouchableOpacity
+          <AnimatedPressable
             style={styles.locationRow}
             onPress={() => setShowLocationPicker(true)}
-            activeOpacity={0.7}
+  
             accessibilityLabel="Set match location"
             accessibilityHint="Opens a map to select the match location"
             accessibilityRole="button"
@@ -1221,21 +963,21 @@ const AddMatchScreen = () => {
               {location || 'Tap to set location (optional)'}
             </Text>
             <Icon name="chevron-right" size={18} color={colors.gray400} />
-          </TouchableOpacity>
+          </AnimatedPressable>
           {location ? (
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.locationClear}
               onPress={() => {
                 setLocation('');
                 setLocationCoords(undefined);
               }}
-              activeOpacity={0.7}
+    
               accessibilityLabel="Clear location"
               accessibilityRole="button"
             >
               <Icon name="x" size={14} color={colors.gray400} />
               <Text style={styles.locationClearText}>Clear location</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           ) : null}
         </View>
 
@@ -1263,10 +1005,10 @@ const AddMatchScreen = () => {
         </Modal>
 
         <View style={styles.buttonsContainer}>
-          <TouchableOpacity
+          <AnimatedPressable
             style={styles.scheduleButton}
             onPress={() => handleScheduleMatch(false)}
-            activeOpacity={0.7}
+  
             accessibilityLabel={isEditing ? "Save Changes" : "Schedule Game"}
             accessibilityRole="button"
             accessibilityHint={isEditing ? "Save the edited match details" : "Schedule the match for the selected date and time"}
@@ -1275,26 +1017,34 @@ const AddMatchScreen = () => {
             <Text style={styles.scheduleButtonText}>
               {isEditing ? "Save Changes" : "Schedule Game"}
             </Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
 
           {!isEditing && (
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.playNowButton}
               onPress={() => handleScheduleMatch(true)}
-              activeOpacity={0.7}
+    
               accessibilityLabel="Play Game Now"
               accessibilityRole="button"
               accessibilityHint="Create an instant match and start playing immediately"
             >
               <Icon name="play" size={24} color={colors.white} />
               <Text style={styles.playNowButtonText}>Play Game Now</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
         </View>
       </ScrollView>
+      </Animated.View>
       {renderDateTimePicker()}
-      {renderPlayerDropdown()}
-      {renderAddPlayerModal()}
+      <InvitePlayersModal
+        visible={showInviteModal}
+        onClose={() => { setShowInviteModal(false); setSelectedTeam(null); }}
+        context="addMatch"
+        teamLabel={selectedTeam ? `Select Player for Team ${selectedTeam}` : 'Add Player'}
+        excludePlayerIds={[...team1Players, ...team2Players]}
+        onSelectExistingPlayer={handleInviteExistingPlayer}
+        onPlaceholderCreated={handleInvitePlaceholderCreated}
+      />
     </Layout>
   );
 };
@@ -1368,27 +1118,8 @@ const styles = StyleSheet.create({
   },
   dateTimeContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: borderRadius.sm,
-    flex: 0.48,
-  },
-  dateButtonText: {
-    ...typography.bodyLarge,
-    marginLeft: spacing.sm,
-    color: colors.neutral,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    borderRadius: borderRadius.sm,
-    padding: spacing.md,
-    fontSize: 16,
+    justifyContent: 'center',
+    gap: spacing.sm,
   },
   locationRow: {
     flexDirection: 'row',
@@ -1573,147 +1304,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 18,
     marginRight: spacing.sm,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.backdrop,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-  },
-  modalContent: {
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
-    padding: spacing.xl,
-    width: '100%',
-    maxWidth: 500,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  modalTitle: {
-    ...typography.h2,
-    color: colors.primary,
-  },
-  closeButton: {
-    padding: spacing.xs,
-  },
-  inputContainer: {
-    marginBottom: spacing.lg,
-  },
-  inputLabel: {
-    ...typography.label,
-    color: colors.neutral,
-    marginBottom: spacing.xs,
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  switchLabel: {
-    ...typography.bodyLarge,
-    color: colors.neutral,
-  },
-  helperText: {
-    ...typography.caption,
-    color: colors.gray500,
-    marginTop: spacing.xs,
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.xl,
-  },
-  modalButton: {
-    flex: 1,
-    padding: spacing.md,
-    borderRadius: borderRadius.sm,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: colors.surface,
-  },
-  cancelButtonText: {
-    ...typography.button,
-    color: colors.gray500,
-  },
-  addButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.sm,
-  },
-  addButtonText: {
-    ...typography.button,
-    color: colors.white,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  searchIcon: {
-    marginRight: spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    fontSize: 16,
-  },
-  playerList: {
-    maxHeight: 300,
-  },
-  playerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray100,
-  },
-  playerName: {
-    ...typography.bodyLarge,
-    color: colors.neutral,
-  },
-  emptyListContainer: {
-    padding: spacing.xl,
-    alignItems: 'center',
-  },
-  emptyListText: {
-    ...typography.bodyLarge,
-    color: colors.gray500,
-    marginBottom: spacing.lg,
-  },
-  addNewPlayerButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.sm,
-  },
-  addNewPlayerFooterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.sm,
-    marginTop: spacing.sm,
-    gap: spacing.sm,
-  },
-  addNewPlayerButtonText: {
-    ...typography.button,
-    color: colors.white,
   },
   selectedPlayersContainer: {
     flexDirection: 'row',

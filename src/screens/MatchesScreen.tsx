@@ -1,10 +1,13 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Icon } from '../components/Icon';
 import MatchCard from '../components/MatchCard';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { useData } from '../context/DataContext';
 import Layout from '../components/Layout';
+import { useHaptic, useFadeIn, staggeredEntrance, useContentTransition } from '../hooks';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -22,6 +25,11 @@ const MatchesScreen = () => {
   const navigation = useNavigation<MatchesScreenNavigationProp>();
   const { matches, players, currentUser, getPlayerName, refreshMatches } = useData();
   const [activeTab, setActiveTab] = useState<MatchesTab>('all');
+  const [refreshing, setRefreshing] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const triggerHaptic = useHaptic();
+  const fadeStyle = useFadeIn();
+  const contentStyle = useContentTransition(`${activeTab}-${sortOrder}`);
 
   // Refresh matches from Firestore whenever this screen gains focus
   useFocusEffect(
@@ -29,7 +37,13 @@ const MatchesScreen = () => {
       refreshMatches();
     }, [])
   );
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+
+  const onRefresh = useCallback(async () => {
+    triggerHaptic('light');
+    setRefreshing(true);
+    await refreshMatches();
+    setRefreshing(false);
+  }, []);
 
   // Sort comparator based on sort order
   const sortByDate = (a: Match, b: Match) => {
@@ -100,7 +114,7 @@ const MatchesScreen = () => {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabsScrollContent}
       >
-        <TouchableOpacity
+        <AnimatedPressable
           style={[styles.tab, activeTab === 'all' && styles.activeTab]}
           onPress={() => setActiveTab('all')}
           accessibilityRole="tab"
@@ -108,9 +122,9 @@ const MatchesScreen = () => {
           accessibilityState={{ selected: activeTab === 'all' }}
         >
           <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>All</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        <TouchableOpacity
+        <AnimatedPressable
           style={[styles.tab, activeTab === 'upcoming' && styles.activeTab]}
           onPress={() => setActiveTab('upcoming')}
           accessibilityRole="tab"
@@ -118,9 +132,9 @@ const MatchesScreen = () => {
           accessibilityState={{ selected: activeTab === 'upcoming' }}
         >
           <Text style={[styles.tabText, activeTab === 'upcoming' && styles.activeTabText]}>Upcoming</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        <TouchableOpacity
+        <AnimatedPressable
           style={[styles.tab, activeTab === 'completed' && styles.activeTab]}
           onPress={() => setActiveTab('completed')}
           accessibilityRole="tab"
@@ -128,9 +142,9 @@ const MatchesScreen = () => {
           accessibilityState={{ selected: activeTab === 'completed' }}
         >
           <Text style={[styles.tabText, activeTab === 'completed' && styles.activeTabText]}>Completed</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        <TouchableOpacity
+        <AnimatedPressable
           style={[styles.tab, activeTab === 'won' && styles.activeTab]}
           onPress={() => setActiveTab('won')}
           accessibilityRole="tab"
@@ -138,9 +152,9 @@ const MatchesScreen = () => {
           accessibilityState={{ selected: activeTab === 'won' }}
         >
           <Text style={[styles.tabText, activeTab === 'won' && styles.activeTabText]}>Won</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        <TouchableOpacity
+        <AnimatedPressable
           style={[styles.tab, activeTab === 'lost' && styles.activeTab]}
           onPress={() => setActiveTab('lost')}
           accessibilityRole="tab"
@@ -148,19 +162,9 @@ const MatchesScreen = () => {
           accessibilityState={{ selected: activeTab === 'lost' }}
         >
           <Text style={[styles.tabText, activeTab === 'lost' && styles.activeTabText]}>Lost</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </ScrollView>
     </View>
-  );
-
-  const renderMatch = (match: Match) => (
-    <MatchCard
-      key={match.id}
-      match={match}
-      currentUserId={currentUser?.id || ''}
-      getPlayerName={getPlayerName}
-      onPress={() => navigation.navigate('MatchDetails', { matchId: match.id })}
-    />
   );
 
   return (
@@ -169,20 +173,20 @@ const MatchesScreen = () => {
       showBackButton={true}
       isInTabNavigator={true}
       rightComponent={
-        <TouchableOpacity
+        <AnimatedPressable
           onPress={() => navigation.navigate('AddMatch')}
           style={styles.headerButton}
           accessibilityLabel="Add new match"
           accessibilityRole="button"
         >
           <Icon name="plus-circle" size={24} color={colors.primary} />
-        </TouchableOpacity>
+        </AnimatedPressable>
       }
     >
-      <View style={styles.container}>
+      <Animated.View style={[styles.container, fadeStyle]}>
         {renderTabs()}
         <View style={styles.sortContainer}>
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.sortTab, sortOrder === 'newest' && styles.activeSortTab]}
             onPress={() => setSortOrder('newest')}
             accessibilityRole="tab"
@@ -190,8 +194,8 @@ const MatchesScreen = () => {
             accessibilityState={{ selected: sortOrder === 'newest' }}
           >
             <Text style={[styles.sortTabText, sortOrder === 'newest' && styles.activeSortTabText]}>Newest</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </AnimatedPressable>
+          <AnimatedPressable
             style={[styles.sortTab, sortOrder === 'oldest' && styles.activeSortTab]}
             onPress={() => setSortOrder('oldest')}
             accessibilityRole="tab"
@@ -199,27 +203,48 @@ const MatchesScreen = () => {
             accessibilityState={{ selected: sortOrder === 'oldest' }}
           >
             <Text style={[styles.sortTabText, sortOrder === 'oldest' && styles.activeSortTabText]}>Oldest</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-          {getFilteredMatches().length === 0 ? (
-            <View style={styles.emptyState}>
-              <Icon name="calendar" size={60} color={colors.gray300} />
-              <Text style={styles.emptyStateText}>No matches found</Text>
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => navigation.navigate('AddMatch')}
-                accessibilityLabel="Schedule a Match"
-                accessibilityRole="button"
-              >
-                <Text style={styles.addButtonText}>Schedule a Match</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            getFilteredMatches().map(match => renderMatch(match))
-          )}
-        </ScrollView>
-      </View>
+        <Animated.View style={[{ flex: 1 }, contentStyle]}>
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.content}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.primary}
+              />
+            }
+          >
+            {getFilteredMatches().length === 0 ? (
+              <View style={styles.emptyState}>
+                <Icon name="calendar" size={60} color={colors.gray300} />
+                <Text style={styles.emptyStateText}>No matches found</Text>
+                <AnimatedPressable
+                  style={styles.addButton}
+                  onPress={() => navigation.navigate('AddMatch')}
+                  accessibilityLabel="Schedule a Match"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.addButtonText}>Schedule a Match</Text>
+                </AnimatedPressable>
+              </View>
+            ) : (
+              getFilteredMatches().map((match, index) => (
+                <Animated.View key={match.id} entering={staggeredEntrance(index)}>
+                  <MatchCard
+                    match={match}
+                    currentUserId={currentUser?.id || ''}
+                    getPlayerName={getPlayerName}
+                    onPress={() => navigation.navigate('MatchDetails', { matchId: match.id })}
+                  />
+                </Animated.View>
+              ))
+            )}
+          </ScrollView>
+        </Animated.View>
+      </Animated.View>
     </Layout>
   );
 };

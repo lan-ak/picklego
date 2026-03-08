@@ -5,11 +5,11 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Image,
   TextInput,
   Alert,
 } from 'react-native';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { Icon } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
@@ -19,6 +19,8 @@ import { RootStackParamList, Player } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useToast } from '../context/ToastContext';
 import { useProfilePicture } from '../hooks/useProfilePicture';
+import Animated from 'react-native-reanimated';
+import { useFadeIn } from '../hooks';
 
 const ProfileSetupView = () => {
   const { addPlayer, setCurrentUser } = useData();
@@ -174,12 +176,12 @@ const ProfileSetupView = () => {
               />
             </View>
 
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.setupButton}
               onPress={handleCreateProfile}
             >
               <Text style={styles.setupButtonText}>Create Account</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         </View>
       </ScrollView>
@@ -188,6 +190,7 @@ const ProfileSetupView = () => {
 };
 
 const ProfileScreen = () => {
+  const fadeStyle = useFadeIn();
   const { currentUser, updatePlayer, isEmailAvailable } = useData();
   const { showToast } = useToast();
   const { pickAndUploadImage, uploading } = useProfilePicture({
@@ -337,10 +340,11 @@ const ProfileScreen = () => {
 
   return (
     <Layout title="Profile">
+      <Animated.View style={[{ flex: 1 }, fadeStyle]}>
       <ScrollView style={styles.container}>
         <View style={styles.profileSection}>
           {/* Profile Picture */}
-          <TouchableOpacity style={[styles.profilePicContainer, uploading && { opacity: 0.6 }]} onPress={pickAndUploadImage} disabled={uploading}>
+          <AnimatedPressable style={[styles.profilePicContainer, uploading && { opacity: 0.6 }]} onPress={pickAndUploadImage} disabled={uploading}>
             {currentUser.profilePic ? (
               <Image
                 source={{ uri: currentUser.profilePic }}
@@ -354,7 +358,7 @@ const ProfileScreen = () => {
             <View style={styles.editPicButton}>
               <Icon name="camera" size={16} color={colors.white} />
             </View>
-          </TouchableOpacity>
+          </AnimatedPressable>
 
           {editing ? (
             // Edit mode
@@ -404,12 +408,12 @@ const ProfileScreen = () => {
               </View>
 
               {!showPasswordFields ? (
-                <TouchableOpacity
+                <AnimatedPressable
                   style={styles.passwordToggle}
                   onPress={() => setShowPasswordFields(true)}
                 >
                   <Text style={styles.passwordToggleText}>Change Password</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               ) : (
                 <>
                   <View style={styles.inputGroup}>
@@ -434,28 +438,28 @@ const ProfileScreen = () => {
                     />
                   </View>
 
-                  <TouchableOpacity
+                  <AnimatedPressable
                     style={styles.passwordToggle}
                     onPress={() => setShowPasswordFields(false)}
                   >
                     <Text style={styles.passwordToggleText}>Cancel Password Change</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </>
               )}
 
               <View style={styles.buttonRow}>
-                <TouchableOpacity
+                <AnimatedPressable
                   style={[styles.button, styles.cancelButton]}
                   onPress={() => setEditing(false)}
                 >
                   <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                </AnimatedPressable>
+                <AnimatedPressable
                   style={[styles.button, styles.saveButton]}
                   onPress={handleSaveProfile}
                 >
                   <Text style={styles.saveButtonText}>Save</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             </View>
           ) : (
@@ -490,13 +494,13 @@ const ProfileScreen = () => {
                 </View>
               </View>
 
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.editButton}
                 onPress={handleEditProfile}
               >
                 <Icon name="pencil" size={18} color={colors.white} />
                 <Text style={styles.editButtonText}>Edit Profile</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           )}
         </View>
@@ -507,6 +511,7 @@ const ProfileScreen = () => {
           {renderStats()}
         </View>
       </ScrollView>
+      </Animated.View>
     </Layout>
   );
 };

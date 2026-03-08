@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
-import { isValidEmail } from '../utils/validation';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Image,
   TextInput,
   Alert,
-  Modal,
   Platform,
   FlatList,
   Linking,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { useFadeIn, staggeredEntrance } from '../hooks';
+import { AnimatedPressable } from '../components/AnimatedPressable';
+import { DismissableModal } from '../components/DismissableModal';
 import { Icon, IconName } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
@@ -23,7 +24,7 @@ import { RootStackParamList, Player } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useToast } from '../context/ToastContext';
 import { useProfilePicture } from '../hooks/useProfilePicture';
-import PicklePete from '../components/PicklePete';
+import { InvitePlayersModal } from '../components/InvitePlayersModal';
 
 type SettingItem = {
   icon: IconName;
@@ -40,14 +41,13 @@ type SettingSection = {
 type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const SettingsScreen: React.FC = () => {
-  const { currentUser, updatePlayer, invitePlayer, getInvitedPlayers, players, removePlayer, signOutUser } = useData();
+  const { currentUser, updatePlayer, getInvitedPlayers, players, removePlayer, signOutUser } = useData();
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteName, setInviteName] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
   const [showInvitedPlayers, setShowInvitedPlayers] = useState(false);
   const [showManagePlayers, setShowManagePlayers] = useState(false);
   const navigation = useNavigation<SettingsScreenNavigationProp>();
   const { showToast } = useToast();
+  const fadeStyle = useFadeIn();
   const { pickAndUploadImage, uploading } = useProfilePicture({
     playerId: currentUser?.id,
     onUpdate: updatePlayer,
@@ -57,62 +57,6 @@ const SettingsScreen: React.FC = () => {
 
   const handleEditProfile = () => {
     navigation.navigate('EditProfile');
-  };
-
-  // Handle player invitation
-  const handleInvitePlayer = async () => {
-    if (!inviteName.trim() || !inviteEmail.trim()) {
-      Alert.alert('Error', 'Please enter both name and email for the player.');
-      return;
-    }
-
-    if (!isValidEmail(inviteEmail)) {
-      Alert.alert('Error', 'Please enter a valid email address.');
-      return;
-    }
-
-    const result = await invitePlayer(inviteName.trim(), inviteEmail.trim());
-
-    const clearAndClose = () => {
-      setInviteName('');
-      setInviteEmail('');
-      setShowInviteModal(false);
-    };
-
-    switch (result.type) {
-      case 'invited':
-        Alert.alert(
-          'Success',
-          `${inviteName} has been invited. They can now join the app using this email address.`,
-          [{ text: 'OK', onPress: clearAndClose }]
-        );
-        break;
-      case 'invite_sent':
-      case 'existing_player':
-        Alert.alert(
-          'Player Invite Sent',
-          `${result.player?.name || inviteName} is already on PickleGo! A player invite has been sent.`,
-          [{ text: 'OK', onPress: clearAndClose }]
-        );
-        break;
-      case 'already_connected':
-        Alert.alert(
-          'Already Connected',
-          `You're already connected with ${result.player?.name || inviteName}.`,
-          [{ text: 'OK' }]
-        );
-        break;
-      case 'request_pending':
-        Alert.alert(
-          'Invite Pending',
-          `A player invite to ${result.player?.name || inviteName} is already pending.`,
-          [{ text: 'OK' }]
-        );
-        break;
-      default:
-        Alert.alert('Error', 'There was an error sending the invitation. Please try again.');
-        break;
-    }
   };
 
   // Get invited players
@@ -214,85 +158,22 @@ const SettingsScreen: React.FC = () => {
     }
   ];
 
-  // Invite Player Modal
-  const renderInvitePlayerModal = () => (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={showInviteModal}
-      onRequestClose={() => setShowInviteModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Invite Player</Text>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowInviteModal(false)}
-            >
-              <Icon name="x" size={24} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-
-          <PicklePete pose="invite" size="sm" message="Invite someone to play!" />
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Player Name</Text>
-            <TextInput
-              style={styles.input}
-              value={inviteName}
-              onChangeText={setInviteName}
-              placeholder="Enter player's name"
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Email Address</Text>
-            <TextInput
-              style={styles.input}
-              value={inviteEmail}
-              onChangeText={setInviteEmail}
-              placeholder="Enter player's email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
-
-          <TouchableOpacity
-            style={{
-              backgroundColor: colors.primary,
-              borderRadius: borderRadius.sm,
-              padding: 15,
-              alignItems: 'center',
-              marginTop: 10
-            }}
-            onPress={handleInvitePlayer}
-          >
-            <Text style={{ ...typography.button, color: colors.white }}>Send Invitation</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-
   // Invited Players Modal
   const renderInvitedPlayersModal = () => (
-    <Modal
-      animationType="slide"
-      transparent={true}
+    <DismissableModal
       visible={showInvitedPlayers}
-      onRequestClose={() => setShowInvitedPlayers(false)}
+      onClose={() => setShowInvitedPlayers(false)}
+      overlayStyle={styles.modalOverlay}
     >
-      <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Invited Players</Text>
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.closeButton}
               onPress={() => setShowInvitedPlayers(false)}
             >
               <Icon name="x" size={24} color={colors.primary} />
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
 
           {invitedPlayers.length > 0 ? (
@@ -321,8 +202,7 @@ const SettingsScreen: React.FC = () => {
             </View>
           )}
         </View>
-      </View>
-    </Modal>
+    </DismissableModal>
   );
 
   // Render the manage players modal
@@ -331,22 +211,20 @@ const SettingsScreen: React.FC = () => {
     const otherPlayers = players.filter(player => !currentUser || player.id !== currentUser.id);
 
     return (
-      <Modal
-        animationType="slide"
-        transparent={true}
+      <DismissableModal
         visible={showManagePlayers}
-        onRequestClose={() => setShowManagePlayers(false)}
+        onClose={() => setShowManagePlayers(false)}
+        overlayStyle={styles.modalOverlay}
       >
-        <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Manage Players</Text>
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.closeButton}
                 onPress={() => setShowManagePlayers(false)}
               >
                 <Icon name="x" size={24} color={colors.primary} />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
 
             {otherPlayers.length > 0 ? (
@@ -368,12 +246,12 @@ const SettingsScreen: React.FC = () => {
                         {item.email && <Text style={styles.playerEmail}>{item.email}</Text>}
                       </View>
                     </View>
-                    <TouchableOpacity
+                    <AnimatedPressable
                       style={styles.removePlayerButton}
                       onPress={() => handleRemovePlayer(item)}
                     >
                       <Icon name="trash" size={20} color={colors.error} />
-                    </TouchableOpacity>
+                    </AnimatedPressable>
                   </View>
                 )}
                 contentContainerStyle={styles.playerList}
@@ -384,17 +262,18 @@ const SettingsScreen: React.FC = () => {
               </View>
             )}
           </View>
-        </View>
-      </Modal>
+      </DismissableModal>
     );
   };
 
   return (
     <Layout title="Settings" isInTabNavigator={true}>
       <ScrollView style={styles.container}>
+        <Animated.View style={fadeStyle}>
         {/* Profile Section */}
+        <Animated.View entering={staggeredEntrance(0)}>
         <View style={styles.profileSection}>
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.profilePicContainer, uploading && { opacity: 0.6 }]}
             onPress={pickAndUploadImage}
             disabled={uploading}
@@ -414,7 +293,7 @@ const SettingsScreen: React.FC = () => {
             <View style={styles.editProfilePicButton}>
               <Icon name="camera" size={16} color={colors.white} />
             </View>
-          </TouchableOpacity>
+          </AnimatedPressable>
 
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{currentUser?.name || 'Player'}</Text>
@@ -423,26 +302,28 @@ const SettingsScreen: React.FC = () => {
               <Text style={styles.ratingText}>{currentUser?.rating?.toFixed(1) || '3.5'}</Text>
             </View>
 
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.editProfileButton}
               onPress={handleEditProfile}
               accessibilityLabel="Edit profile"
               accessibilityRole="button"
             >
               <Text style={styles.editProfileButtonText}>Edit Profile</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         </View>
+        </Animated.View>
 
         {/* Settings Options */}
         {settingSections.map((section, index) => (
-          <View key={index} style={styles.settingSection}>
+          <Animated.View key={index} entering={staggeredEntrance(index + 1)}>
+          <View style={styles.settingSection}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
             {section.items.map((item, itemIndex) => (
-              <TouchableOpacity
+              <AnimatedPressable
                 key={itemIndex}
                 style={styles.settingItem}
-                onPress={item.onPress}
+                onPress={item.onPress ?? (() => {})}
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
               >
@@ -462,13 +343,18 @@ const SettingsScreen: React.FC = () => {
                   </Text>
                 </View>
                 <Icon name="chevron-right" size={20} color={colors.gray300} />
-              </TouchableOpacity>
+              </AnimatedPressable>
             ))}
           </View>
+          </Animated.View>
         ))}
 
         {/* Render modals */}
-        {renderInvitePlayerModal()}
+        <InvitePlayersModal
+          visible={showInviteModal}
+          onClose={() => setShowInviteModal(false)}
+          context="settings"
+        />
         {renderInvitedPlayersModal()}
         {renderManagePlayersModal()}
 
@@ -497,6 +383,7 @@ const SettingsScreen: React.FC = () => {
           </Text>
           <Text style={styles.footerVersion}>v1.0.0</Text>
         </View>
+        </Animated.View>
       </ScrollView>
     </Layout>
   );

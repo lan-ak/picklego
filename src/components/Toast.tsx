@@ -1,6 +1,16 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import React, { useEffect } from 'react';
+import { Text, StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  withDelay,
+  runOnJS,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
+import { colors, typography, spacing, borderRadius, shadows, springConfig, duration, easingConfig } from '../theme';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -18,47 +28,88 @@ const TOAST_COLORS: Record<ToastType, string> = {
   info: colors.info,
 };
 
-const Toast: React.FC<ToastProps> = ({ visible, message, type, duration = 3000, onDismiss }) => {
-  const translateY = useRef(new Animated.Value(-100)).current;
+const HAPTIC_MAP: Record<ToastType, () => void> = {
+  success: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
+  error: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error),
+  info: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
+};
+
+const Toast: React.FC<ToastProps> = ({ visible, message, type, duration: toastDuration = 3000, onDismiss }) => {
+  const translateY = useSharedValue(-100);
+
+  const dismiss = () => {
+    translateY.value = withTiming(-100, {
+      duration: duration.fast,
+      easing: easingConfig.easeIn,
+    }, () => {
+      runOnJS(onDismiss)();
+    });
+  };
 
   useEffect(() => {
     if (visible) {
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 80,
-        friction: 10,
-      }).start();
+      // Trigger haptic on show
+      HAPTIC_MAP[type]();
 
+      // Animate in with spring
+      translateY.value = withSpring(0, springConfig.bouncy);
+
+      // Auto-dismiss after duration
       const timer = setTimeout(() => {
         dismiss();
-      }, duration);
+      }, toastDuration);
 
       return () => clearTimeout(timer);
     }
   }, [visible]);
 
-  const dismiss = () => {
-    Animated.timing(translateY, {
-      toValue: -100,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => onDismiss());
-  };
+  // Swipe up to dismiss gesture
+  const swipeGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      if (event.translationY < 0) {
+        translateY.value = event.translationY;
+      }
+    })
+    .onEnd((event) => {
+      if (event.translationY < -30) {
+        // Swiped up enough — dismiss
+        translateY.value = withTiming(-100, {
+          duration: duration.fast,
+          easing: easingConfig.easeIn,
+        }, () => {
+          runOnJS(onDismiss)();
+        });
+      } else {
+        // Snap back
+        translateY.value = withSpring(0, springConfig.snappy);
+      }
+    });
+
+  // Tap to dismiss gesture
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(dismiss)();
+  });
+
+  const composedGesture = Gesture.Race(swipeGesture, tapGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
 
   if (!visible) return null;
 
   return (
-    <Animated.View
-      style={[
-        styles.container,
-        { backgroundColor: TOAST_COLORS[type], transform: [{ translateY }] },
-      ]}
-    >
-      <TouchableOpacity onPress={dismiss} style={styles.content} activeOpacity={0.8}>
+    <GestureDetector gesture={composedGesture}>
+      <Animated.View
+        style={[
+          styles.container,
+          { backgroundColor: TOAST_COLORS[type] },
+          animatedStyle,
+        ]}
+      >
         <Text style={styles.text}>{message}</Text>
-      </TouchableOpacity>
-    </Animated.View>
+      </Animated.View>
+    </GestureDetector>
   );
 };
 
@@ -70,11 +121,9 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     borderRadius: borderRadius.md,
     zIndex: 9999,
-    ...shadows.lg,
-  },
-  content: {
     padding: spacing.lg,
     alignItems: 'center',
+    ...shadows.lg,
   },
   text: {
     ...typography.bodyLarge,

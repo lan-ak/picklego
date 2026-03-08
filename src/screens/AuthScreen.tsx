@@ -4,32 +4,28 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   TextInput,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
   ActivityIndicator,
   Modal,
 } from 'react-native';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../types';
 import { Icon } from '../components/Icon';
 import { GoogleIcon } from '../components/GoogleIcon';
+import { KeyboardAwareContainer } from '../components/KeyboardAwareContainer';
 import { useData } from '../context/DataContext';
 import { sendPasswordReset } from '../config/firebase';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useToast } from '../context/ToastContext';
 import PicklePete from '../components/PicklePete';
 import * as AppleAuthentication from 'expo-apple-authentication';
-
-type AuthScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+import Animated from 'react-native-reanimated';
+import { useFadeIn, useContentTransition } from '../hooks';
 
 const AuthScreen = () => {
-  const navigation = useNavigation<AuthScreenNavigationProp>();
+  const fadeStyle = useFadeIn();
   const { addPlayer, setCurrentUser, signIn, signInWithSocial, completeSocialSignUp } = useData();
   const { showToast } = useToast();
 
@@ -48,6 +44,7 @@ const AuthScreen = () => {
   const [isSocialLoading, setIsSocialLoading] = useState(false);
   const [isAppleAuthAvailable, setIsAppleAuthAvailable] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
+  const contentStyle = useContentTransition(isLogin ? 'login' : 'signup');
 
   useEffect(() => {
     AppleAuthentication.isAvailableAsync().then(setIsAppleAuthAvailable);
@@ -103,9 +100,6 @@ const AuthScreen = () => {
         email: email.trim(),
         password: password,
       });
-
-      // Navigate to main app
-      navigation.navigate('MainTabs', { screen: 'Home' });
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to create account');
     } finally {
@@ -123,9 +117,6 @@ const AuthScreen = () => {
     try {
       // Sign in with Firebase
       await signIn(email.trim(), password);
-
-      // Navigate to main app
-      navigation.navigate('MainTabs', { screen: 'Home' });
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Login failed');
     } finally {
@@ -157,8 +148,6 @@ const AuthScreen = () => {
       if (result.needsName) {
         setSocialProvider(provider);
         setShowNameModal(true);
-      } else {
-        navigation.navigate('MainTabs', { screen: 'Home' });
       }
     } catch (error: any) {
       if (error.cancelled) return;
@@ -178,7 +167,6 @@ const AuthScreen = () => {
       await completeSocialSignUp(socialName.trim(), socialProvider);
       setShowNameModal(false);
       setSocialName('');
-      navigation.navigate('MainTabs', { screen: 'Home' });
     } catch (error: any) {
       showToast(error.message || 'Failed to complete sign-up', 'error');
     } finally {
@@ -189,10 +177,8 @@ const AuthScreen = () => {
   return (
     <>
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
+      <Animated.View style={[{ flex: 1 }, fadeStyle]}>
+      <KeyboardAwareContainer style={styles.keyboardView}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.logoContainer}>
           <PicklePete pose="welcome" size="xl" />
@@ -202,7 +188,7 @@ const AuthScreen = () => {
 
         <View style={styles.formContainer}>
           <View style={styles.tabContainer}>
-            <TouchableOpacity
+            <AnimatedPressable
               style={[styles.tabButton, isLogin ? styles.activeTab : styles.inactiveTab]}
               onPress={() => setIsLogin(true)}
               accessibilityRole="tab"
@@ -212,9 +198,9 @@ const AuthScreen = () => {
               <Text style={[styles.tabText, isLogin ? styles.activeTabText : styles.inactiveTabText]}>
                 Login
               </Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
 
-            <TouchableOpacity
+            <AnimatedPressable
               style={[styles.tabButton, isLogin ? styles.inactiveTab : styles.activeTab]}
               onPress={() => setIsLogin(false)}
               accessibilityRole="tab"
@@ -224,9 +210,10 @@ const AuthScreen = () => {
               <Text style={[styles.tabText, isLogin ? styles.inactiveTabText : styles.activeTabText]}>
                 Sign Up
               </Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
 
+          <Animated.View style={contentStyle}>
           {/* Social Sign-In Buttons */}
           <View style={styles.socialContainer}>
             {isAppleAuthAvailable && (
@@ -239,7 +226,7 @@ const AuthScreen = () => {
               />
             )}
 
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.googleButton}
               onPress={() => handleSocialSignIn('google')}
               disabled={isSocialLoading}
@@ -254,7 +241,7 @@ const AuthScreen = () => {
                   <Text style={styles.googleButtonText}>Sign in with Google</Text>
                 </>
               )}
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
 
           {/* Divider */}
@@ -306,7 +293,7 @@ const AuthScreen = () => {
                     accessibilityLabel="Password"
                     accessibilityHint="Enter your password"
                   />
-                  <TouchableOpacity
+                  <AnimatedPressable
                     style={styles.eyeIcon}
                     onPress={() => setShowPassword(!showPassword)}
                     accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
@@ -317,12 +304,12 @@ const AuthScreen = () => {
                       size={24}
                       color={colors.gray500}
                     />
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
               </View>
 
               {isLogin && !showForgotPassword && (
-                <TouchableOpacity
+                <AnimatedPressable
                   style={styles.forgotPasswordButton}
                   onPress={() => setShowForgotPassword(true)}
                   accessibilityLabel="Forgot password"
@@ -330,7 +317,7 @@ const AuthScreen = () => {
                   accessibilityHint="Opens password reset form"
                 >
                   <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               )}
 
               {showForgotPassword && (
@@ -346,15 +333,15 @@ const AuthScreen = () => {
                     accessibilityLabel="Password reset email address"
                     accessibilityHint="Enter the email address to send a password reset link to"
                   />
-                  <TouchableOpacity
+                  <AnimatedPressable
                     style={styles.resetButton}
                     onPress={handleForgotPassword}
                     accessibilityLabel="Send reset link"
                     accessibilityRole="button"
                   >
                     <Text style={styles.resetButtonText}>Send Reset Link</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </AnimatedPressable>
+                  <AnimatedPressable
                     style={styles.cancelButton}
                     onPress={() => {
                       setShowForgotPassword(false);
@@ -364,7 +351,7 @@ const AuthScreen = () => {
                     accessibilityRole="button"
                   >
                     <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
               )}
 
@@ -385,7 +372,7 @@ const AuthScreen = () => {
                 </View>
               )}
 
-              <TouchableOpacity
+              <AnimatedPressable
                 style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
                 onPress={isLogin ? handleLogin : handleSignUp}
                 disabled={isLoading}
@@ -400,10 +387,10 @@ const AuthScreen = () => {
                     {isLogin ? 'Login' : 'Create Account'}
                   </Text>
                 )}
-              </TouchableOpacity>
+              </AnimatedPressable>
             </>
           ) : (
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.emailButton}
               onPress={() => setShowEmailForm(true)}
               accessibilityLabel="Continue with email"
@@ -411,10 +398,12 @@ const AuthScreen = () => {
             >
               <Icon name="mail" size={20} color="#1F1F1F" />
               <Text style={styles.emailButtonText}>Continue with Email</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
 
-          <TouchableOpacity
+          </Animated.View>
+
+          <AnimatedPressable
             style={styles.toggleButton}
             onPress={handleToggleMode}
             accessibilityLabel={isLogin ? 'Need an account? Sign up' : 'Already have an account? Login'}
@@ -423,10 +412,11 @@ const AuthScreen = () => {
             <Text style={styles.toggleButtonText}>
               {isLogin ? 'Need an account? Sign up' : 'Already have an account? Login'}
             </Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareContainer>
+      </Animated.View>
     </SafeAreaView>
 
     {/* Name Prompt Modal (Apple Sign-In with hidden name) */}
@@ -450,7 +440,7 @@ const AuthScreen = () => {
             autoFocus
             accessibilityLabel="Full name"
           />
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.submitButton, isSocialLoading && styles.submitButtonDisabled]}
             onPress={handleNameSubmit}
             disabled={isSocialLoading}
@@ -462,7 +452,7 @@ const AuthScreen = () => {
             ) : (
               <Text style={styles.submitButtonText}>Continue</Text>
             )}
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       </View>
     </Modal>

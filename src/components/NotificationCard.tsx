@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Icon } from './Icon';
+import { AnimatedPressable } from './AnimatedPressable';
 import { MatchNotification } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 
@@ -48,22 +49,22 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete
   const isPendingPlayerInvite = isPlayerInvite && notification.status === 'sent';
 
   const deleteButton = onDelete ? (
-    <TouchableOpacity
+    <AnimatedPressable
       onPress={onDelete}
       style={styles.deleteButton}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       accessibilityLabel="Delete notification"
+      scaleDown={0.85}
     >
       <Icon name="x" size={16} color={colors.gray400} />
-    </TouchableOpacity>
+    </AnimatedPressable>
   ) : null;
 
   if (isPlayerInvite) {
     return (
-      <TouchableOpacity
+      <AnimatedPressable
         style={[styles.card, isPendingPlayerInvite && styles.unreadCard]}
         onPress={onPress}
-        activeOpacity={0.7}
         accessibilityLabel={`Player invite from ${notification.senderName}`}
         accessibilityRole="button"
       >
@@ -84,22 +85,22 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete
             </Text>
             {isPendingPlayerInvite && onAccept && onDecline ? (
               <View style={styles.actionRow}>
-                <TouchableOpacity
+                <AnimatedPressable
                   style={styles.acceptButton}
                   onPress={onAccept}
-                  activeOpacity={0.7}
+                  hapticStyle="success"
                 >
                   <Icon name="check-circle" size={16} color={colors.white} />
                   <Text style={styles.acceptButtonText}>Accept</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                </AnimatedPressable>
+                <AnimatedPressable
                   style={styles.declineButton}
                   onPress={onDecline}
-                  activeOpacity={0.7}
+                  hapticStyle="light"
                 >
                   <Icon name="x-circle" size={16} color={colors.gray500} />
                   <Text style={styles.declineButtonText}>Decline</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             ) : (
               <Text style={[
@@ -111,17 +112,16 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete
             )}
           </View>
         </View>
-      </TouchableOpacity>
+      </AnimatedPressable>
     );
   }
 
   if (isInviteAccepted) {
     const isUnreadAccepted = notification.status === 'sent';
     return (
-      <TouchableOpacity
+      <AnimatedPressable
         style={[styles.card, isUnreadAccepted && styles.unreadCard]}
         onPress={onPress}
-        activeOpacity={0.7}
         accessibilityLabel={`${notification.senderName} accepted your player invite`}
         accessibilityRole="button"
       >
@@ -142,16 +142,15 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete
             </Text>
           </View>
         </View>
-      </TouchableOpacity>
+      </AnimatedPressable>
     );
   }
 
   if (isMatchUpdated || isMatchCancelled) {
     return (
-      <TouchableOpacity
+      <AnimatedPressable
         style={[styles.card, isUnread && styles.unreadCard]}
         onPress={onPress}
-        activeOpacity={0.7}
         accessibilityLabel={`${isMatchCancelled ? 'Match cancelled' : 'Match updated'} by ${notification.senderName}`}
         accessibilityRole="button"
       >
@@ -184,18 +183,17 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete
             )}
           </View>
         </View>
-      </TouchableOpacity>
+      </AnimatedPressable>
     );
   }
 
-  // Default: match_invite (unchanged)
+  // Default: match_invite
   const matchTypeLabel = notification.matchType === 'doubles' ? 'doubles' : 'singles';
 
   return (
-    <TouchableOpacity
+    <AnimatedPressable
       style={[styles.card, isUnread && styles.unreadCard]}
       onPress={onPress}
-      activeOpacity={0.7}
       accessibilityLabel={`${isUnread ? 'Unread: ' : ''}${notification.senderName} added you to a ${matchTypeLabel} match`}
       accessibilityRole="button"
     >
@@ -229,7 +227,7 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete
           )}
         </View>
       </View>
-    </TouchableOpacity>
+    </AnimatedPressable>
   );
 };
 

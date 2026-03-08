@@ -33,6 +33,7 @@ import {
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import * as Crypto from 'expo-crypto';
 import { Player, Match, MatchNotification } from '../types';
 
 // Firebase configuration from environment variables
@@ -63,12 +64,23 @@ export const stripUndefined = <T extends Record<string, any>>(obj: T): T => {
 };
 
 // Firestore helper functions
+/** Normalize a phone number to digits-only with country code, then SHA-256 hash it. */
+async function computePhoneHash(phone: string | undefined): Promise<string | undefined> {
+  if (!phone) return undefined;
+  const digits = phone.replace(/\D/g, '');
+  const normalized = digits.length === 10 ? '1' + digits : digits;
+  if (normalized.length < 10) return undefined;
+  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, normalized);
+}
+
 export const createPlayerDocument = async (player: Player) => {
   try {
     const { password, ...playerData } = player;
+    const phoneHash = await computePhoneHash(playerData.phoneNumber);
     const dataToWrite = {
       ...playerData,
       ...(playerData.email ? { emailLowercase: playerData.email.trim().toLowerCase() } : {}),
+      ...(phoneHash ? { phoneNumberHash: phoneHash } : {}),
     };
     await setDoc(doc(db, 'players', player.id), stripUndefined(dataToWrite));
   } catch (error: any) {
@@ -84,6 +96,10 @@ export const updatePlayerDocument = async (playerId: string, data: Partial<Playe
     };
     if (data.email !== undefined) {
       updateData.emailLowercase = data.email.trim().toLowerCase();
+    }
+    if (data.phoneNumber !== undefined) {
+      const phoneHash = await computePhoneHash(data.phoneNumber);
+      if (phoneHash) updateData.phoneNumberHash = phoneHash;
     }
     await updateDoc(doc(db, 'players', playerId), stripUndefined(updateData));
   } catch (error: any) {
@@ -476,10 +492,19 @@ const authenticatedCallable = async <TData, TResult>(
   if (!auth.currentUser) {
     throw new Error('Must be authenticated');
   }
-  await auth.currentUser.getIdToken();
+  await auth.currentUser.getIdToken(true);
   const fn = httpsCallable(functions, functionName);
-  const result = await fn(data);
-  return result.data as TResult;
+  try {
+    const result = await fn(data);
+    return result.data as TResult;
+  } catch (error: any) {
+    if (error?.code === 'functions/unauthenticated' && auth.currentUser) {
+      await auth.currentUser.getIdToken(true);
+      const result = await fn(data);
+      return result.data as TResult;
+    }
+    throw error;
+  }
 };
 
 export const callAcceptPlayerInvite = (notificationId: string) =>
@@ -491,4 +516,22 @@ export const callClaimPlaceholderProfile = (name: string) =>
   authenticatedCallable<{ name: string }, { claimed: boolean; matchesUpdated: number }>(
     'claimPlaceholderProfile', { name },
   );
+
+export const callCreateSMSInvite = (recipientPhones: string[], recipientNames: string[]) =>
+  authenticatedCallable<
+    { recipientPhones: string[]; recipientNames: string[] },
+    { inviteId: string }
+  >('createSMSInvite', { recipientPhones, recipientNames });
+
+export const callClaimSMSInvite = (inviteId: string) =>
+  authenticatedCallable<
+    { inviteId: string },
+    { claimed: boolean; senderId?: string; reason?: string }
+  >('claimSMSInvite', { inviteId });
+
+export const callLookupPhoneNumbers = (phoneHashes: string[]) =>
+  authenticatedCallable<
+    { phoneHashes: string[] },
+    { matches: Record<string, { playerId: string; playerName: string }> }
+  >('lookupPhoneNumbers', { phoneHashes });
 

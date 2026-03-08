@@ -10,7 +10,9 @@ import {
   Camera,
   MessageCircle,
   CheckCircle,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   X,
   XCircle,
   CloudDownload,
@@ -51,6 +53,10 @@ import {
   Heart,
   Shuffle,
   Repeat,
+  Phone,
+  Check,
+  BookUser,
+  Send,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -64,7 +70,9 @@ const ICON_MAP = {
   'camera': Camera,
   'message-circle': MessageCircle,
   'check-circle': CheckCircle,
+  'chevron-down': ChevronDown,
   'chevron-right': ChevronRight,
+  'chevron-up': ChevronUp,
   'x': X,
   'x-circle': XCircle,
   'cloud-download': CloudDownload,
@@ -105,6 +113,10 @@ const ICON_MAP = {
   'heart': Heart,
   'shuffle': Shuffle,
   'repeat': Repeat,
+  'phone': Phone,
+  'check': Check,
+  'book-user': BookUser,
+  'send': Send,
 } as const;
 
 export type IconName = keyof typeof ICON_MAP;

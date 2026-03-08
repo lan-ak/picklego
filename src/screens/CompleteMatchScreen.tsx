@@ -6,23 +6,26 @@ import {
   StyleSheet,
   ScrollView,
   TextInput,
-  TouchableOpacity,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
   Switch,
   Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../types';
 import { useData } from '../context/DataContext';
 import { Icon } from '../components/Icon';
+import { AnimatedPressable } from '../components/AnimatedPressable';
+import { DismissableModal } from '../components/DismissableModal';
 import Layout from '../components/Layout';
+import { KeyboardAwareContainer } from '../components/KeyboardAwareContainer';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import PicklePete from '../components/PicklePete';
 import { useToast } from '../context/ToastContext';
+import Animated from 'react-native-reanimated';
+import { useFadeIn } from '../hooks';
 import { shuffleTeams } from '../utils/shuffleTeams';
 
 type CompleteMatchRouteProp = RouteProp<RootStackParamList, 'CompleteMatch'>;
@@ -34,6 +37,7 @@ type GameScore = {
 };
 
 const CompleteMatchScreen = () => {
+  const fadeStyle = useFadeIn();
   const route = useRoute<CompleteMatchRouteProp>();
   const navigation = useNavigation();
   const { matches, players, updateMatch, invitePlayer, addPlayer, currentUser } = useData();
@@ -345,26 +349,24 @@ const CompleteMatchScreen = () => {
   };
 
   const renderInvitePlayerModal = () => (
-    <Modal
-      animationType="slide"
-      transparent={true}
+    <DismissableModal
       visible={showInviteModal}
-      onRequestClose={() => setShowInviteModal(false)}
+      onClose={() => setShowInviteModal(false)}
+      overlayStyle={styles.modalOverlay}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Invite Player</Text>
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.closeButton}
                 onPress={() => setShowInviteModal(false)}
               >
                 <Icon name="x" size={24} color={colors.primary} />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
 
             <PicklePete pose="invite" size="sm" message="Bring someone new to the court!" />
@@ -383,13 +385,13 @@ const CompleteMatchScreen = () => {
             <View style={styles.inviteMethodContainer}>
               <Text style={styles.inputLabel}>Invite Method</Text>
               <View style={styles.inviteMethodButtons}>
-                <TouchableOpacity
+                <AnimatedPressable
                   style={[
                     styles.methodButton,
                     inviteMethod === 'email' && styles.activeMethodButton
                   ]}
                   onPress={() => setInviteMethod('email')}
-                  accessibilityRole="radio"
+                  accessibilityRole="button"
                   accessibilityLabel="Email"
                   accessibilityState={{ selected: inviteMethod === 'email' }}
                   accessibilityHint="Select email as the invite method"
@@ -407,15 +409,15 @@ const CompleteMatchScreen = () => {
                   >
                     Email
                   </Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
 
-                <TouchableOpacity
+                <AnimatedPressable
                   style={[
                     styles.methodButton,
                     inviteMethod === 'sms' && styles.activeMethodButton
                   ]}
                   onPress={() => setInviteMethod('sms')}
-                  accessibilityRole="radio"
+                  accessibilityRole="button"
                   accessibilityLabel="SMS"
                   accessibilityState={{ selected: inviteMethod === 'sms' }}
                   accessibilityHint="Select SMS as the invite method"
@@ -433,7 +435,7 @@ const CompleteMatchScreen = () => {
                   >
                     SMS
                   </Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             </View>
 
@@ -477,32 +479,29 @@ const CompleteMatchScreen = () => {
             )}
 
             <View style={styles.modalFooter}>
-              <TouchableOpacity
+              <AnimatedPressable
                 style={[styles.modalButton, styles.secondaryButton]}
                 onPress={() => setShowInviteModal(false)}
               >
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
 
-              <TouchableOpacity
+              <AnimatedPressable
                 style={[styles.modalButton, styles.primaryButton]}
                 onPress={handleInvitePlayer}
               >
                 <Text style={styles.primaryButtonText}>Add Player</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           </View>
-        </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </DismissableModal>
   );
 
   return (
     <Layout title="Complete Match">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
+      <Animated.View style={[{ flex: 1 }, fadeStyle]}>
+      <KeyboardAwareContainer>
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -523,13 +522,13 @@ const CompleteMatchScreen = () => {
                 <View style={styles.winnerSelector}>
                   <Text style={styles.winnerLabel}>Select Winner:</Text>
                   <View style={styles.winnerButtons}>
-                    <TouchableOpacity
+                    <AnimatedPressable
                       style={[
                         styles.winnerButton,
                         game.winner === 'team1' && styles.winnerButtonSelected
                       ]}
                       onPress={() => handleGameWinnerSelect(index, 'team1')}
-                      accessibilityRole="radio"
+                      accessibilityRole="button"
                       accessibilityLabel={`${getTeamNames(1, index)} wins Game ${index + 1}`}
                       accessibilityState={{ selected: game.winner === 'team1' }}
                       accessibilityHint={`Select ${getTeamNames(1, index)} as the winner of Game ${index + 1}`}
@@ -540,15 +539,15 @@ const CompleteMatchScreen = () => {
                       ]}>
                         {getTeamNames(1, index)}
                       </Text>
-                    </TouchableOpacity>
+                    </AnimatedPressable>
 
-                    <TouchableOpacity
+                    <AnimatedPressable
                       style={[
                         styles.winnerButton,
                         game.winner === 'team2' && styles.winnerButtonSelected
                       ]}
                       onPress={() => handleGameWinnerSelect(index, 'team2')}
-                      accessibilityRole="radio"
+                      accessibilityRole="button"
                       accessibilityLabel={`${getTeamNames(2, index)} wins Game ${index + 1}`}
                       accessibilityState={{ selected: game.winner === 'team2' }}
                       accessibilityHint={`Select ${getTeamNames(2, index)} as the winner of Game ${index + 1}`}
@@ -559,7 +558,7 @@ const CompleteMatchScreen = () => {
                       ]}>
                         {getTeamNames(2, index)}
                       </Text>
-                    </TouchableOpacity>
+                    </AnimatedPressable>
                   </View>
                 </View>
 
@@ -601,7 +600,7 @@ const CompleteMatchScreen = () => {
         </ScrollView>
 
         <View style={styles.footer}>
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.button, styles.secondaryButton]}
             onPress={() => navigation.goBack()}
             accessibilityLabel="Cancel"
@@ -610,9 +609,9 @@ const CompleteMatchScreen = () => {
           >
             <Icon name="arrow-left" size={20} color={colors.gray500} />
             <Text style={styles.secondaryButtonText}>Cancel</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
 
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.button, styles.primaryButton]}
             onPress={handleCompleteMatch}
             accessibilityLabel="Complete Match"
@@ -621,9 +620,10 @@ const CompleteMatchScreen = () => {
           >
             <Icon name="check-circle" size={20} color={colors.white} />
             <Text style={styles.primaryButtonText}>Complete Match</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareContainer>
+      </Animated.View>
 
       {renderInvitePlayerModal()}
     </Layout>

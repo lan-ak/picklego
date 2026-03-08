@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { Icon } from '../components/Icon';
 import { useData } from '../context/DataContext';
 import Layout from '../components/Layout';
@@ -7,6 +9,7 @@ import { Match, Game } from '../types';
 import { colors, typography, fontFamily, spacing, borderRadius, shadows, layout } from '../theme';
 import Card from '../components/Card';
 import PicklePete from '../components/PicklePete';
+import { useFadeIn, useContentTransition } from '../hooks';
 
 type PlayerStats = {
   totalMatches: number;
@@ -54,6 +57,8 @@ const MyStatsScreen = () => {
   const { players, matches, currentUser } = useData();
   const [statsMode, setStatsMode] = useState<StatsMode>('overall');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const fadeStyle = useFadeIn();
+  const contentStyle = useContentTransition(`${statsMode}-${timeFilter}`);
   const [extendedStats, setExtendedStats] = useState<Record<string, ExtendedPlayerStats>>({});
   const [opponentStats, setOpponentStats] = useState<OpponentStats[]>([]);
   const [partnerStats, setPartnerStats] = useState<PartnerStats[]>([]);
@@ -430,7 +435,7 @@ const MyStatsScreen = () => {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabsScrollContent}
       >
-        <TouchableOpacity
+        <AnimatedPressable
           style={[styles.tab, statsMode === 'overall' && styles.activeTab]}
           onPress={() => setStatsMode('overall')}
           accessibilityRole="tab"
@@ -439,8 +444,8 @@ const MyStatsScreen = () => {
           <Text style={[styles.tabText, statsMode === 'overall' && styles.activeTabText]}>
             Overall
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </AnimatedPressable>
+        <AnimatedPressable
           style={[styles.tab, statsMode === 'singles' && styles.activeTab]}
           onPress={() => setStatsMode('singles')}
           accessibilityRole="tab"
@@ -449,8 +454,8 @@ const MyStatsScreen = () => {
           <Text style={[styles.tabText, statsMode === 'singles' && styles.activeTabText]}>
             Singles
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </AnimatedPressable>
+        <AnimatedPressable
           style={[styles.tab, statsMode === 'doubles' && styles.activeTab]}
           onPress={() => setStatsMode('doubles')}
           accessibilityRole="tab"
@@ -459,7 +464,7 @@ const MyStatsScreen = () => {
           <Text style={[styles.tabText, statsMode === 'doubles' && styles.activeTabText]}>
             Doubles
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </ScrollView>
     </View>
   );
@@ -602,7 +607,7 @@ const MyStatsScreen = () => {
   // Add a function to render time filters
   const renderTimeFilters = () => (
     <View style={styles.timeFiltersContainer}>
-      <TouchableOpacity
+      <AnimatedPressable
         style={[styles.timeFilterTab, timeFilter === 'all' && styles.activeTimeFilter]}
         onPress={() => setTimeFilter('all')}
         accessibilityRole="tab"
@@ -611,8 +616,8 @@ const MyStatsScreen = () => {
         <Text style={[styles.timeFilterText, timeFilter === 'all' && styles.activeTimeFilterText]}>
           All Time
         </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
+      </AnimatedPressable>
+      <AnimatedPressable
         style={[styles.timeFilterTab, timeFilter === 'recent' && styles.activeTimeFilter]}
         onPress={() => setTimeFilter('recent')}
         accessibilityRole="tab"
@@ -621,7 +626,7 @@ const MyStatsScreen = () => {
         <Text style={[styles.timeFilterText, timeFilter === 'recent' && styles.activeTimeFilterText]}>
           Last 30 Days
         </Text>
-      </TouchableOpacity>
+      </AnimatedPressable>
     </View>
   );
 
@@ -728,10 +733,12 @@ const MyStatsScreen = () => {
 
   return (
     <Layout title="My Stats" isInTabNavigator={true}>
+      <Animated.View style={[{ flex: 1 }, fadeStyle]}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {renderStatsTabs()}
         {renderTimeFilters()}
 
+        <Animated.View style={contentStyle}>
         {winStreak[statsMode] > 3 && (
           <View style={styles.picklePeteContainer}>
             <PicklePete pose="win" message={`${winStreak[statsMode]} win streak! You're on fire!`} />
@@ -861,7 +868,9 @@ const MyStatsScreen = () => {
             </View>
           )}
         </Card>
+        </Animated.View>
       </ScrollView>
+      </Animated.View>
     </Layout>
   );
 };

@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
+import { AnimatedPressable } from './AnimatedPressable';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
@@ -45,14 +46,14 @@ const Layout: React.FC<LayoutProps> = ({
       {title && (
         <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
           {showBackButton && navigation.canGoBack() && (
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.backButton}
               onPress={() => navigation.goBack()}
               accessibilityLabel="Go back"
               accessibilityRole="button"
             >
               <Icon name="arrow-left" size={24} color={colors.primary} />
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
           {leftComponent && (
             <View style={styles.leftContainer}>
@@ -62,14 +63,14 @@ const Layout: React.FC<LayoutProps> = ({
           <Text style={styles.title} accessibilityRole="header">{title}</Text>
           <View style={styles.rightContainer}>
             {!isHomeScreen && (
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.homeButton}
                 onPress={navigateToHome}
                 accessibilityLabel="Go to home screen"
                 accessibilityRole="button"
               >
                 <Icon name="home" size={24} color={colors.primary} />
-              </TouchableOpacity>
+              </AnimatedPressable>
             )}
             {rightComponent && (
               <View style={styles.rightComponent}>

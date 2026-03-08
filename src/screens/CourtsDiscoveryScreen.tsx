@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   FlatList,
   ActivityIndicator,
   Alert,
@@ -12,11 +11,14 @@ import {
 } from 'react-native';
 import MapView, { Marker, Callout, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import Layout from '../components/Layout';
 import { Icon } from '../components/Icon';
 import { colors, typography, spacing, borderRadius, shadows, layout } from '../theme';
 import { useData } from '../context/DataContext';
 import { useVenues } from '../hooks/useVenues';
+import Animated from 'react-native-reanimated';
+import { useFadeIn, useContentTransition } from '../hooks';
 import { searchNearbyCourts, PlaceResult } from '../services/placesService';
 import { Coordinates } from '../types';
 
@@ -28,10 +30,12 @@ const DEFAULT_REGION: Region = {
 };
 
 const CourtsDiscoveryScreen = () => {
+  const fadeStyle = useFadeIn();
   const { currentUser } = useData();
   const { venues, loading: venuesLoading, saveVenue, removeVenue, toggleFavorite } = useVenues(currentUser?.id);
 
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
+  const contentStyle = useContentTransition(viewMode);
   const [courts, setCourts] = useState<PlaceResult[]>([]);
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -192,7 +196,7 @@ const CourtsDiscoveryScreen = () => {
               )}
             </View>
             <View style={styles.courtActions}>
-              <TouchableOpacity
+              <AnimatedPressable
                 onPress={() => {
                   if (saved) {
                     const venue = venues.find((v) => v.placeId === item.placeId);
@@ -201,7 +205,6 @@ const CourtsDiscoveryScreen = () => {
                     handleSaveCourt(item);
                   }
                 }}
-                activeOpacity={0.7}
                 accessibilityLabel={saved ? 'Remove from saved' : 'Save court'}
                 accessibilityRole="button"
               >
@@ -210,16 +213,15 @@ const CourtsDiscoveryScreen = () => {
                   size={24}
                   color={saved ? colors.action : colors.gray300}
                 />
-              </TouchableOpacity>
+              </AnimatedPressable>
               {item.coords && (
-                <TouchableOpacity
+                <AnimatedPressable
                   onPress={() => handleGetDirections(item.coords!, item.name)}
-                  activeOpacity={0.7}
                   accessibilityLabel="Get directions"
                   accessibilityRole="button"
                 >
                   <Icon name="navigation" size={22} color={colors.secondary} />
-                </TouchableOpacity>
+                </AnimatedPressable>
               )}
             </View>
           </View>
@@ -231,12 +233,12 @@ const CourtsDiscoveryScreen = () => {
 
   return (
     <Layout title="Find Courts" showBackButton>
+      <Animated.View style={[{ flex: 1 }, fadeStyle]}>
       {/* View Mode Toggle */}
       <View style={styles.toggleContainer}>
-        <TouchableOpacity
+        <AnimatedPressable
           style={[styles.toggleButton, viewMode === 'map' && styles.toggleButtonActive]}
           onPress={() => setViewMode('map')}
-          activeOpacity={0.7}
           accessibilityLabel="Map view"
           accessibilityRole="button"
         >
@@ -253,11 +255,10 @@ const CourtsDiscoveryScreen = () => {
           >
             Map
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </AnimatedPressable>
+        <AnimatedPressable
           style={[styles.toggleButton, viewMode === 'list' && styles.toggleButtonActive]}
           onPress={() => setViewMode('list')}
-          activeOpacity={0.7}
           accessibilityLabel="List view"
           accessibilityRole="button"
         >
@@ -274,9 +275,10 @@ const CourtsDiscoveryScreen = () => {
           >
             List
           </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
 
+      <Animated.View style={[{ flex: 1 }, contentStyle]}>
       {isLoading && !hasSearched ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -319,27 +321,25 @@ const CourtsDiscoveryScreen = () => {
 
           {/* Search This Area Button */}
           {showSearchButton && (
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.searchAreaButton}
               onPress={handleSearchThisArea}
-              activeOpacity={0.7}
             >
               <Icon name="search" size={16} color={colors.white} />
               <Text style={styles.searchAreaText}>Search this area</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
 
           {/* My Location Button */}
           {userLocation && (
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.myLocationButton}
               onPress={handleMyLocation}
-              activeOpacity={0.7}
               accessibilityLabel="Center on my location"
               accessibilityRole="button"
             >
               <Icon name="crosshair" size={22} color={colors.primary} />
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
 
           {/* Loading indicator for searching */}
@@ -366,6 +366,8 @@ const CourtsDiscoveryScreen = () => {
           }
         />
       )}
+      </Animated.View>
+      </Animated.View>
     </Layout>
   );
 };

@@ -3,17 +3,19 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   FlatList,
   StyleSheet,
   ActivityIndicator,
   Keyboard,
   Alert,
   ScrollView,
+  Pressable,
 } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AnimatedPressable } from './AnimatedPressable';
 import { Icon } from './Icon';
 import { Chip } from './Chip';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
@@ -233,14 +235,14 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-        <TouchableOpacity
+        <AnimatedPressable
           onPress={onCancel}
           style={styles.headerButton}
           accessibilityLabel="Cancel"
           accessibilityRole="button"
         >
           <Icon name="x" size={24} color={colors.neutral} />
-        </TouchableOpacity>
+        </AnimatedPressable>
         <Text style={styles.headerTitle}>Select Location</Text>
         <View style={styles.headerButton} />
       </View>
@@ -284,7 +286,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
         />
         {isSearching && <ActivityIndicator size="small" color={colors.primary} />}
         {searchQuery.length > 0 && !isSearching && (
-          <TouchableOpacity
+          <AnimatedPressable
             onPress={() => {
               setSearchQuery('');
               setSearchResults([]);
@@ -292,16 +294,15 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
             }}
           >
             <Icon name="x" size={18} color={colors.gray400} />
-          </TouchableOpacity>
+          </AnimatedPressable>
         )}
       </View>
 
       {/* View Mode Toggle */}
       <View style={styles.viewToggleContainer}>
-        <TouchableOpacity
+        <Pressable
           style={[styles.viewToggleButton, viewMode === 'map' && styles.viewToggleButtonActive]}
           onPress={() => setViewMode('map')}
-          activeOpacity={0.7}
           accessibilityLabel="Map view"
           accessibilityRole="button"
         >
@@ -318,11 +319,10 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
           >
             Map
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </Pressable>
+        <Pressable
           style={[styles.viewToggleButton, viewMode === 'list' && styles.viewToggleButtonActive]}
           onPress={() => setViewMode('list')}
-          activeOpacity={0.7}
           accessibilityLabel="List view"
           accessibilityRole="button"
         >
@@ -339,11 +339,11 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
           >
             List
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {viewMode === 'map' ? (
-        <>
+        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
           {/* Search results dropdown */}
           {showResults && searchResults.length > 0 && (
             <View style={styles.resultsContainer}>
@@ -352,10 +352,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
                 keyExtractor={(item) => item.placeId}
                 keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => (
-                  <TouchableOpacity
+                  <AnimatedPressable
                     style={styles.resultItem}
                     onPress={() => handleSelectPlace(item)}
-                    activeOpacity={0.7}
                   >
                     <Icon name="map-pin" size={16} color={colors.gray400} />
                     <View style={styles.resultTextContainer}>
@@ -366,7 +365,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
                         {item.address}
                       </Text>
                     </View>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 )}
               />
             </View>
@@ -392,11 +391,10 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
             </MapView>
 
             {/* My Location FAB */}
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.myLocationButton}
               onPress={handleUseMyLocation}
               disabled={isLoadingLocation}
-              activeOpacity={0.7}
               accessibilityLabel="Use my current location"
               accessibilityRole="button"
             >
@@ -405,11 +403,12 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
               ) : (
                 <Icon name="crosshair" size={22} color={colors.primary} />
               )}
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
-        </>
+        </Animated.View>
       ) : (
         /* List View */
+        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
         <FlatList
           data={filteredVenues}
           keyExtractor={(item) => item.id}
@@ -418,10 +417,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
           renderItem={({ item }) => {
             const isSelected = selectedLocation === item.name;
             return (
-              <TouchableOpacity
+              <AnimatedPressable
                 style={[styles.venueCard, isSelected && styles.venueCardSelected]}
                 onPress={() => handleSelectVenue(item)}
-                activeOpacity={0.7}
                 accessibilityLabel={`Select ${item.name}`}
                 accessibilityRole="button"
               >
@@ -443,7 +441,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
                 {isSelected && (
                   <Icon name="check-circle" size={22} color={colors.primary} />
                 )}
-              </TouchableOpacity>
+              </AnimatedPressable>
             );
           }}
           ListEmptyComponent={
@@ -460,6 +458,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
             </View>
           }
         />
+        </Animated.View>
       )}
 
       {/* Bottom confirm bar */}
@@ -472,19 +471,18 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
               : 'Select a location from the list')}
           </Text>
         </View>
-        <TouchableOpacity
+        <AnimatedPressable
           style={[
             styles.confirmButton,
             (!selectedCoords || !selectedLocation) && styles.confirmButtonDisabled,
           ]}
           onPress={handleConfirm}
           disabled={!selectedCoords || !selectedLocation}
-          activeOpacity={0.7}
           accessibilityLabel="Confirm location"
           accessibilityRole="button"
         >
           <Text style={styles.confirmButtonText}>Confirm</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
     </View>
   );
@@ -646,17 +644,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     backgroundColor: colors.white,
     borderRadius: borderRadius.md,
-    padding: spacing.xs,
-    ...shadows.sm,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
   },
   viewToggleButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     borderRadius: borderRadius.sm,
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   viewToggleButtonActive: {
     backgroundColor: colors.primary,

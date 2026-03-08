@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  TouchableOpacity,
   Text,
   StyleSheet,
   ActivityIndicator,
@@ -8,6 +7,7 @@ import {
   StyleProp,
 } from 'react-native';
 import { Icon, IconName } from './Icon';
+import { AnimatedPressable } from './AnimatedPressable';
 import { colors, typography, borderRadius, shadows } from '../theme';
 
 type ButtonProps = {
@@ -20,11 +20,11 @@ type ButtonProps = {
 };
 
 export const PrimaryButton = ({ title, onPress, icon, disabled, loading, style }: ButtonProps) => (
-  <TouchableOpacity
-    style={[styles.primary, disabled && styles.disabled, style]}
+  <AnimatedPressable
+    style={[styles.primary, style]}
     onPress={onPress}
     disabled={disabled || loading}
-    activeOpacity={0.7}
+    hapticStyle="light"
     accessibilityRole="button"
     accessibilityLabel={title}
   >
@@ -36,15 +36,15 @@ export const PrimaryButton = ({ title, onPress, icon, disabled, loading, style }
         {icon && <Icon name={icon} size={20} color={colors.white} style={styles.icon} />}
       </>
     )}
-  </TouchableOpacity>
+  </AnimatedPressable>
 );
 
 export const SecondaryButton = ({ title, onPress, icon, disabled, loading, style }: ButtonProps) => (
-  <TouchableOpacity
-    style={[styles.secondary, disabled && styles.disabled, style]}
+  <AnimatedPressable
+    style={[styles.secondary, style]}
     onPress={onPress}
     disabled={disabled || loading}
-    activeOpacity={0.7}
+    hapticStyle="light"
     accessibilityRole="button"
     accessibilityLabel={title}
   >
@@ -56,15 +56,15 @@ export const SecondaryButton = ({ title, onPress, icon, disabled, loading, style
         {icon && <Icon name={icon} size={20} color={colors.secondary} style={styles.icon} />}
       </>
     )}
-  </TouchableOpacity>
+  </AnimatedPressable>
 );
 
 export const DangerButton = ({ title, onPress, icon, disabled, loading, style }: ButtonProps) => (
-  <TouchableOpacity
-    style={[styles.danger, disabled && styles.disabled, style]}
+  <AnimatedPressable
+    style={[styles.danger, style]}
     onPress={onPress}
     disabled={disabled || loading}
-    activeOpacity={0.7}
+    hapticStyle="heavy"
     accessibilityRole="button"
     accessibilityLabel={title}
   >
@@ -76,7 +76,7 @@ export const DangerButton = ({ title, onPress, icon, disabled, loading, style }:
         {icon && <Icon name={icon} size={20} color={colors.white} style={styles.icon} />}
       </>
     )}
-  </TouchableOpacity>
+  </AnimatedPressable>
 );
 
 const styles = StyleSheet.create({
@@ -122,9 +122,6 @@ const styles = StyleSheet.create({
   dangerText: {
     ...typography.button,
     color: colors.white,
-  },
-  disabled: {
-    opacity: 0.5,
   },
   icon: {
     marginLeft: 8,

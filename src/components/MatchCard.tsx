@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { format } from 'date-fns';
 import { Icon } from './Icon';
+import { AnimatedPressable } from './AnimatedPressable';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { Match, Game } from '../types';
 
@@ -47,7 +48,7 @@ const MatchCard = ({
     : null;
 
   return (
-    <TouchableOpacity
+    <AnimatedPressable
       style={[
         styles.card,
         isWinner && styles.winBorder,
@@ -55,7 +56,6 @@ const MatchCard = ({
         isScheduled && styles.scheduledBorder,
       ]}
       onPress={onPress}
-      activeOpacity={0.7}
       accessibilityRole="button"
       accessibilityLabel={`${team1Label} vs ${team2Label}${isWinner ? ', Won' : isLoser ? ', Lost' : ''}`}
       accessibilityHint="View match details"
@@ -117,7 +117,7 @@ const MatchCard = ({
           </View>
         </View>
       ) : null}
-    </TouchableOpacity>
+    </AnimatedPressable>
   );
 };
 

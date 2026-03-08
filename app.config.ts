@@ -5,6 +5,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: "PickleGo",
   slug: "PickleGo",
   version: "1.0.0",
+  scheme: "picklego",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
@@ -69,6 +70,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "expo-apple-authentication",
+    [
+      "expo-contacts",
+      {
+        contactsPermission:
+          "Allow PickleGo to access your contacts to invite friends to play pickleball.",
+      },
+    ],
     ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
       ? [[
           "@react-native-google-signin/google-signin",

@@ -25,6 +25,9 @@ import {
   removeConnection,
   addConnectionsBatch,
   callClaimPlaceholderProfile,
+  callCreateSMSInvite,
+  callClaimSMSInvite,
+  callLookupPhoneNumbers,
   createNotificationDocument,
   updateNotificationDocument,
   deleteNotificationDocument,
@@ -406,6 +409,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       checkAndClaim();
     }
   }, [authLoading, currentUser?.id, currentUser?.email]);
+
+  // Claim pending SMS invite after auth is fully loaded
+  const smsClaimAttemptedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!authLoading && currentUser && smsClaimAttemptedRef.current !== currentUser.id) {
+      smsClaimAttemptedRef.current = currentUser.id;
+      claimPendingSMSInvite();
+    }
+  }, [authLoading, currentUser?.id]);
 
   // Migrate legacy AsyncStorage matches to Firestore on first sign-in
   const migrateLocalMatchesToFirestore = async (currentUserId: string) => {
@@ -1340,6 +1353,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     n => n.status === 'sent' && n.recipientId === currentUser?.id
   ).length;
 
+  // SMS invite methods
+  const invitePlayersBySMS = async (contacts: { phone: string; name: string }[]): Promise<{ inviteId: string }> => {
+    if (!currentUser) throw new Error('Must be logged in');
+    const result = await callCreateSMSInvite(
+      contacts.map(c => c.phone),
+      contacts.map(c => c.name),
+    );
+    return { inviteId: result.inviteId };
+  };
+
+  const lookupContactsOnPickleGo = async (phoneHashes: string[]): Promise<Map<string, { playerId: string; playerName: string }>> => {
+    if (!currentUser || phoneHashes.length === 0) return new Map();
+    const result = await callLookupPhoneNumbers(phoneHashes);
+    return new Map(Object.entries(result.matches));
+  };
+
+  const claimPendingSMSInvite = async () => {
+    try {
+      const pendingInviteId = await AsyncStorage.getItem('pendingSMSInviteId');
+      if (!pendingInviteId || !currentUser) return;
+
+      const result = await callClaimSMSInvite(pendingInviteId);
+      if (result.claimed) {
+        await AsyncStorage.removeItem('pendingSMSInviteId');
+        await refreshConnectedPlayers();
+        await refreshNotifications();
+      } else {
+        // Remove if already claimed or self-invite
+        await AsyncStorage.removeItem('pendingSMSInviteId');
+      }
+    } catch (error) {
+      console.error('Error claiming SMS invite:', error);
+    }
+  };
+
   // Context value with all the methods and data
   const contextValue: DataContextType = {
     players,
@@ -1377,6 +1425,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshMatches,
     refreshNotifications,
     refreshConnectedPlayers,
+    invitePlayersBySMS,
+    lookupContactsOnPickleGo,
+    claimPendingSMSInvite,
   };
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;

@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView, Linking, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Alert, ScrollView, Linking, Platform, ActivityIndicator } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { useFadeIn } from '../hooks';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import MapView, { Marker } from 'react-native-maps';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { Icon } from '../components/Icon';
 import { Chip } from '../components/Chip';
 import { useData } from '../context/DataContext';
@@ -20,6 +23,7 @@ type MatchDetailsRouteProp = RouteProp<RootStackParamList, 'MatchDetails'>;
 type MatchDetailsNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const MatchDetailsScreen = () => {
+  const fadeStyle = useFadeIn();
   const route = useRoute<MatchDetailsRouteProp>();
   const navigation = useNavigation<MatchDetailsNavigationProp>();
   const { matches, players, deleteMatch, currentUser, getPlayerName, getNotificationsForMatch, sendMatchNotifications } = useData();
@@ -295,9 +299,9 @@ const MatchDetailsScreen = () => {
                     <Icon name="mail" size={12} color={colors.gray400} />
                     <Text style={[styles.notifBadgeText, styles.notifSentText]}>Sent</Text>
                   </View>
-                  <TouchableOpacity onPress={handleResendNotifications} style={styles.resendButton}>
+                  <AnimatedPressable onPress={handleResendNotifications} style={styles.resendButton}>
                     <Text style={styles.resendText}>Resend</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
               )}
             </View>
@@ -309,6 +313,7 @@ const MatchDetailsScreen = () => {
 
   return (
     <Layout title="Match Details" showBackButton={true}>
+      <Animated.View style={[{ flex: 1 }, fadeStyle]}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Match Header Section */}
         <View style={styles.section}>
@@ -354,7 +359,7 @@ const MatchDetailsScreen = () => {
                   <Marker coordinate={match.locationCoords} />
                 </MapView>
               </View>
-              <TouchableOpacity
+              <AnimatedPressable
                 style={styles.directionsButton}
                 onPress={() => {
                   if (!match.locationCoords) return;
@@ -366,13 +371,12 @@ const MatchDetailsScreen = () => {
                   });
                   if (url) Linking.openURL(url);
                 }}
-                activeOpacity={0.7}
                 accessibilityLabel="Get directions to match location"
                 accessibilityRole="button"
               >
                 <Icon name="navigation" size={18} color={colors.white} />
                 <Text style={styles.directionsButtonText}>Get Directions</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
           )}
 
@@ -465,7 +469,7 @@ const MatchDetailsScreen = () => {
 
             <View style={styles.actionButtons}>
               {currentUser?.id === match.createdBy && (
-                <TouchableOpacity
+                <AnimatedPressable
                   style={[styles.button, styles.editButton]}
                   onPress={handleEditMatch}
                   accessibilityLabel="Edit match"
@@ -473,10 +477,10 @@ const MatchDetailsScreen = () => {
                 >
                   <Icon name="pencil" size={20} color={colors.white} />
                   <Text style={styles.buttonText}>Edit Match</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               )}
 
-              <TouchableOpacity
+              <AnimatedPressable
                 style={[styles.button, styles.completeButton]}
                 onPress={handleCompleteMatch}
                 accessibilityLabel="Complete match"
@@ -484,11 +488,12 @@ const MatchDetailsScreen = () => {
               >
                 <Icon name="check-circle" size={20} color={colors.white} />
                 <Text style={styles.buttonText}>Complete Match</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
 
             {isUserInMatch() && (
-              <TouchableOpacity
+              <AnimatedPressable
+                hapticStyle="heavy"
                 style={[styles.button, styles.deleteButton]}
                 onPress={handleDeleteMatch}
                 accessibilityLabel="Remove match"
@@ -496,7 +501,7 @@ const MatchDetailsScreen = () => {
               >
                 <Icon name="trash" size={20} color={colors.white} />
                 <Text style={styles.buttonText}>Remove Match</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             )}
           </View>
         )}
@@ -505,7 +510,7 @@ const MatchDetailsScreen = () => {
         {match.status === 'completed' && isUserInMatch() && (
           <View style={styles.footer}>
             {match.matchType === 'doubles' && (
-              <TouchableOpacity
+              <AnimatedPressable
                 style={[styles.button, styles.rematchButton]}
                 onPress={handleRematch}
                 accessibilityLabel="Rematch"
@@ -514,9 +519,10 @@ const MatchDetailsScreen = () => {
               >
                 <Icon name="repeat" size={20} color={colors.white} />
                 <Text style={styles.buttonText}>Rematch</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             )}
-            <TouchableOpacity
+            <AnimatedPressable
+              hapticStyle="heavy"
               style={[styles.button, styles.deleteButton]}
               onPress={handleDeleteMatch}
               accessibilityLabel="Remove match"
@@ -524,10 +530,11 @@ const MatchDetailsScreen = () => {
             >
               <Icon name="trash" size={20} color={colors.white} />
               <Text style={styles.buttonText}>Remove Match</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         )}
       </ScrollView>
+      </Animated.View>
     </Layout>
   );
 };

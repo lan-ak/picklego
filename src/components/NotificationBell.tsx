@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Icon } from './Icon';
+import { AnimatedPressable } from './AnimatedPressable';
 import { useData } from '../context/DataContext';
 import { RootStackParamList } from '../types';
 import { colors, typography, spacing } from '../theme';
@@ -12,7 +13,7 @@ export const NotificationBell = () => {
   const { unreadNotificationCount } = useData();
 
   return (
-    <TouchableOpacity
+    <AnimatedPressable
       onPress={() => navigation.navigate('Notifications')}
       style={styles.container}
       accessibilityLabel={`Notifications${unreadNotificationCount > 0 ? `, ${unreadNotificationCount} unread` : ''}`}
@@ -26,7 +27,7 @@ export const NotificationBell = () => {
           </Text>
         </View>
       )}
-    </TouchableOpacity>
+    </AnimatedPressable>
   );
 };
 

@@ -1,13 +1,17 @@
-import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, RefreshControl, Alert } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
+import Animated from 'react-native-reanimated';
 import { useData } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
+import { useHaptic, useFadeIn, staggeredEntrance } from '../hooks';
 import Layout from '../components/Layout';
 import NotificationCard from '../components/NotificationCard';
 import PicklePete from '../components/PicklePete';
+import { AnimatedPressable } from '../components/AnimatedPressable';
+import { SwipeableRow } from '../components/SwipeableRow';
 import { colors, typography, spacing } from '../theme';
 
 type NotificationsNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -16,6 +20,16 @@ const NotificationsScreen = () => {
   const navigation = useNavigation<NotificationsNavigationProp>();
   const { notifications, matches, currentUser, markNotificationRead, markAllNotificationsRead, unreadNotificationCount, respondToPlayerInvite, deleteNotification, clearAllNotifications, refreshMatches, refreshNotifications } = useData();
   const { showToast } = useToast();
+  const [refreshing, setRefreshing] = useState(false);
+  const triggerHaptic = useHaptic();
+  const fadeStyle = useFadeIn();
+
+  const onRefresh = useCallback(async () => {
+    triggerHaptic('light');
+    setRefreshing(true);
+    await Promise.all([refreshMatches(), refreshNotifications()]);
+    setRefreshing(false);
+  }, []);
 
   // Refresh data when screen comes into focus
   useFocusEffect(
@@ -93,26 +107,27 @@ const NotificationsScreen = () => {
 
   return (
     <Layout title="Notifications" showBackButton={true}>
+      <Animated.View style={[{ flex: 1 }, fadeStyle]}>
       {receivedNotifications.length > 0 && (
         <View style={styles.actionBar}>
           {receivedUnreadCount > 0 && (
-            <TouchableOpacity
+            <AnimatedPressable
               onPress={markAllNotificationsRead}
               style={styles.markAllButton}
               accessibilityLabel="Mark all notifications as read"
               accessibilityRole="button"
             >
               <Text style={styles.markAllText}>Mark all as read</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
-          <TouchableOpacity
+          <AnimatedPressable
             onPress={handleClearAll}
             style={styles.clearAllButton}
             accessibilityLabel="Clear all notifications"
             accessibilityRole="button"
           >
             <Text style={styles.clearAllText}>Clear all</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       )}
 
@@ -127,39 +142,59 @@ const NotificationsScreen = () => {
         <FlatList
           data={receivedNotifications}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             if (item.type === 'player_invite') {
               return (
-                <NotificationCard
-                  notification={item}
-                  onPress={() => handleNotificationPress(item.id, undefined, item.type)}
-                  onAccept={item.status === 'sent' ? () => handleAcceptInvite(item.id) : undefined}
-                  onDecline={item.status === 'sent' ? () => handleDeclineInvite(item.id) : undefined}
-                  onDelete={() => handleDeleteNotification(item.id)}
-                />
+                <Animated.View entering={staggeredEntrance(index)}>
+                  <SwipeableRow onDelete={() => handleDeleteNotification(item.id)}>
+                    <NotificationCard
+                      notification={item}
+                      onPress={() => handleNotificationPress(item.id, undefined, item.type)}
+                      onAccept={item.status === 'sent' ? () => handleAcceptInvite(item.id) : undefined}
+                      onDecline={item.status === 'sent' ? () => handleDeclineInvite(item.id) : undefined}
+                      onDelete={() => handleDeleteNotification(item.id)}
+                    />
+                  </SwipeableRow>
+                </Animated.View>
               );
             }
             if (item.type === 'invite_accepted') {
               return (
-                <NotificationCard
-                  notification={item}
-                  onPress={() => handleNotificationPress(item.id, undefined, item.type)}
-                  onDelete={() => handleDeleteNotification(item.id)}
-                />
+                <Animated.View entering={staggeredEntrance(index)}>
+                  <SwipeableRow onDelete={() => handleDeleteNotification(item.id)}>
+                    <NotificationCard
+                      notification={item}
+                      onPress={() => handleNotificationPress(item.id, undefined, item.type)}
+                      onDelete={() => handleDeleteNotification(item.id)}
+                    />
+                  </SwipeableRow>
+                </Animated.View>
               );
             }
             return (
-              <NotificationCard
-                notification={item}
-                onPress={() => handleNotificationPress(item.id, item.matchId, item.type)}
-                onDelete={() => handleDeleteNotification(item.id)}
-              />
+              <Animated.View entering={staggeredEntrance(index)}>
+                <SwipeableRow onDelete={() => handleDeleteNotification(item.id)}>
+                  <NotificationCard
+                    notification={item}
+                    onPress={() => handleNotificationPress(item.id, item.matchId, item.type)}
+                    onDelete={() => handleDeleteNotification(item.id)}
+                  />
+                </SwipeableRow>
+              </Animated.View>
             );
           }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
       )}
+      </Animated.View>
     </Layout>
   );
 };
