@@ -1,11 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.recalculateStatsOnMatchUpdate = exports.lookupPhoneNumbers = exports.claimSMSInvite = exports.createSMSInvite = exports.sendPushOnNotificationWrite = exports.claimPlaceholderProfile = exports.acceptPlayerInvite = void 0;
+exports.deleteAccount = exports.recalculateStatsOnMatchUpdate = exports.lookupPhoneNumbers = exports.claimSMSInvite = exports.createSMSInvite = exports.sendPushOnNotificationWrite = exports.claimPlaceholderProfile = exports.acceptPlayerInvite = void 0;
 const firestore_1 = require("firebase-functions/v2/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const v1_1 = require("firebase-functions/v1");
 const app_1 = require("firebase-admin/app");
 const firestore_2 = require("firebase-admin/firestore");
+const auth_1 = require("firebase-admin/auth");
+const storage_1 = require("firebase-admin/storage");
 const expo_server_sdk_1 = require("expo-server-sdk");
 const app = (0, app_1.initializeApp)();
 const db = (0, firestore_2.getFirestore)(app);
@@ -581,5 +583,51 @@ exports.recalculateStatsOnMatchUpdate = (0, firestore_1.onDocumentUpdated)('matc
         await batch.commit();
         console.log(`recalculateStatsOnMatchUpdate: updated stats for ${updatedCount} players`);
     }
+});
+/**
+ * Callable function to permanently delete a user's account.
+ * 1. Deletes the caller's player document from Firestore
+ * 2. Deletes any unclaimed placeholder profiles created by the caller
+ * 3. Deletes the caller's profile picture from Storage
+ * 4. Deletes the caller's Firebase Auth account
+ */
+exports.deleteAccount = (0, https_1.onCall)(async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError('unauthenticated', 'Must be authenticated');
+    }
+    const callerUid = request.auth.uid;
+    // Verify the caller's player document exists
+    const playerDocRef = db.collection('players').doc(callerUid);
+    const playerDoc = await playerDocRef.get();
+    if (!playerDoc.exists) {
+        throw new https_1.HttpsError('not-found', 'Player document not found');
+    }
+    // Find all unclaimed placeholder profiles created by this user
+    const placeholdersSnapshot = await db
+        .collection('players')
+        .where('invitedBy', '==', callerUid)
+        .where('pendingClaim', '==', true)
+        .get();
+    // Batch delete: player doc + unclaimed placeholders
+    const batch = db.batch();
+    batch.delete(playerDocRef);
+    let placeholdersRemoved = 0;
+    placeholdersSnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+        placeholdersRemoved++;
+    });
+    await batch.commit();
+    console.log(`deleteAccount: deleted player ${callerUid} and ${placeholdersRemoved} unclaimed profiles`);
+    // Delete profile picture from Storage (ignore if not found)
+    try {
+        await (0, storage_1.getStorage)().bucket().file(`profilePics/${callerUid}`).delete();
+    }
+    catch {
+        // File may not exist, ignore
+    }
+    // Delete the Firebase Auth account last
+    await (0, auth_1.getAuth)().deleteUser(callerUid);
+    console.log(`deleteAccount: deleted auth user ${callerUid}`);
+    return { deleted: true, placeholdersRemoved };
 });
 //# sourceMappingURL=index.js.map

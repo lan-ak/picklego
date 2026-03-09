@@ -4,6 +4,8 @@ import { firestore } from 'firebase-functions/v1';
 import { initializeApp } from 'firebase-admin/app';
 
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
+import { getStorage } from 'firebase-admin/storage';
 import Expo, { ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 
 const app = initializeApp();
@@ -746,3 +748,60 @@ export const recalculateStatsOnMatchUpdate = onDocumentUpdated(
     }
   },
 );
+
+/**
+ * Callable function to permanently delete a user's account.
+ * 1. Deletes the caller's player document from Firestore
+ * 2. Deletes any unclaimed placeholder profiles created by the caller
+ * 3. Deletes the caller's profile picture from Storage
+ * 4. Deletes the caller's Firebase Auth account
+ */
+export const deleteAccount = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Must be authenticated');
+  }
+
+  const callerUid = request.auth.uid;
+
+  // Verify the caller's player document exists
+  const playerDocRef = db.collection('players').doc(callerUid);
+  const playerDoc = await playerDocRef.get();
+  if (!playerDoc.exists) {
+    throw new HttpsError('not-found', 'Player document not found');
+  }
+
+  // Find all unclaimed placeholder profiles created by this user
+  const placeholdersSnapshot = await db
+    .collection('players')
+    .where('invitedBy', '==', callerUid)
+    .where('pendingClaim', '==', true)
+    .get();
+
+  // Batch delete: player doc + unclaimed placeholders
+  const batch = db.batch();
+  batch.delete(playerDocRef);
+
+  let placeholdersRemoved = 0;
+  placeholdersSnapshot.forEach((doc) => {
+    batch.delete(doc.ref);
+    placeholdersRemoved++;
+  });
+
+  await batch.commit();
+  console.log(
+    `deleteAccount: deleted player ${callerUid} and ${placeholdersRemoved} unclaimed profiles`,
+  );
+
+  // Delete profile picture from Storage (ignore if not found)
+  try {
+    await getStorage().bucket().file(`profilePics/${callerUid}`).delete();
+  } catch {
+    // File may not exist, ignore
+  }
+
+  // Delete the Firebase Auth account last
+  await getAuth().deleteUser(callerUid);
+  console.log(`deleteAccount: deleted auth user ${callerUid}`);
+
+  return { deleted: true, placeholdersRemoved };
+});

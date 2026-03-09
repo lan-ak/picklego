@@ -17,6 +17,7 @@ import { RootStackParamList } from '../types';
 import { useData } from '../context/DataContext';
 import { Icon } from '../components/Icon';
 import { AnimatedPressable } from '../components/AnimatedPressable';
+import { PrimaryButton, SecondaryButton } from '../components/Button';
 import { DismissableModal } from '../components/DismissableModal';
 import Layout from '../components/Layout';
 import { KeyboardAwareContainer } from '../components/KeyboardAwareContainer';
@@ -490,19 +491,16 @@ const CompleteMatchScreen = () => {
             )}
 
             <View style={styles.modalFooter}>
-              <AnimatedPressable
-                style={[styles.modalButton, styles.secondaryButton]}
+              <SecondaryButton
+                title="Cancel"
                 onPress={() => setShowInviteModal(false)}
-              >
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
-              </AnimatedPressable>
-
-              <AnimatedPressable
-                style={[styles.modalButton, styles.primaryButton]}
+                style={styles.modalButton}
+              />
+              <PrimaryButton
+                title="Add Player"
                 onPress={handleInvitePlayer}
-              >
-                <Text style={styles.primaryButtonText}>Add Player</Text>
-              </AnimatedPressable>
+                style={styles.modalButton}
+              />
             </View>
           </View>
       </KeyboardAvoidingView>
@@ -611,27 +609,20 @@ const CompleteMatchScreen = () => {
         </ScrollView>
 
         <View style={styles.footer}>
-          <AnimatedPressable
-            style={[styles.button, styles.secondaryButton]}
+          <SecondaryButton
+            title="Cancel"
+            icon="arrow-left"
             onPress={() => navigation.goBack()}
-            accessibilityLabel="Cancel"
-            accessibilityRole="button"
+            style={styles.footerButton}
             accessibilityHint="Go back without completing the match"
-          >
-            <Icon name="arrow-left" size={20} color={colors.gray500} />
-            <Text style={styles.secondaryButtonText}>Cancel</Text>
-          </AnimatedPressable>
-
-          <AnimatedPressable
-            style={[styles.button, styles.primaryButton]}
+          />
+          <PrimaryButton
+            title="Complete Match"
+            icon="check-circle"
             onPress={handleCompleteMatch}
-            accessibilityLabel="Complete Match"
-            accessibilityRole="button"
+            style={styles.footerButton}
             accessibilityHint="Submit the scores and complete the match"
-          >
-            <Icon name="check-circle" size={20} color={colors.white} />
-            <Text style={styles.primaryButtonText}>Complete Match</Text>
-          </AnimatedPressable>
+          />
         </View>
       </KeyboardAwareContainer>
       </Animated.View>
@@ -734,34 +725,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     ...shadows.md,
   },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.sm,
+  footerButton: {
     flex: 1,
     marginHorizontal: spacing.xs,
-  },
-  primaryButton: {
-    backgroundColor: colors.primary,
-  },
-  primaryButtonText: {
-    ...typography.button,
-    color: colors.white,
-    marginLeft: spacing.sm,
-  },
-  secondaryButton: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-  },
-  secondaryButtonText: {
-    ...typography.button,
-    fontWeight: '500',
-    color: colors.gray500,
-    marginLeft: spacing.sm,
   },
   errorContainer: {
     flex: 1,
@@ -885,12 +851,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: spacing.xxl,
+    gap: spacing.sm,
   },
   modalButton: {
     flex: 1,
-    padding: spacing.md,
-    borderRadius: borderRadius.sm,
-    alignItems: 'center',
   },
   inviteMethodContainer: {
     marginBottom: spacing.lg,

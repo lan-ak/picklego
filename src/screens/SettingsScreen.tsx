@@ -43,7 +43,7 @@ type SettingSection = {
 type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const SettingsScreen: React.FC = () => {
-  const { currentUser, updatePlayer, getInvitedPlayers, players, removePlayer, signOutUser } = useData();
+  const { currentUser, updatePlayer, getInvitedPlayers, players, removePlayer, signOutUser, deleteAccount } = useData();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showInvitedPlayers, setShowInvitedPlayers] = useState(false);
   const [showManagePlayers, setShowManagePlayers] = useState(false);
@@ -160,7 +160,45 @@ const SettingsScreen: React.FC = () => {
             );
           },
           danger: true
-        }
+        },
+        {
+          icon: 'trash',
+          label: 'Delete Account',
+          onPress: () => {
+            Alert.alert(
+              'Delete Account',
+              'This will permanently delete your account, profile, and any unclaimed players you created. Your match history will be preserved but your name will no longer be associated with it.\n\nThis action cannot be undone.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Continue',
+                  style: 'destructive',
+                  onPress: () => {
+                    Alert.alert(
+                      'Are you absolutely sure?',
+                      'Your account will be permanently deleted. This cannot be reversed.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete My Account',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await deleteAccount();
+                            } catch (error) {
+                              Alert.alert('Error', 'Failed to delete account. Please try again.');
+                            }
+                          },
+                        },
+                      ],
+                    );
+                  },
+                },
+              ],
+            );
+          },
+          danger: true,
+        },
       ]
     }
   ];

@@ -193,6 +193,7 @@ export interface DataContextType {
   signInWithSocial: (provider: 'google' | 'apple') => Promise<{ needsName: boolean }>;
   completeSocialSignUp: (name: string, provider: 'google' | 'apple') => Promise<void>;
   signOutUser: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   sendMatchNotifications: (match: Match) => Promise<{ sent: number; failed: number }>;
   sendMatchUpdateNotifications: (match: Match) => Promise<{ sent: number; failed: number }>;
   markNotificationRead: (notificationId: string) => Promise<void>;

@@ -28,6 +28,7 @@ import {
   callCreateSMSInvite,
   callClaimSMSInvite,
   callLookupPhoneNumbers,
+  callDeleteAccount,
   createNotificationDocument,
   updateNotificationDocument,
   deleteNotificationDocument,
@@ -304,88 +305,102 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Initialize Firebase auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(async (firebaseUser) => {
-      if (firebaseUser) {
-        // Get the player document from Firestore
-        const playerDoc = await getPlayerDocument(firebaseUser.uid);
-        if (playerDoc) {
-          setCurrentUser(playerDoc);
-          setPlayers(prev => {
-            const filtered = prev.filter(p => p.id !== playerDoc.id);
-            return [...filtered, playerDoc];
-          });
+      try {
+        if (firebaseUser) {
+          // Get the player document from Firestore
+          const playerDoc = await getPlayerDocument(firebaseUser.uid);
+          if (playerDoc) {
+            setCurrentUser(playerDoc);
+            setPlayers(prev => {
+              const filtered = prev.filter(p => p.id !== playerDoc.id);
+              return [...filtered, playerDoc];
+            });
 
-          // Load matches from Firestore
-          try {
-            const firestoreMatches = await getMatchesForPlayer(firebaseUser.uid);
-            // Filter out matches soft-deleted by this user
-            const visibleMatches = firestoreMatches.filter(
-              m => !m.deletedByPlayerIds?.includes(firebaseUser.uid)
-            );
-            if (visibleMatches.length > 0) {
-              setMatches(prev => {
-                // Merge: Firestore matches take precedence, keep local-only matches
-                const firestoreIds = new Set(visibleMatches.map(m => m.id));
-                const localOnly = prev.filter(m => !firestoreIds.has(m.id));
-                return [...visibleMatches, ...localOnly];
-              });
-            }
-          } catch (error) {
-            console.error('Error loading matches from Firestore:', error);
-          }
-
-          // Migrate legacy AsyncStorage matches to Firestore
-          await migrateLocalMatchesToFirestore(firebaseUser.uid);
-
-          // Load connected player docs if not already in local state
-          if (playerDoc.connections && playerDoc.connections.length > 0) {
-            const existingIds = new Set(playersRef.current.map(p => p.id));
-            const missingIds = playerDoc.connections.filter((id: string) => !existingIds.has(id));
-            if (missingIds.length > 0) {
-              const connectedDocs = await Promise.all(
-                missingIds.map((id: string) => getPlayerDocument(id))
+            // Load matches from Firestore
+            try {
+              const firestoreMatches = await getMatchesForPlayer(firebaseUser.uid);
+              // Filter out matches soft-deleted by this user
+              const visibleMatches = firestoreMatches.filter(
+                m => !m.deletedByPlayerIds?.includes(firebaseUser.uid)
               );
-              const validPlayers = connectedDocs.filter((d): d is Player => d !== null);
-              if (validPlayers.length > 0) {
-                // Build email set of real connected players to prune stale placeholders
-                const allConnected = [
-                  ...playersRef.current.filter(p => playerDoc.connections!.includes(p.id)),
-                  ...validPlayers,
-                ];
-                const connectedEmails = new Set(
-                  allConnected
-                    .filter(p => p.email && !p.pendingClaim)
-                    .map(p => p.email!.trim().toLowerCase())
-                );
-
-                setPlayers(prev => {
-                  // Remove stale placeholders whose email matches a real connected player
-                  let updated = prev.filter(p => {
-                    if (!p.pendingClaim) return true;
-                    if (!p.email) return true;
-                    return !connectedEmails.has(p.email.trim().toLowerCase());
-                  });
-                  // Add newly loaded connected players
-                  const currentIds = new Set(updated.map(p => p.id));
-                  const newPlayers = validPlayers.filter(p => !currentIds.has(p.id));
-                  return newPlayers.length > 0 ? [...updated, ...newPlayers] : updated;
+              if (visibleMatches.length > 0) {
+                setMatches(prev => {
+                  // Merge: Firestore matches take precedence, keep local-only matches
+                  const firestoreIds = new Set(visibleMatches.map(m => m.id));
+                  const localOnly = prev.filter(m => !firestoreIds.has(m.id));
+                  return [...visibleMatches, ...localOnly];
                 });
               }
+            } catch (error) {
+              console.error('Error loading matches from Firestore:', error);
+            }
+
+            // Migrate legacy AsyncStorage matches to Firestore
+            await migrateLocalMatchesToFirestore(firebaseUser.uid);
+
+            // Load connected player docs if not already in local state
+            try {
+              if (playerDoc.connections && playerDoc.connections.length > 0) {
+                const existingIds = new Set(playersRef.current.map(p => p.id));
+                const missingIds = playerDoc.connections.filter((id: string) => !existingIds.has(id));
+                if (missingIds.length > 0) {
+                  const connectedDocs = await Promise.all(
+                    missingIds.map((id: string) => getPlayerDocument(id))
+                  );
+                  const validPlayers = connectedDocs.filter((d): d is Player => d !== null);
+                  if (validPlayers.length > 0) {
+                    // Build email set of real connected players to prune stale placeholders
+                    const allConnected = [
+                      ...playersRef.current.filter(p => playerDoc.connections!.includes(p.id)),
+                      ...validPlayers,
+                    ];
+                    const connectedEmails = new Set(
+                      allConnected
+                        .filter(p => p.email && !p.pendingClaim)
+                        .map(p => p.email!.trim().toLowerCase())
+                    );
+
+                    setPlayers(prev => {
+                      // Remove stale placeholders whose email matches a real connected player
+                      let updated = prev.filter(p => {
+                        if (!p.pendingClaim) return true;
+                        if (!p.email) return true;
+                        return !connectedEmails.has(p.email.trim().toLowerCase());
+                      });
+                      // Add newly loaded connected players
+                      const currentIds = new Set(updated.map(p => p.id));
+                      const newPlayers = validPlayers.filter(p => !currentIds.has(p.id));
+                      return newPlayers.length > 0 ? [...updated, ...newPlayers] : updated;
+                    });
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('Error loading connected players:', error);
+            }
+
+            // Load notifications for this user
+            await loadNotifications(firebaseUser.uid);
+
+            // Register for push notifications (skip if user hasn't completed onboarding yet)
+            try {
+              const onboardingDone = await AsyncStorage.getItem(`@picklego_onboarding_complete_${firebaseUser.uid}`);
+              if (onboardingDone === 'true') {
+                await registerPushToken(firebaseUser.uid);
+              }
+            } catch (error) {
+              console.error('Error registering push token:', error);
             }
           }
-
-          // Load notifications for this user
-          await loadNotifications(firebaseUser.uid);
-
-          // Register for push notifications (skip if user hasn't completed onboarding yet)
-          const onboardingDone = await AsyncStorage.getItem(`@picklego_onboarding_complete_${firebaseUser.uid}`);
-          if (onboardingDone === 'true') {
-            await registerPushToken(firebaseUser.uid);
-          }
+        } else {
+          resetUserState();
         }
-      } else {
+      } catch (error) {
+        console.error('Error during auth state initialization:', error);
         resetUserState();
+      } finally {
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
 
     return () => unsubscribe();
@@ -595,9 +610,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lastModifiedBy: currentUser?.id || matchToUpdate.lastModifiedBy,
     };
 
-    setMatches(prev => prev.map(match =>
+    const updatedMatches = matches.map(match =>
       match.id === matchId ? updatedMatch : match
-    ));
+    );
+    setMatches(updatedMatches);
 
     // Persist to Firestore
     try {
@@ -612,7 +628,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Recalculate stats when a match is completed or a completed match is edited
     if (updates.status === 'completed' || (matchToUpdate.status === 'completed' && (updates.games || updates.winnerTeam))) {
-      const updatedMatches = matches.map(m => m.id === matchId ? updatedMatch : m);
       recalculateStatsForPlayers(updatedMatch.allPlayerIds, updatedMatches);
     }
   };
@@ -1049,6 +1064,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const deleteAccount = async () => {
+    try {
+      if (currentUser) {
+        await unregisterPushToken(currentUser.id);
+      }
+      await callDeleteAccount();
+      await AsyncStorage.multiRemove(['matches', 'players', 'deletedPlayers']);
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  };
+
   const signOutUser = async () => {
     try {
       if (currentUser) {
@@ -1446,6 +1473,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signInWithSocial,
     completeSocialSignUp,
     signOutUser,
+    deleteAccount,
     sendMatchNotifications,
     sendMatchUpdateNotifications,
     markNotificationRead,

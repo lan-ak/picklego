@@ -29,6 +29,7 @@ import { useVenues } from '../hooks/useVenues';
 import { shuffleTeams } from '../utils/shuffleTeams';
 import { InvitePlayersModal } from '../components/InvitePlayersModal';
 import { AnimatedPressable } from '../components/AnimatedPressable';
+import { PrimaryButton } from '../components/Button';
 import Animated from 'react-native-reanimated';
 import { useFadeIn } from '../hooks';
 import { usePlacement } from 'expo-superwall';
@@ -1025,32 +1026,20 @@ const AddMatchScreen = () => {
         </Modal>
 
         <View style={styles.buttonsContainer}>
-          <AnimatedPressable
-            style={styles.scheduleButton}
+          <PrimaryButton
+            title={isEditing ? "Save Changes" : "Schedule Game"}
+            icon={isEditing ? "save" : "calendar"}
             onPress={() => handleScheduleMatch(false)}
-  
-            accessibilityLabel={isEditing ? "Save Changes" : "Schedule Game"}
-            accessibilityRole="button"
             accessibilityHint={isEditing ? "Save the edited match details" : "Schedule the match for the selected date and time"}
-          >
-            <Icon name={isEditing ? "save" : "calendar"} size={24} color={colors.white} />
-            <Text style={styles.scheduleButtonText}>
-              {isEditing ? "Save Changes" : "Schedule Game"}
-            </Text>
-          </AnimatedPressable>
-
+          />
           {!isEditing && (
-            <AnimatedPressable
-              style={styles.playNowButton}
+            <PrimaryButton
+              title="Play Game Now"
+              icon="play"
               onPress={() => handleScheduleMatch(true)}
-    
-              accessibilityLabel="Play Game Now"
-              accessibilityRole="button"
+              style={{ backgroundColor: colors.action }}
               accessibilityHint="Create an instant match and start playing immediately"
-            >
-              <Icon name="play" size={24} color={colors.white} />
-              <Text style={styles.playNowButtonText}>Play Game Now</Text>
-            </AnimatedPressable>
+            />
           )}
         </View>
       </ScrollView>
@@ -1246,33 +1235,6 @@ const styles = StyleSheet.create({
     margin: spacing.lg,
     marginTop: spacing.xxl,
     gap: spacing.lg,
-  },
-  scheduleButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  playNowButton: {
-    backgroundColor: colors.action,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scheduleButtonText: {
-    ...typography.button,
-    color: colors.white,
-    fontSize: 18,
-    marginLeft: spacing.md,
-  },
-  playNowButtonText: {
-    ...typography.button,
-    color: colors.white,
-    fontSize: 18,
-    marginLeft: spacing.md,
   },
   onboardingContainer: {
     flex: 1,

@@ -5,6 +5,7 @@ import { useFadeIn } from '../hooks';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import MapView, { Marker } from 'react-native-maps';
 import { AnimatedPressable } from '../components/AnimatedPressable';
+import { PrimaryButton, DangerButton } from '../components/Button';
 import { Icon } from '../components/Icon';
 import { Chip } from '../components/Chip';
 import { useData } from '../context/DataContext';
@@ -480,39 +481,27 @@ const MatchDetailsScreen = () => {
 
             <View style={styles.actionButtons}>
               {currentUser?.id === match.createdBy && (
-                <AnimatedPressable
-                  style={[styles.button, styles.editButton]}
+                <PrimaryButton
+                  title="Edit Match"
+                  icon="pencil"
                   onPress={handleEditMatch}
-                  accessibilityLabel="Edit match"
-                  accessibilityRole="button"
-                >
-                  <Icon name="pencil" size={20} color={colors.white} />
-                  <Text style={styles.buttonText}>Edit Match</Text>
-                </AnimatedPressable>
+                  style={{ flex: 1 }}
+                />
               )}
-
-              <AnimatedPressable
-                style={[styles.button, styles.completeButton]}
+              <PrimaryButton
+                title="Complete Match"
+                icon="check-circle"
                 onPress={handleCompleteMatch}
-                accessibilityLabel="Complete match"
-                accessibilityRole="button"
-              >
-                <Icon name="check-circle" size={20} color={colors.white} />
-                <Text style={styles.buttonText}>Complete Match</Text>
-              </AnimatedPressable>
+                style={{ flex: 1 }}
+              />
             </View>
 
             {isUserInMatch() && (
-              <AnimatedPressable
-                hapticStyle="heavy"
-                style={[styles.button, styles.deleteButton]}
+              <DangerButton
+                title="Remove Match"
+                icon="trash"
                 onPress={handleDeleteMatch}
-                accessibilityLabel="Remove match"
-                accessibilityRole="button"
-              >
-                <Icon name="trash" size={20} color={colors.white} />
-                <Text style={styles.buttonText}>Remove Match</Text>
-              </AnimatedPressable>
+              />
             )}
           </View>
         )}
@@ -521,27 +510,20 @@ const MatchDetailsScreen = () => {
         {match.status === 'completed' && isUserInMatch() && (
           <View style={styles.footer}>
             {match.matchType === 'doubles' && (
-              <AnimatedPressable
-                style={[styles.button, styles.rematchButton]}
+              <PrimaryButton
+                title="Rematch"
+                icon="repeat"
                 onPress={handleRematch}
-                accessibilityLabel="Rematch"
-                accessibilityRole="button"
+                style={{ flex: 1, backgroundColor: colors.secondary }}
                 accessibilityHint="Create a new match with the same players"
-              >
-                <Icon name="repeat" size={20} color={colors.white} />
-                <Text style={styles.buttonText}>Rematch</Text>
-              </AnimatedPressable>
+              />
             )}
-            <AnimatedPressable
-              hapticStyle="heavy"
-              style={[styles.button, styles.deleteButton]}
+            <DangerButton
+              title="Remove Match"
+              icon="trash"
               onPress={handleDeleteMatch}
-              accessibilityLabel="Remove match"
-              accessibilityRole="button"
-            >
-              <Icon name="trash" size={20} color={colors.white} />
-              <Text style={styles.buttonText}>Remove Match</Text>
-            </AnimatedPressable>
+              style={{ flex: 1 }}
+            />
           </View>
         )}
       </ScrollView>
@@ -730,33 +712,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.lg,
     gap: spacing.md,
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.sm,
-    marginBottom: spacing.sm,
-    flex: 1,
-  },
-  buttonText: {
-    ...typography.button,
-    color: colors.white,
-    marginLeft: spacing.sm,
-  },
-  editButton: {
-    backgroundColor: colors.primary,
-  },
-  completeButton: {
-    backgroundColor: colors.primary,
-  },
-  deleteButton: {
-    backgroundColor: colors.error,
-  },
-  rematchButton: {
-    backgroundColor: colors.secondary,
   },
   footer: {
     padding: spacing.lg,

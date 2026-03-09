@@ -535,3 +535,8 @@ export const callLookupPhoneNumbers = (phoneHashes: string[]) =>
     { matches: Record<string, { playerId: string; playerName: string }> }
   >('lookupPhoneNumbers', { phoneHashes });
 
+export const callDeleteAccount = () =>
+  authenticatedCallable<{}, { deleted: boolean; placeholdersRemoved: number }>(
+    'deleteAccount', {},
+  );
+
