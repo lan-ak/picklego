@@ -19,6 +19,8 @@ import { useData } from '../context/DataContext';
 import { useVenues } from '../hooks/useVenues';
 import Animated from 'react-native-reanimated';
 import { useFadeIn, useContentTransition } from '../hooks';
+import { usePlacement } from 'expo-superwall';
+import { PLACEMENTS } from '../services/superwallPlacements';
 import { searchNearbyCourts, PlaceResult } from '../services/placesService';
 import { Coordinates } from '../types';
 
@@ -42,6 +44,11 @@ const CourtsDiscoveryScreen = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [showSearchButton, setShowSearchButton] = useState(false);
   const [currentRegion, setCurrentRegion] = useState<Region>(DEFAULT_REGION);
+  const { registerPlacement } = usePlacement();
+
+  useEffect(() => {
+    registerPlacement({ placement: PLACEMENTS.VIEW_COURTS_DISCOVERY });
+  }, []);
 
   const mapRef = useRef<MapView>(null);
 

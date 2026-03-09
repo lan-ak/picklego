@@ -14,6 +14,14 @@ export interface PlayerStats {
   bestWinStreak?: number;
 }
 
+export interface NotificationPreferences {
+  match_invite: boolean;
+  match_updated: boolean;
+  match_cancelled: boolean;
+  player_invite: boolean;
+  invite_accepted: boolean;
+}
+
 export interface Player {
   id: string;
   name: string;
@@ -33,6 +41,7 @@ export interface Player {
   pushTokens?: string[];
   connections?: string[];
   phoneNumberHash?: string;
+  notificationPreferences?: NotificationPreferences;
 }
 
 export interface Coordinates {
@@ -164,6 +173,8 @@ export interface DataContextType {
   deletedPlayers: Player[];
   currentUser: Player | null;
   authLoading: boolean;
+  hasCompletedOnboarding: boolean | null;
+  completeOnboarding: () => Promise<void>;
   notifications: MatchNotification[];
   unreadNotificationCount: number;
   addPlayer: (player: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Player>;
@@ -220,8 +231,18 @@ export type MainTabParamList = {
   Settings: undefined;
 };
 
+export type OnboardingStackParamList = {
+  Welcome: undefined;
+  NotificationPerm: undefined;
+  InviteFriends: undefined;
+  ScheduleMatch: undefined;
+  OnboardingAddMatch: { onboardingMode: true };
+  Celebration: { matchCreated: boolean };
+};
+
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList>;
+  Onboarding: NavigatorScreenParams<OnboardingStackParamList>;
   AddMatch: MainTabParamList['AddMatch'];
   MatchDetails: { matchId: string };
   CompleteMatch: { matchId: string };
@@ -231,6 +252,7 @@ export type RootStackParamList = {
   EditProfile: undefined;
   CourtsDiscovery: undefined;
   Notifications: undefined;
+  NotificationPreferences: undefined;
   InvitePlayers: {
     context?: 'settings' | 'addMatch';
     teamLabel?: string;

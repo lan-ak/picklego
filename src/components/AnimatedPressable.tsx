@@ -1,8 +1,18 @@
 import React from 'react';
-import { Pressable, ViewStyle, StyleProp } from 'react-native';
+import { Pressable, ViewStyle, StyleProp, StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAnimatedPress } from '../hooks';
 import type { HapticStyle } from '../theme';
+
+const LAYOUT_KEYS: (keyof ViewStyle)[] = [
+  'flex', 'flexGrow', 'flexShrink', 'flexBasis',
+  'width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
+  'alignSelf',
+  'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
+  'marginHorizontal', 'marginVertical',
+  'position', 'top', 'bottom', 'left', 'right',
+  'zIndex',
+];
 
 interface AnimatedPressableProps {
   onPress: () => void;
@@ -31,8 +41,17 @@ export const AnimatedPressable: React.FC<AnimatedPressableProps> = ({
   const { animatedStyle, onPressIn, onPressOut, onPress: handlePress } =
     useAnimatedPress(onPress, { scaleDown, hapticStyle, disabled });
 
+  const flatStyle = StyleSheet.flatten(style) as ViewStyle | undefined;
+  const outerStyle = flatStyle
+    ? LAYOUT_KEYS.reduce<Record<string, any>>((acc, key) => {
+        if (flatStyle[key] !== undefined) acc[key] = flatStyle[key];
+        return acc;
+      }, {})
+    : undefined;
+
   return (
     <Pressable
+      style={outerStyle}
       onPress={handlePress}
       onPressIn={onPressIn}
       onPressOut={onPressOut}

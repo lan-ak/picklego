@@ -15,8 +15,10 @@ import SettingsScreen from '../screens/SettingsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import CourtsDiscoveryScreen from '../screens/CourtsDiscoveryScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import NotificationPreferencesScreen from '../screens/NotificationPreferencesScreen';
 import InvitePlayersScreen from '../screens/InvitePlayersScreen';
 import MainTabs from './TabNavigator';
+import OnboardingNavigator from './OnboardingNavigator';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -37,9 +39,9 @@ const modalScreenOptions: NativeStackNavigationOptions = {
 };
 
 const Navigation = () => {
-  const { currentUser, authLoading } = useData();
+  const { currentUser, authLoading, hasCompletedOnboarding } = useData();
 
-  if (authLoading) {
+  if (authLoading || (currentUser && hasCompletedOnboarding === null)) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -50,17 +52,22 @@ const Navigation = () => {
   return (
     <Stack.Navigator screenOptions={defaultScreenOptions}>
       {currentUser ? (
-        <>
-          <Stack.Screen name="MainTabs" component={MainTabs} />
-          <Stack.Screen name="MatchDetails" component={MatchDetailsScreen} />
-          <Stack.Screen name="CompleteMatch" component={CompleteMatchScreen} options={modalScreenOptions} />
-          <Stack.Screen name="PlayerStats" component={PlayerStatsScreen} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
-          <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-          <Stack.Screen name="CourtsDiscovery" component={CourtsDiscoveryScreen} />
-          <Stack.Screen name="Notifications" component={NotificationsScreen} />
-          <Stack.Screen name="InvitePlayers" component={InvitePlayersScreen} options={modalScreenOptions} />
-        </>
+        hasCompletedOnboarding ? (
+          <>
+            <Stack.Screen name="MainTabs" component={MainTabs} />
+            <Stack.Screen name="MatchDetails" component={MatchDetailsScreen} />
+            <Stack.Screen name="CompleteMatch" component={CompleteMatchScreen} options={modalScreenOptions} />
+            <Stack.Screen name="PlayerStats" component={PlayerStatsScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+            <Stack.Screen name="CourtsDiscovery" component={CourtsDiscoveryScreen} />
+            <Stack.Screen name="Notifications" component={NotificationsScreen} />
+            <Stack.Screen name="NotificationPreferences" component={NotificationPreferencesScreen} />
+            <Stack.Screen name="InvitePlayers" component={InvitePlayersScreen} options={modalScreenOptions} />
+          </>
+        ) : (
+          <Stack.Screen name="Onboarding" component={OnboardingNavigator} />
+        )
       ) : (
         <Stack.Screen name="Auth" component={AuthScreen} />
       )}

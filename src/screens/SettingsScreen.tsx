@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,8 @@ import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useToast } from '../context/ToastContext';
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import { InvitePlayersModal } from '../components/InvitePlayersModal';
+import { usePlacement } from 'expo-superwall';
+import { PLACEMENTS } from '../services/superwallPlacements';
 
 type SettingItem = {
   icon: IconName;
@@ -54,6 +56,11 @@ const SettingsScreen: React.FC = () => {
     onSuccess: () => showToast('Profile picture updated successfully', 'success'),
     onError: () => Alert.alert('Error', 'Failed to update profile picture'),
   });
+  const { registerPlacement } = usePlacement();
+
+  useEffect(() => {
+    registerPlacement({ placement: PLACEMENTS.SETTINGS_OPEN });
+  }, []);
 
   const handleEditProfile = () => {
     navigation.navigate('EditProfile');
@@ -117,7 +124,7 @@ const SettingsScreen: React.FC = () => {
         {
           icon: 'bell',
           label: 'Notifications',
-          onPress: () => navigation.navigate('Notifications'),
+          onPress: () => navigation.navigate('NotificationPreferences'),
         },
         {
           icon: 'palette',

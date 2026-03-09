@@ -31,6 +31,8 @@ import { InvitePlayersModal } from '../components/InvitePlayersModal';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import Animated from 'react-native-reanimated';
 import { useFadeIn } from '../hooks';
+import { usePlacement } from 'expo-superwall';
+import { PLACEMENTS } from '../services/superwallPlacements';
 
 type AddMatchScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'AddMatch'>,
@@ -54,6 +56,7 @@ const AddMatchScreen = () => {
   const route = useRoute();
   const { players, addMatch, currentUser, matches, updateMatch, sendMatchNotifications, sendMatchUpdateNotifications, refreshConnectedPlayers } = useData();
   const { showToast } = useToast();
+  const { registerPlacement } = usePlacement();
 
   // Check if we're editing an existing match
   const isEditing = route.params && 'isEditing' in route.params ? route.params.isEditing : false;
@@ -62,6 +65,9 @@ const AddMatchScreen = () => {
   const rematchData = route.params && 'rematch' in route.params
     ? (route.params as NonNullable<RootStackParamList['AddMatch']>).rematch
     : undefined;
+  const onboardingMode = route.params && 'onboardingMode' in route.params
+    ? (route.params as any).onboardingMode === true
+    : false;
 
   const [date, setDate] = useState(existingMatch ? new Date(existingMatch.scheduledDate) : new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -466,6 +472,15 @@ const AddMatchScreen = () => {
           ]
         );
       } else {
+        // Superwall: gate new match creation via placement
+        let proceedWithCreation = false;
+        await registerPlacement({
+          placement: PLACEMENTS.MATCH_CREATE,
+          params: { match_count: matches.length },
+          feature: () => { proceedWithCreation = true; },
+        });
+        if (!proceedWithCreation) return;
+
         // Create new match
         const newMatch = await addMatch({
           scheduledDate: matchDate.toISOString(),
@@ -495,23 +510,28 @@ const AddMatchScreen = () => {
           await updateMatch(newMatch.id, { notificationsSent: true });
         }
 
-        Alert.alert(
-          'Success',
-          isInstantMatch ? 'Instant match created!' : 'Match scheduled successfully!',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                if (isInstantMatch) {
-                  // For instant matches, navigate to complete the match
-                  navigation.navigate('CompleteMatch', { matchId: newMatch.id });
-                } else {
-                  navigation.navigate('Matches');
+        if (onboardingMode) {
+          // In onboarding, go to celebration screen
+          (navigation as any).navigate('Celebration', { matchCreated: true });
+        } else {
+          Alert.alert(
+            'Success',
+            isInstantMatch ? 'Instant match created!' : 'Match scheduled successfully!',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  if (isInstantMatch) {
+                    // For instant matches, navigate to complete the match
+                    navigation.navigate('CompleteMatch', { matchId: newMatch.id });
+                  } else {
+                    navigation.navigate('Matches');
+                  }
                 }
               }
-            }
-          ]
-        );
+            ]
+          );
+        }
       }
     } catch (error) {
       Alert.alert(

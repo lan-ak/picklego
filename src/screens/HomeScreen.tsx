@@ -1,21 +1,20 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, RefreshControl } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { AnimatedPressable } from '../components/AnimatedPressable';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, MainTabParamList, Match, Game } from '../types';
+import { RootStackParamList, MainTabParamList, Match } from '../types';
 import { Icon } from '../components/Icon';
 import { NotificationBell } from '../components/NotificationBell';
 import { useData } from '../context/DataContext';
-import { format } from 'date-fns';
 import Layout from '../components/Layout';
 import MatchCard from '../components/MatchCard';
-import PicklePete from '../components/PicklePete';
 import { useFadeIn, useHaptic, staggeredEntrance } from '../hooks';
+import { usePlacement } from 'expo-superwall';
+import { PLACEMENTS } from '../services/superwallPlacements';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 
 type HomeScreenNavigationProp = CompositeNavigationProp<
@@ -23,42 +22,24 @@ type HomeScreenNavigationProp = CompositeNavigationProp<
   NativeStackNavigationProp<RootStackParamList>
 >;
 
-const OnboardingView = ({ onComplete }: { onComplete: () => void }) => {
-  const navigation = useNavigation<HomeScreenNavigationProp>();
-
-  return (
-    <SafeAreaView style={styles.onboardingContainer} edges={['top', 'bottom', 'left', 'right']}>
-      <View style={styles.onboardingContent}>
-        <PicklePete pose="welcome" size="md" message="Let's track your pickleball journey!" />
-        <Text style={styles.onboardingTitle}>Welcome to PickleGo!</Text>
-        <Text style={styles.onboardingText}>
-          Track your pickleball matches, players, and stats in one place.
-        </Text>
-        <Text style={styles.onboardingSubtext}>
-          Create your first match to get started.
-        </Text>
-
-        <AnimatedPressable
-          style={styles.onboardingButton}
-          onPress={() => navigation.navigate('AddMatch')}
-        >
-          <Text style={styles.onboardingButtonText}>Create a Match</Text>
-          <Icon name="arrow-right" size={20} color={colors.white} />
-        </AnimatedPressable>
-      </View>
-    </SafeAreaView>
-  );
-};
-
 const HomeScreen = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const { matches, players, currentUser, getPlayerName, refreshMatches } = useData();
-  const [showOnboarding, setShowOnboarding] = useState(players.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const triggerHaptic = useHaptic();
 
   // Reanimated fade-in
   const fadeStyle = useFadeIn();
+
+  // Superwall: fire session start placement (non-blocking lifecycle event)
+  const { registerPlacement } = usePlacement();
+  const sessionFiredRef = useRef(false);
+  useEffect(() => {
+    if (!sessionFiredRef.current) {
+      sessionFiredRef.current = true;
+      registerPlacement({ placement: PLACEMENTS.SESSION_START });
+    }
+  }, []);
 
   const onRefresh = useCallback(async () => {
     triggerHaptic('light');
@@ -66,11 +47,6 @@ const HomeScreen = () => {
     await refreshMatches();
     setRefreshing(false);
   }, []);
-
-  // Check if the app is a new install
-  const isFirstInstall = () => {
-    return players.length === 0;
-  };
 
   // Helper function for formatting names with first name and last initial
   const formatPlayerNameWithInitial = (fullName: string) => {
@@ -167,11 +143,6 @@ const HomeScreen = () => {
       day: 'numeric',
     });
   };
-
-  // If it's a new install, show the onboarding screen
-  if (showOnboarding && isFirstInstall()) {
-    return <OnboardingView onComplete={() => setShowOnboarding(false)} />;
-  }
 
   // Get profile photo for the user
   const profilePhoto = currentUser?.profilePic || 'https://via.placeholder.com/150';
@@ -382,60 +353,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...typography.h2,
     color: colors.primary,
-  },
-  // Onboarding styles
-  onboardingContainer: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xxl,
-  },
-  onboardingContent: {
-    backgroundColor: colors.white,
-    padding: spacing.xxxl,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-    width: '100%',
-    ...shadows.lg,
-  },
-  onboardingTitle: {
-    ...typography.h1,
-    color: colors.primary,
-    marginTop: spacing.lg,
-    marginBottom: spacing.xl,
-    textAlign: 'center',
-  },
-  onboardingText: {
-    ...typography.bodyLarge,
-    fontSize: 18,
-    color: colors.neutral,
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-    lineHeight: 26,
-  },
-  onboardingSubtext: {
-    ...typography.bodyLarge,
-    color: colors.gray500,
-    textAlign: 'center',
-    marginBottom: spacing.xxxl,
-    lineHeight: 22,
-  },
-  onboardingButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.pill,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-  },
-  onboardingButtonText: {
-    ...typography.button,
-    color: colors.white,
-    fontSize: 18,
-    marginRight: spacing.sm,
   },
   // Section styles
   sectionContainer: {

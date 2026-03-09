@@ -10,6 +10,8 @@ import { colors, typography, fontFamily, spacing, borderRadius, shadows, layout 
 import Card from '../components/Card';
 import PicklePete from '../components/PicklePete';
 import { useFadeIn, useContentTransition } from '../hooks';
+import { usePlacement } from 'expo-superwall';
+import { PLACEMENTS } from '../services/superwallPlacements';
 
 type PlayerStats = {
   totalMatches: number;
@@ -59,6 +61,12 @@ const MyStatsScreen = () => {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const fadeStyle = useFadeIn();
   const contentStyle = useContentTransition(`${statsMode}-${timeFilter}`);
+  const { registerPlacement } = usePlacement();
+
+  useEffect(() => {
+    registerPlacement({ placement: PLACEMENTS.VIEW_STATS });
+  }, []);
+
   const [extendedStats, setExtendedStats] = useState<Record<string, ExtendedPlayerStats>>({});
   const [opponentStats, setOpponentStats] = useState<OpponentStats[]>([]);
   const [partnerStats, setPartnerStats] = useState<PartnerStats[]>([]);
@@ -619,7 +627,10 @@ const MyStatsScreen = () => {
       </AnimatedPressable>
       <AnimatedPressable
         style={[styles.timeFilterTab, timeFilter === 'recent' && styles.activeTimeFilter]}
-        onPress={() => setTimeFilter('recent')}
+        onPress={() => {
+          registerPlacement({ placement: PLACEMENTS.FILTER_STATS_BY_TIME });
+          setTimeFilter('recent');
+        }}
         accessibilityRole="tab"
         accessibilityState={{ selected: timeFilter === 'recent' }}
       >

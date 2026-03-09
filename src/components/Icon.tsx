@@ -57,6 +57,7 @@ import {
   Check,
   BookUser,
   Send,
+  Activity,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -117,6 +118,7 @@ const ICON_MAP = {
   'check': Check,
   'book-user': BookUser,
   'send': Send,
+  'activity': Activity,
 } as const;
 
 export type IconName = keyof typeof ICON_MAP;

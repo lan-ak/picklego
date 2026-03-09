@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -13,6 +13,8 @@ import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainTabParamList, RootStackParamList, Match } from '../types';
+import { usePlacement } from 'expo-superwall';
+import { PLACEMENTS } from '../services/superwallPlacements';
 
 type MatchesScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Matches'>,
@@ -30,6 +32,11 @@ const MatchesScreen = () => {
   const triggerHaptic = useHaptic();
   const fadeStyle = useFadeIn();
   const contentStyle = useContentTransition(`${activeTab}-${sortOrder}`);
+  const { registerPlacement } = usePlacement();
+
+  useEffect(() => {
+    registerPlacement({ placement: PLACEMENTS.VIEW_MATCH_HISTORY });
+  }, []);
 
   // Refresh matches from Firestore whenever this screen gains focus
   useFocusEffect(

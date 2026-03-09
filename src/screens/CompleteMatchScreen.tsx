@@ -26,6 +26,8 @@ import PicklePete from '../components/PicklePete';
 import { useToast } from '../context/ToastContext';
 import Animated from 'react-native-reanimated';
 import { useFadeIn } from '../hooks';
+import { usePlacement } from 'expo-superwall';
+import { PLACEMENTS } from '../services/superwallPlacements';
 import { shuffleTeams } from '../utils/shuffleTeams';
 
 type CompleteMatchRouteProp = RouteProp<RootStackParamList, 'CompleteMatch'>;
@@ -42,6 +44,7 @@ const CompleteMatchScreen = () => {
   const navigation = useNavigation();
   const { matches, players, updateMatch, invitePlayer, addPlayer, currentUser } = useData();
   const { showToast } = useToast();
+  const { registerPlacement } = usePlacement();
   const match = matches.find(m => m.id === route.params.matchId);
 
   // Initialize match state
@@ -227,6 +230,14 @@ const CompleteMatchScreen = () => {
       Alert.alert('Error', 'Could not determine match winner. Please make sure there is a clear winner across all games.');
       return;
     }
+
+    // Superwall: gate match completion via placement
+    let proceedWithCompletion = false;
+    await registerPlacement({
+      placement: PLACEMENTS.MATCH_COMPLETE,
+      feature: () => { proceedWithCompletion = true; },
+    });
+    if (!proceedWithCompletion) return;
 
     try {
       console.log('Completing match with winner:', matchWinner);

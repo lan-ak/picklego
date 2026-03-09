@@ -37,6 +37,7 @@
     "expo-sms": "~14.0.8",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
+    "expo-superwall": "^1.0.5",
     "firebase": "^11.5.0",
     "lucide-react-native": "^0.575.0",
     "react": "19.1.0",

@@ -1,9 +1,11 @@
+import 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useCallback, useEffect } from 'react';
 import { View, Platform } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
+import { SuperwallProvider } from 'expo-superwall';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
@@ -14,6 +16,7 @@ import Navigation from './src/navigation';
 import { DataProvider } from './src/context/DataContext';
 import { ToastProvider } from './src/context/ToastContext';
 import { navigationRef } from './src/navigation/navigationRef';
+import { useSuperwallIdentity } from './src/hooks/useSuperwallIdentity';
 import type { PushNotificationData } from './src/types';
 
 // Import to register the foreground notification handler
@@ -56,6 +59,12 @@ function handleNotificationResponse(response: Notifications.NotificationResponse
       }
     }, 500);
   }
+}
+
+/** Renderless component that syncs Firebase Auth identity + attributes to Superwall */
+function SuperwallIdentitySync() {
+  useSuperwallIdentity();
+  return null;
 }
 
 export default function App() {
@@ -106,14 +115,30 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <DataProvider>
-        <NavigationContainer ref={navigationRef}>
-          <SafeAreaProvider>
-            <ToastProvider>
-              <Navigation />
-              <StatusBar style="auto" />
-            </ToastProvider>
-          </SafeAreaProvider>
-        </NavigationContainer>
+        <SuperwallProvider
+          apiKeys={{
+            ios: process.env.EXPO_PUBLIC_SUPERWALL_IOS_API_KEY ?? '',
+          }}
+          options={{
+            logging: {
+              level: __DEV__ ? 'warn' : 'error',
+              scopes: ['all'],
+            },
+          }}
+          onConfigurationError={(error) => {
+            console.error('[Superwall] Configuration failed:', error.message);
+          }}
+        >
+          <SuperwallIdentitySync />
+          <NavigationContainer ref={navigationRef}>
+            <SafeAreaProvider>
+              <ToastProvider>
+                <Navigation />
+                <StatusBar style="auto" />
+              </ToastProvider>
+            </SafeAreaProvider>
+          </NavigationContainer>
+        </SuperwallProvider>
       </DataProvider>
     </GestureHandlerRootView>
   );

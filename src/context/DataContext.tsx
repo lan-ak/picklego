@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Match, Game, LegacyMatch, Player, PlayerStats, DataContextType, MatchNotification, InviteResult } from '../types';
+import { Match, Game, LegacyMatch, Player, PlayerStats, DataContextType, MatchNotification, InviteResult, NotificationPreferences } from '../types';
 import { calculatePlayerStats } from '../utils/statsCalculator';
 import {
   signUpWithEmail,
@@ -34,6 +34,7 @@ import {
   getPlaceholderByEmail,
 } from '../config/firebase';
 import { registerPushToken, unregisterPushToken } from '../services/pushNotifications';
+import { useOnboardingStatus } from '../hooks/useOnboardingStatus';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -44,6 +45,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<Player | null>(null);
   const [notifications, setNotifications] = useState<MatchNotification[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Onboarding status
+  const { hasCompletedOnboarding, completeOnboarding } = useOnboardingStatus(currentUser?.id);
 
   // Reset all user-scoped state. Called from onAuthStateChanged when user signs out.
   // When adding new user-scoped state, add its reset here.
@@ -372,8 +376,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Load notifications for this user
           await loadNotifications(firebaseUser.uid);
 
-          // Register for push notifications
-          await registerPushToken(firebaseUser.uid);
+          // Register for push notifications (skip if user hasn't completed onboarding yet)
+          const onboardingDone = await AsyncStorage.getItem(`@picklego_onboarding_complete_${firebaseUser.uid}`);
+          if (onboardingDone === 'true') {
+            await registerPushToken(firebaseUser.uid);
+          }
         }
       } else {
         resetUserState();
@@ -723,6 +730,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       for (const recipientId of matchToDelete.allPlayerIds) {
         if (recipientId === currentUser.id) continue;
         try {
+          if (!(await isNotificationEnabled(recipientId, 'match_cancelled'))) continue;
+
           const notifId = `notif_cancelled_${matchId}_${recipientId}_${now}`;
           const notification: MatchNotification = {
             id: notifId,
@@ -1072,6 +1081,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Check if a recipient has opted out of a specific notification type
+  const isNotificationEnabled = async (recipientId: string, type: MatchNotification['type']): Promise<boolean> => {
+    const localPlayer = players.find(p => p.id === recipientId);
+    const prefs = localPlayer?.notificationPreferences
+      ?? (await getPlayerDocument(recipientId))?.notificationPreferences;
+    // Default to enabled if no preferences are set
+    return prefs?.[type] ?? true;
+  };
+
   // Send notifications to all players in a match (except the creator)
   const sendMatchNotifications = async (match: Match): Promise<{ sent: number; failed: number }> => {
     if (!currentUser) return { sent: 0, failed: 0 };
@@ -1084,6 +1102,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (recipientId === currentUser.id) continue;
 
       try {
+        if (!(await isNotificationEnabled(recipientId, 'match_invite'))) continue;
+
         const team = (match.team1PlayerIds || []).includes(recipientId) ? 1 : 2;
         const notifId = `notif_${match.id}_${recipientId}`;
         const notification: MatchNotification = {
@@ -1140,6 +1160,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (recipientId === currentUser.id) continue;
 
       try {
+        if (!(await isNotificationEnabled(recipientId, 'match_updated'))) continue;
+
         const notifId = `notif_updated_${match.id}_${recipientId}_${now}`;
         const notification: MatchNotification = {
           id: notifId,
@@ -1228,6 +1250,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (currentUser.connections?.includes(recipientId)) return false;
 
     try {
+      if (!(await isNotificationEnabled(recipientId, 'player_invite'))) return false;
+
       const now = Date.now();
       const notifId = `player_invite_${currentUser.id}_${recipientId}_${now}`;
       const notification: MatchNotification = {
@@ -1272,27 +1296,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // 2. Add bidirectional connections
         await addConnectionsBatch(currentUser.id, senderId);
 
-        // 3. Create invite_accepted notification for the sender
-        const acceptNotifId = `invite_accepted_${currentUser.id}_${senderId}_${now}`;
-        const acceptNotification: MatchNotification = {
-          id: acceptNotifId,
-          type: 'invite_accepted',
-          status: 'sent',
-          recipientId: senderId,
-          senderId: currentUser.id,
-          senderName: currentUser.name,
-          senderProfilePic: currentUser.profilePic,
-          message: `${currentUser.name} accepted your player invite!`,
-          createdAt: now,
-        };
-        await createNotificationDocument(acceptNotification);
+        // 3. Create invite_accepted notification for the sender (if enabled)
+        const senderAcceptsNotif = await isNotificationEnabled(senderId, 'invite_accepted');
+        let acceptNotification: MatchNotification | null = null;
+        if (senderAcceptsNotif) {
+          const acceptNotifId = `invite_accepted_${currentUser.id}_${senderId}_${now}`;
+          acceptNotification = {
+            id: acceptNotifId,
+            type: 'invite_accepted',
+            status: 'sent',
+            recipientId: senderId,
+            senderId: currentUser.id,
+            senderName: currentUser.name,
+            senderProfilePic: currentUser.profilePic,
+            message: `${currentUser.name} accepted your player invite!`,
+            createdAt: now,
+          };
+          await createNotificationDocument(acceptNotification);
+        }
 
         // Update local notification state
-        setNotifications(prev =>
-          [acceptNotification, ...prev.map(n =>
+        setNotifications(prev => {
+          const updated = prev.map(n =>
             n.id === notificationId ? { ...n, status: 'accepted' as const, respondedAt: now } : n
-          )].sort((a, b) => b.createdAt - a.createdAt)
-        );
+          );
+          return acceptNotification
+            ? [acceptNotification, ...updated].sort((a, b) => b.createdAt - a.createdAt)
+            : updated;
+        });
 
         // Update local player connections arrays
         setCurrentUser(prev => prev ? {
@@ -1395,6 +1426,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deletedPlayers,
     currentUser,
     authLoading,
+    hasCompletedOnboarding,
+    completeOnboarding,
     notifications,
     unreadNotificationCount,
     addPlayer,

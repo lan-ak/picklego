@@ -18,6 +18,8 @@ import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import PicklePete from '../components/PicklePete';
 import { shuffleTeams } from '../utils/shuffleTeams';
 import { getMatchDocument } from '../config/firebase';
+import { usePlacement } from 'expo-superwall';
+import { PLACEMENTS } from '../services/superwallPlacements';
 
 type MatchDetailsRouteProp = RouteProp<RootStackParamList, 'MatchDetails'>;
 type MatchDetailsNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -28,6 +30,7 @@ const MatchDetailsScreen = () => {
   const navigation = useNavigation<MatchDetailsNavigationProp>();
   const { matches, players, deleteMatch, currentUser, getPlayerName, getNotificationsForMatch, sendMatchNotifications } = useData();
   const { showToast } = useToast();
+  const { registerPlacement } = usePlacement();
   const [directMatch, setDirectMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(false);
   const match = matches.find(m => m.id === route.params.matchId) || directMatch;
@@ -109,8 +112,16 @@ const MatchDetailsScreen = () => {
     );
   };
 
-  const handleRematch = () => {
+  const handleRematch = async () => {
     if (match.matchType !== 'doubles' || !currentUser) return;
+
+    // Superwall: gate rematch via placement
+    let proceedWithRematch = false;
+    await registerPlacement({
+      placement: PLACEMENTS.REMATCH,
+      feature: () => { proceedWithRematch = true; },
+    });
+    if (!proceedWithRematch) return;
 
     Alert.alert(
       'Rematch',
