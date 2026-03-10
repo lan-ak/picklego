@@ -715,6 +715,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     padding: spacing.lg,
+    gap: spacing.md,
   },
   winnerBadge: {
     flexDirection: 'row',

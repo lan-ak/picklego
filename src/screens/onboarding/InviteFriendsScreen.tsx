@@ -52,6 +52,7 @@ const InviteFriendsScreen = () => {
   const [loading, setLoading] = useState(false);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [hasRequestedPermission, setHasRequestedPermission] = useState(false);
 
   const loadContacts = useCallback(async () => {
     setContactsLoading(true);
@@ -109,7 +110,8 @@ const InviteFriendsScreen = () => {
     setContactsLoading(false);
   }, [lookupContactsOnPickleGo]);
 
-  useEffect(() => {
+  const handleInvitePress = useCallback(() => {
+    setHasRequestedPermission(true);
     loadContacts();
   }, [loadContacts]);
 
@@ -242,59 +244,71 @@ const InviteFriendsScreen = () => {
       peteMessage={peteMessage}
       title="Invite Your Crew"
       subtitle="Pickleball is better with friends"
-      ctaTitle="Continue"
-      ctaOnPress={() => navigation.navigate('ScheduleMatch')}
+      ctaTitle={hasRequestedPermission ? 'Continue' : 'Invite my friends'}
+      ctaOnPress={hasRequestedPermission ? () => navigation.navigate('ScheduleMatch') : handleInvitePress}
+      secondaryAction={!hasRequestedPermission ? { title: 'Skip', onPress: () => navigation.navigate('ScheduleMatch') } : undefined}
     >
       <View style={styles.content}>
-        {selectedCount > 0 && (
-          <Animated.View style={pulseStyle}>
-            <AnimatedPressable
-              style={styles.sendButton}
-              onPress={() => {
-                const count = selectedCount;
-                handleSendInvites().then(() => setInvitedCount(prev => prev + count));
-              }}
-              hapticStyle="medium"
-            >
-              {loading ? (
-                <ActivityIndicator color={colors.white} size="small" />
-              ) : (
-                <>
-                  <Icon name="send" size={16} color={colors.white} />
-                  <Text style={styles.sendButtonText}>
-                    Send {selectedCount} Invite{selectedCount > 1 ? 's' : ''}
-                  </Text>
-                </>
-              )}
-            </AnimatedPressable>
-          </Animated.View>
-        )}
-
-        {contactsLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading contacts...</Text>
-          </View>
-        ) : hasPermission === false ? (
+        {!hasRequestedPermission ? (
           <View style={styles.emptyContainer}>
-            <Icon name="users" size={32} color={colors.gray400} />
-            <Text style={styles.emptyText}>
-              Allow contact access to invite friends, or continue to schedule your first match.
+            <Icon name="users" size={48} color={colors.primary} />
+            <Text style={styles.prePermissionText}>
+              Find your friends already on PickleGo and invite others to play
             </Text>
           </View>
-        ) : contacts.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Icon name="users" size={32} color={colors.gray400} />
-            <Text style={styles.emptyText}>No contacts found</Text>
-          </View>
         ) : (
-          <FlatList
-            data={contacts}
-            renderItem={renderContact}
-            keyExtractor={item => item.contactId || item.phone}
-            style={styles.list}
-            showsVerticalScrollIndicator={false}
-          />
+          <>
+            {selectedCount > 0 && (
+              <Animated.View style={pulseStyle}>
+                <AnimatedPressable
+                  style={styles.sendButton}
+                  onPress={() => {
+                    const count = selectedCount;
+                    handleSendInvites().then(() => setInvitedCount(prev => prev + count));
+                  }}
+                  hapticStyle="medium"
+                >
+                  {loading ? (
+                    <ActivityIndicator color={colors.white} size="small" />
+                  ) : (
+                    <>
+                      <Icon name="send" size={16} color={colors.white} />
+                      <Text style={styles.sendButtonText}>
+                        Send {selectedCount} Invite{selectedCount > 1 ? 's' : ''}
+                      </Text>
+                    </>
+                  )}
+                </AnimatedPressable>
+              </Animated.View>
+            )}
+
+            {contactsLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.loadingText}>Loading contacts...</Text>
+              </View>
+            ) : hasPermission === false ? (
+              <View style={styles.emptyContainer}>
+                <Icon name="users" size={32} color={colors.gray400} />
+                <Text style={styles.emptyText}>
+                  Allow contact access to invite friends, or continue to schedule your first match.
+                </Text>
+              </View>
+            ) : contacts.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Icon name="users" size={32} color={colors.gray400} />
+                <Text style={styles.emptyText}>No contacts found</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={contacts}
+                renderItem={renderContact}
+                keyExtractor={item => item.contactId || item.phone}
+                style={styles.list}
+                showsVerticalScrollIndicator={false}
+              />
+            )}
+          </>
         )}
       </View>
     </OnboardingLayout>
@@ -391,6 +405,12 @@ const styles = StyleSheet.create({
     ...typography.bodyLarge,
     color: colors.gray500,
     textAlign: 'center',
+  },
+  prePermissionText: {
+    ...typography.bodyLarge,
+    color: colors.gray500,
+    textAlign: 'center',
+    lineHeight: 24,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Platform,
   FlatList,
   Linking,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useFadeIn, staggeredEntrance } from '../hooks';
@@ -47,6 +49,7 @@ const SettingsScreen: React.FC = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showInvitedPlayers, setShowInvitedPlayers] = useState(false);
   const [showManagePlayers, setShowManagePlayers] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const navigation = useNavigation<SettingsScreenNavigationProp>();
   const { showToast } = useToast();
   const fadeStyle = useFadeIn();
@@ -62,15 +65,72 @@ const SettingsScreen: React.FC = () => {
     registerPlacement({ placement: PLACEMENTS.SETTINGS_OPEN });
   }, []);
 
-  const handleEditProfile = () => {
+  const handleEditProfile = useCallback(() => {
     navigation.navigate('EditProfile');
-  };
+  }, [navigation]);
 
-  // Get invited players
-  const invitedPlayers = getInvitedPlayers();
+  // Get invited players (memoized — getInvitedPlayers reads from refs internally)
+  const invitedPlayers = useMemo(() => getInvitedPlayers(), [players, currentUser]);
+
+  const handleSignOut = useCallback(() => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOutUser();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  }, [signOutUser]);
+
+  const handleDeleteAccount = useCallback(() => {
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account, profile, and any unclaimed players you created. Your match history will be preserved but your name will no longer be associated with it.\n\nThis action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Are you absolutely sure?',
+              'Your account will be permanently deleted. This cannot be reversed.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete My Account',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setIsDeletingAccount(true);
+                    try {
+                      await deleteAccount();
+                    } catch (error) {
+                      setIsDeletingAccount(false);
+                      Alert.alert('Error', 'Failed to delete account. Please try again.');
+                    }
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  }, [deleteAccount]);
 
   // Handle player removal
-  const handleRemovePlayer = (player: Player) => {
+  const handleRemovePlayer = useCallback((player: Player) => {
     Alert.alert(
       'Remove Player',
       `Are you sure you want to remove ${player.name} from your contacts?`,
@@ -90,9 +150,9 @@ const SettingsScreen: React.FC = () => {
         }
       ]
     );
-  };
+  }, [removePlayer, showToast]);
 
-  const settingSections: SettingSection[] = [
+  const settingSections = useMemo<SettingSection[]>(() => [
     {
       title: 'Account',
       items: [
@@ -139,69 +199,18 @@ const SettingsScreen: React.FC = () => {
         {
           icon: 'log-out',
           label: 'Sign Out',
-          onPress: async () => {
-            Alert.alert(
-              'Sign Out',
-              'Are you sure you want to sign out?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Sign Out',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      await signOutUser();
-                    } catch (error) {
-                      Alert.alert('Error', 'Failed to sign out. Please try again.');
-                    }
-                  }
-                }
-              ]
-            );
-          },
+          onPress: handleSignOut,
           danger: true
         },
         {
           icon: 'trash',
           label: 'Delete Account',
-          onPress: () => {
-            Alert.alert(
-              'Delete Account',
-              'This will permanently delete your account, profile, and any unclaimed players you created. Your match history will be preserved but your name will no longer be associated with it.\n\nThis action cannot be undone.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Continue',
-                  style: 'destructive',
-                  onPress: () => {
-                    Alert.alert(
-                      'Are you absolutely sure?',
-                      'Your account will be permanently deleted. This cannot be reversed.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Delete My Account',
-                          style: 'destructive',
-                          onPress: async () => {
-                            try {
-                              await deleteAccount();
-                            } catch (error) {
-                              Alert.alert('Error', 'Failed to delete account. Please try again.');
-                            }
-                          },
-                        },
-                      ],
-                    );
-                  },
-                },
-              ],
-            );
-          },
+          onPress: handleDeleteAccount,
           danger: true,
         },
       ]
     }
-  ];
+  ], [handleEditProfile, handleSignOut, handleDeleteAccount, navigation]);
 
   // Invited Players Modal
   const renderInvitedPlayersModal = () => (
@@ -430,6 +439,16 @@ const SettingsScreen: React.FC = () => {
         </View>
         </Animated.View>
       </ScrollView>
+
+      {/* Deleting account overlay */}
+      <Modal visible={isDeletingAccount} transparent animationType="fade">
+        <View style={styles.deletingOverlay}>
+          <View style={styles.deletingCard}>
+            <ActivityIndicator size="large" color={colors.error} />
+            <Text style={styles.deletingText}>Deleting account...</Text>
+          </View>
+        </View>
+      </Modal>
     </Layout>
   );
 };
@@ -747,6 +766,24 @@ const styles = StyleSheet.create({
   saveButtonText: {
     ...typography.button,
     color: colors.white,
+  },
+  deletingOverlay: {
+    flex: 1,
+    backgroundColor: colors.backdrop,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deletingCard: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xxxl,
+    alignItems: 'center',
+    ...shadows.md,
+  },
+  deletingText: {
+    ...typography.bodyLarge,
+    color: colors.neutral,
+    marginTop: spacing.lg,
   },
 });
 

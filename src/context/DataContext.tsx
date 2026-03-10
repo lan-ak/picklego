@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { unstable_batchedUpdates } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Match, Game, LegacyMatch, Player, PlayerStats, DataContextType, MatchNotification, InviteResult, NotificationPreferences } from '../types';
 import { calculatePlayerStats } from '../utils/statsCalculator';
@@ -52,17 +53,37 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Reset all user-scoped state. Called from onAuthStateChanged when user signs out.
   // When adding new user-scoped state, add its reset here.
+  const isResettingRef = useRef(false);
   const resetUserState = () => {
-    setCurrentUser(null);
-    setMatches([]);
-    setPlayers([]);
-    setDeletedPlayers([]);
-    setNotifications([]);
+    isResettingRef.current = true;
+    unstable_batchedUpdates(() => {
+      setCurrentUser(null);
+      setMatches([]);
+      setPlayers([]);
+      setDeletedPlayers([]);
+      setNotifications([]);
+    });
+    // Clear AsyncStorage once instead of letting the save effect write empty arrays
+    AsyncStorage.multiRemove(['matches', 'players', 'deletedPlayers']).catch(console.error);
+    isResettingRef.current = false;
   };
 
-  // Keep a ref to players so the auth listener can access current state
+  // Keep refs to state so useCallback functions can access current values
+  // without needing state in their dependency arrays (keeps callbacks stable).
   const playersRef = useRef<Player[]>([]);
   useEffect(() => { playersRef.current = players; }, [players]);
+
+  const currentUserRef = useRef<Player | null>(null);
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+
+  const matchesRef = useRef<Match[]>([]);
+  useEffect(() => { matchesRef.current = matches; }, [matches]);
+
+  const notificationsRef = useRef<MatchNotification[]>([]);
+  useEffect(() => { notificationsRef.current = notifications; }, [notifications]);
+
+  const deletedPlayersRef = useRef<Player[]>([]);
+  useEffect(() => { deletedPlayersRef.current = deletedPlayers; }, [deletedPlayers]);
 
   // Load data from AsyncStorage on mount
   useEffect(() => {
@@ -83,23 +104,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadData();
   }, []);
 
-  // Save data to AsyncStorage whenever it changes
+  // Save data to AsyncStorage whenever it changes (debounced, skipped during reset)
   useEffect(() => {
-    const saveData = async () => {
+    if (isResettingRef.current) return;
+
+    const timeout = setTimeout(() => {
       try {
-        await AsyncStorage.setItem('matches', JSON.stringify(matches));
-        await AsyncStorage.setItem('players', JSON.stringify(players));
-        await AsyncStorage.setItem('deletedPlayers', JSON.stringify(deletedPlayers));
+        AsyncStorage.setItem('matches', JSON.stringify(matches));
+        AsyncStorage.setItem('players', JSON.stringify(players));
+        AsyncStorage.setItem('deletedPlayers', JSON.stringify(deletedPlayers));
       } catch (error) {
         console.error('Error saving data:', error);
       }
-    };
+    }, 300);
 
-    saveData();
+    return () => clearTimeout(timeout);
   }, [matches, players, deletedPlayers]);
 
   // Check for stale/expired matches
   useEffect(() => {
+    if (matches.length === 0) return;
     const now = new Date();
     const staleThreshold = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -169,7 +193,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // The actual claiming (match updates, stats merge, placeholder deletion)
   // runs in a Cloud Function using Admin SDK to bypass security rules,
   // since the new user's UID isn't in the match allPlayerIds yet.
-  const claimPlaceholderProfile = async (
+  const claimPlaceholderProfile = useCallback(async (
     realUid: string,
     realName: string,
     email: string,
@@ -218,15 +242,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error claiming placeholder profile:', error);
     }
-  };
+  }, []);
 
   // Refresh matches from Firestore for the current user
-  const refreshMatches = async () => {
-    if (!currentUser) return;
+  const refreshMatches = useCallback(async () => {
+    const user = currentUserRef.current;
+    if (!user) return;
     try {
-      const firestoreMatches = await getMatchesForPlayer(currentUser.id);
+      const firestoreMatches = await getMatchesForPlayer(user.id);
       const visibleMatches = firestoreMatches.filter(
-        m => !m.deletedByPlayerIds?.includes(currentUser.id)
+        m => !m.deletedByPlayerIds?.includes(user.id)
       );
       setMatches(prev => {
         const firestoreIds = new Set(visibleMatches.map(m => m.id));
@@ -236,19 +261,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error refreshing matches:', error);
     }
-  };
+  }, []);
 
   // Refresh notifications from Firestore for the current user
-  const refreshNotifications = async () => {
-    if (!currentUser) return;
-    await loadNotifications(currentUser.id);
-  };
+  const refreshNotifications = useCallback(async () => {
+    const user = currentUserRef.current;
+    if (!user) return;
+    await loadNotifications(user.id);
+  }, []);
 
   // Refresh connected players from Firestore, load missing docs, and prune stale placeholders
-  const refreshConnectedPlayers = async () => {
-    if (!currentUser) return;
+  const refreshConnectedPlayers = useCallback(async () => {
+    const user = currentUserRef.current;
+    if (!user) return;
     try {
-      const freshUserDoc = await getPlayerDocument(currentUser.id);
+      const freshUserDoc = await getPlayerDocument(user.id);
       if (!freshUserDoc) return;
 
       setCurrentUser(freshUserDoc);
@@ -300,7 +327,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error refreshing connected players:', error);
     }
-  };
+  }, []);
 
   // Initialize Firebase auth state listener
   useEffect(() => {
@@ -391,6 +418,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } catch (error) {
               console.error('Error registering push token:', error);
             }
+          } else {
+            // Auth user exists but player doc is missing (e.g., partial account deletion)
+            await signOut();
           }
         } else {
           resetUserState();
@@ -578,7 +608,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const addMatch = async (matchData: Omit<Match, 'id' | 'createdAt' | 'lastModifiedAt' | 'lastModifiedBy'>): Promise<Match> => {
+  const addMatch = useCallback(async (matchData: Omit<Match, 'id' | 'createdAt' | 'lastModifiedAt' | 'lastModifiedBy'>): Promise<Match> => {
     const now = Date.now();
     const newMatch: Match = {
       ...matchData,
@@ -597,20 +627,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return newMatch;
-  };
+  }, []);
 
-  const updateMatch = async (matchId: string, updates: Partial<Match>): Promise<void> => {
-    const matchToUpdate = matches.find(m => m.id === matchId);
+  const updateMatch = useCallback(async (matchId: string, updates: Partial<Match>): Promise<void> => {
+    const matchToUpdate = matchesRef.current.find(m => m.id === matchId);
     if (!matchToUpdate) return;
 
     const updatedMatch: Match = {
       ...matchToUpdate,
       ...updates,
       lastModifiedAt: Date.now(),
-      lastModifiedBy: currentUser?.id || matchToUpdate.lastModifiedBy,
+      lastModifiedBy: currentUserRef.current?.id || matchToUpdate.lastModifiedBy,
     };
 
-    const updatedMatches = matches.map(match =>
+    const updatedMatches = matchesRef.current.map(match =>
       match.id === matchId ? updatedMatch : match
     );
     setMatches(updatedMatches);
@@ -630,9 +660,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (updates.status === 'completed' || (matchToUpdate.status === 'completed' && (updates.games || updates.winnerTeam))) {
       recalculateStatsForPlayers(updatedMatch.allPlayerIds, updatedMatches);
     }
-  };
+  }, []);
 
-  const addPlayer = async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>): Promise<Player> => {
+  const addPlayer = useCallback(async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>): Promise<Player> => {
     try {
       let playerId: string;
       let isPlaceholder = false;
@@ -653,9 +683,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: Date.now(),
         updatedAt: Date.now(),
         ...(!isPlaceholder ? { authProvider: 'email' as const } : {}),
-        ...(isPlaceholder && currentUser && playerData.email ? {
+        ...(isPlaceholder && currentUserRef.current && playerData.email ? {
           pendingClaim: true,
-          invitedBy: currentUser.id,
+          invitedBy: currentUserRef.current.id,
           isInvited: true,
         } : {}),
         stats: {
@@ -679,9 +709,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return newPlayer;
     } catch (error: any) {
-      throw new Error(error.message);
+      throw error;
     }
-  };
+  }, []);
 
   const getUpcomingMatch = () => {
     const now = new Date();
@@ -701,10 +731,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return players.find(player => player.id === playerId) || null;
   };
 
-  const deleteMatch = async (matchId: string) => {
-    if (!currentUser) return;
+  const deleteMatch = useCallback(async (matchId: string) => {
+    const user = currentUserRef.current;
+    if (!user) return;
 
-    const matchToDelete = matches.find(m => m.id === matchId);
+    const matchToDelete = matchesRef.current.find(m => m.id === matchId);
 
     // Optimistically remove from local state
     setMatches(prev => prev.filter(match => match.id !== matchId));
@@ -717,7 +748,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await deleteMatchDocument(matchId);
       } else {
         // Soft-delete completed matches (only hide for current user)
-        await softDeleteMatch(matchId, currentUser.id);
+        await softDeleteMatch(matchId, user.id);
       }
     } catch (error) {
       console.error('Error deleting match from Firestore:', error);
@@ -730,8 +761,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Recalculate stats only for completed matches
     if (matchToDelete && matchToDelete.status === 'completed') {
-      const remainingMatches = matches.filter(m => m.id !== matchId);
-      recalculateStatsForPlayers([currentUser.id], remainingMatches);
+      const remainingMatches = matchesRef.current.filter(m => m.id !== matchId);
+      recalculateStatsForPlayers([user.id], remainingMatches);
     }
 
     // Send match_cancelled notifications only for upcoming matches (not completed ones)
@@ -743,7 +774,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const matchTypeLabel = matchToDelete.matchType === 'doubles' ? 'doubles' : 'singles';
 
       for (const recipientId of matchToDelete.allPlayerIds) {
-        if (recipientId === currentUser.id) continue;
+        if (recipientId === user.id) continue;
         try {
           if (!(await isNotificationEnabled(recipientId, 'match_cancelled'))) continue;
 
@@ -753,14 +784,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             type: 'match_cancelled',
             status: 'sent',
             recipientId,
-            senderId: currentUser.id,
-            senderName: currentUser.name,
-            senderProfilePic: currentUser.profilePic,
+            senderId: user.id,
+            senderName: user.name,
+            senderProfilePic: user.profilePic,
             matchId: matchToDelete.id,
             matchDate: matchToDelete.scheduledDate,
             matchLocation: matchToDelete.location,
             matchType: matchToDelete.matchType,
-            message: `${currentUser.name} cancelled the ${matchTypeLabel} match on ${dateStr}`,
+            message: `${user.name} cancelled the ${matchTypeLabel} match on ${dateStr}`,
             createdAt: now,
           };
           await createNotificationDocument(notification);
@@ -771,8 +802,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Clean up orphaned notifications for this match where current user is recipient
-    const orphanedNotifs = notifications.filter(
-      n => n.matchId === matchId && n.recipientId === currentUser.id
+    const orphanedNotifs = notificationsRef.current.filter(
+      n => n.matchId === matchId && n.recipientId === user.id
     );
     if (orphanedNotifs.length > 0) {
       for (const n of orphanedNotifs) {
@@ -782,11 +813,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error(`Error cleaning up notification ${n.id}:`, error);
         }
       }
-      setNotifications(prev => prev.filter(n => !(n.matchId === matchId && n.recipientId === currentUser.id)));
+      setNotifications(prev => prev.filter(n => !(n.matchId === matchId && n.recipientId === user.id)));
     }
-  };
+  }, []);
 
-  const updatePlayer = async (playerId: string, data: Partial<Player>) => {
+  const updatePlayer = useCallback(async (playerId: string, data: Partial<Player>) => {
     try {
       await updatePlayerDocument(playerId, data);
       const updatedDoc = await getPlayerDocument(playerId);
@@ -795,16 +826,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const filtered = prev.filter(p => p.id !== playerId);
           return [...filtered, updatedDoc];
         });
-        if (currentUser?.id === playerId) {
+        if (currentUserRef.current?.id === playerId) {
           setCurrentUser(updatedDoc);
         }
       }
     } catch (error: any) {
       throw new Error(error.message);
     }
-  };
+  }, []);
 
-  const recalculateStatsForPlayers = (playerIds: string[], currentMatches: Match[]) => {
+  const recalculateStatsForPlayers = useCallback((playerIds: string[], currentMatches: Match[]) => {
     // Optimistic local-only update. Firestore persistence is handled by the
     // recalculateStatsOnMatchUpdate Cloud Function triggered by match writes.
     for (const playerId of playerIds) {
@@ -823,14 +854,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPlayers(prev => prev.map(p =>
         p.id === playerId ? { ...p, stats: statsUpdate } : p
       ));
-      if (currentUser?.id === playerId) {
+      if (currentUserRef.current?.id === playerId) {
         setCurrentUser(prev => prev ? { ...prev, stats: statsUpdate } : prev);
       }
     }
-  };
+  }, []);
 
   // Check if email is available (not already used)
-  const isEmailAvailable = async (email: string): Promise<boolean> => {
+  const isEmailAvailable = useCallback(async (email: string): Promise<boolean> => {
     try {
       const existingPlayer = await getPlayerByEmail(email);
       return !existingPlayer;
@@ -838,31 +869,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error checking email availability:', error);
       return false;
     }
-  };
+  }, []);
   
   // Invite a player by creating a placeholder account, or send a player invite if they already exist
-  const invitePlayer = async (name: string, email: string): Promise<InviteResult> => {
+  const invitePlayer = useCallback(async (name: string, email: string): Promise<InviteResult> => {
     if (!name || !email) return { type: 'error' };
 
     // Check if email is already in use
     const emailAvailable = await isEmailAvailable(email);
+    const user = currentUserRef.current;
 
     if (!emailAvailable) {
       // Email exists — look up the existing player and return them for team assignment
       try {
         const existingPlayer = await getPlayerByEmail(email);
-        if (!existingPlayer || !currentUser) return { type: 'error' };
+        if (!existingPlayer || !user) return { type: 'error' };
 
         // Don't invite yourself
-        if (existingPlayer.id === currentUser.id) return { type: 'error' };
+        if (existingPlayer.id === user.id) return { type: 'error' };
 
         // Send a connection invite if not already connected (sendPlayerInvite handles duplicate check)
-        if (!currentUser.connections?.includes(existingPlayer.id)) {
+        if (!user.connections?.includes(existingPlayer.id)) {
           await sendPlayerInvite(existingPlayer.id);
         }
 
         // Ensure the existing player is in local state for name resolution
-        if (!players.some(p => p.id === existingPlayer.id)) {
+        if (!playersRef.current.some(p => p.id === existingPlayer.id)) {
           setPlayers(prev => [...prev, existingPlayer]);
         }
 
@@ -882,61 +914,63 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error creating placeholder player:', error);
       return { type: 'error' };
     }
-  };
+  }, [addPlayer, isEmailAvailable]);
 
   // Get all players invited by the current user
-  const getInvitedPlayers = (): Player[] => {
-    if (!currentUser) return [];
-    return players.filter(player => player.invitedBy === currentUser.id && player.email);
-  };
+  const getInvitedPlayers = useCallback((): Player[] => {
+    const user = currentUserRef.current;
+    if (!user) return [];
+    return playersRef.current.filter(player => player.invitedBy === user.id && player.email);
+  }, []);
 
   // Claim an invitation - used when a new player registers from an invitation
-  const claimInvitation = async (email: string, playerData: Partial<Player>): Promise<boolean> => {
-    const invitedPlayer = players.find(p => p.email === email && p.pendingClaim);
-    
+  const claimInvitation = useCallback(async (email: string, playerData: Partial<Player>): Promise<boolean> => {
+    const invitedPlayer = playersRef.current.find(p => p.email === email && p.pendingClaim);
+
     if (!invitedPlayer) return false;
-    
+
     // Update the invited player with the provided data
     await updatePlayer(invitedPlayer.id, {
       ...playerData,
       pendingClaim: false,
     });
-    
+
     return true;
-  };
+  }, [updatePlayer]);
 
   // Get player name even if they've been deleted
-  const getPlayerName = (playerId: string): string => {
+  const getPlayerName = useCallback((playerId: string): string => {
     // First check active players
-    const activePlayer = players.find(p => p.id === playerId);
+    const activePlayer = playersRef.current.find(p => p.id === playerId);
     if (activePlayer) return activePlayer.name;
-    
+
     // Then check deleted players
-    const deletedPlayer = deletedPlayers.find(p => p.id === playerId);
+    const deletedPlayer = deletedPlayersRef.current.find(p => p.id === playerId);
     if (deletedPlayer) return `${deletedPlayer.name} (Removed)`;
-    
+
     // If not found anywhere
     return 'Unknown Player';
-  };
+  }, []);
 
   // Remove a player from contacts (also breaks connection if applicable)
-  const removePlayer = async (playerId: string): Promise<boolean> => {
+  const removePlayer = useCallback(async (playerId: string): Promise<boolean> => {
     try {
+      const user = currentUserRef.current;
       // Don't allow removing the current user
-      if (currentUser && playerId === currentUser.id) {
+      if (user && playerId === user.id) {
         return false;
       }
 
       // Find the player to be removed
-      const playerToRemove = players.find(player => player.id === playerId);
+      const playerToRemove = playersRef.current.find(player => player.id === playerId);
       if (!playerToRemove) {
         return false;
       }
 
       // If the player is a connection, break the bidirectional Firestore connection
-      if (currentUser?.connections?.includes(playerId)) {
-        await removeConnection(currentUser.id, playerId);
-        await removeConnection(playerId, currentUser.id);
+      if (user?.connections?.includes(playerId)) {
+        await removeConnection(user.id, playerId);
+        await removeConnection(playerId, user.id);
         setCurrentUser(prev => prev ? {
           ...prev,
           connections: (prev.connections || []).filter((id: string) => id !== playerId),
@@ -955,19 +989,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error removing player:', error);
       return false;
     }
-  };
+  }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
     try {
       // onAuthStateChanged listener handles loading the player doc,
       // matches, connections, notifications, and push token registration.
       await signInWithEmail(email, password);
     } catch (error: any) {
-      throw new Error(error.message);
+      throw error;
     }
-  };
+  }, []);
 
-  const signInWithSocial = async (provider: 'google' | 'apple'): Promise<{ needsName: boolean }> => {
+  const signInWithSocial = useCallback(async (provider: 'google' | 'apple'): Promise<{ needsName: boolean }> => {
     try {
       let firebaseUser;
       let socialDisplayName: string | null = null;
@@ -1028,9 +1062,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       throw new Error(error.message);
     }
-  };
+  }, []);
 
-  const completeSocialSignUp = async (name: string, provider: 'google' | 'apple') => {
+  const completeSocialSignUp = useCallback(async (name: string, provider: 'google' | 'apple') => {
     try {
       const firebaseUser = getCurrentUser();
       if (!firebaseUser) {
@@ -1062,34 +1096,38 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       throw new Error(error.message);
     }
-  };
+  }, []);
 
-  const deleteAccount = async () => {
+  const deleteAccount = useCallback(async () => {
     try {
-      if (currentUser) {
-        await unregisterPushToken(currentUser.id);
+      const user = currentUserRef.current;
+      if (user) {
+        await unregisterPushToken(user.id);
       }
       await callDeleteAccount();
       await AsyncStorage.multiRemove(['matches', 'players', 'deletedPlayers']);
+      // Sign out locally so onAuthStateChanged fires and resets app state
+      await signOut();
     } catch (error: any) {
       throw new Error(error.message);
     }
-  };
+  }, []);
 
-  const signOutUser = async () => {
+  const signOutUser = useCallback(async () => {
     try {
-      if (currentUser) {
-        await unregisterPushToken(currentUser.id);
+      const user = currentUserRef.current;
+      if (user) {
+        await unregisterPushToken(user.id);
       }
       await signOut();
       // State cleanup handled by onAuthStateChanged -> resetUserState()
     } catch (error: any) {
       throw new Error(error.message);
     }
-  };
+  }, []);
 
   // Load notifications for the current user (both received and sent)
-  const loadNotifications = async (playerId: string) => {
+  const loadNotifications = useCallback(async (playerId: string) => {
     try {
       const [received, sent] = await Promise.all([
         getNotificationsForPlayer(playerId),
@@ -1106,27 +1144,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error loading notifications:', error);
     }
-  };
+  }, []);
 
   // Check if a recipient has opted out of a specific notification type
-  const isNotificationEnabled = async (recipientId: string, type: MatchNotification['type']): Promise<boolean> => {
-    const localPlayer = players.find(p => p.id === recipientId);
+  const isNotificationEnabled = useCallback(async (recipientId: string, type: MatchNotification['type']): Promise<boolean> => {
+    const localPlayer = playersRef.current.find(p => p.id === recipientId);
     const prefs = localPlayer?.notificationPreferences
       ?? (await getPlayerDocument(recipientId))?.notificationPreferences;
     // Default to enabled if no preferences are set
     return prefs?.[type] ?? true;
-  };
+  }, []);
 
   // Send notifications to all players in a match (except the creator)
-  const sendMatchNotifications = async (match: Match): Promise<{ sent: number; failed: number }> => {
-    if (!currentUser) return { sent: 0, failed: 0 };
+  const sendMatchNotifications = useCallback(async (match: Match): Promise<{ sent: number; failed: number }> => {
+    const user = currentUserRef.current;
+    if (!user) return { sent: 0, failed: 0 };
 
     let sent = 0;
     let failed = 0;
     const newNotifications: MatchNotification[] = [];
 
     for (const recipientId of match.allPlayerIds) {
-      if (recipientId === currentUser.id) continue;
+      if (recipientId === user.id) continue;
 
       try {
         if (!(await isNotificationEnabled(recipientId, 'match_invite'))) continue;
@@ -1138,9 +1177,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           type: 'match_invite',
           status: 'sent',
           recipientId,
-          senderId: currentUser.id,
-          senderName: currentUser.name,
-          senderProfilePic: currentUser.profilePic,
+          senderId: user.id,
+          senderName: user.name,
+          senderProfilePic: user.profilePic,
           matchId: match.id,
           matchDate: match.scheduledDate,
           matchLocation: match.location,
@@ -1168,11 +1207,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return { sent, failed };
-  };
+  }, []);
 
   // Send update notifications to all players in a match (except the editor)
-  const sendMatchUpdateNotifications = async (match: Match): Promise<{ sent: number; failed: number }> => {
-    if (!currentUser) return { sent: 0, failed: 0 };
+  const sendMatchUpdateNotifications = useCallback(async (match: Match): Promise<{ sent: number; failed: number }> => {
+    const user = currentUserRef.current;
+    if (!user) return { sent: 0, failed: 0 };
 
     let sent = 0;
     let failed = 0;
@@ -1184,7 +1224,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const matchTypeLabel = match.matchType === 'doubles' ? 'doubles' : 'singles';
 
     for (const recipientId of match.allPlayerIds) {
-      if (recipientId === currentUser.id) continue;
+      if (recipientId === user.id) continue;
 
       try {
         if (!(await isNotificationEnabled(recipientId, 'match_updated'))) continue;
@@ -1195,14 +1235,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           type: 'match_updated',
           status: 'sent',
           recipientId,
-          senderId: currentUser.id,
-          senderName: currentUser.name,
-          senderProfilePic: currentUser.profilePic,
+          senderId: user.id,
+          senderName: user.name,
+          senderProfilePic: user.profilePic,
           matchId: match.id,
           matchDate: match.scheduledDate,
           matchLocation: match.location,
           matchType: match.matchType,
-          message: `${currentUser.name} updated the ${matchTypeLabel} match on ${dateStr}`,
+          message: `${user.name} updated the ${matchTypeLabel} match on ${dateStr}`,
           createdAt: now,
         };
 
@@ -1225,10 +1265,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return { sent, failed };
-  };
+  }, []);
 
   // Mark a single notification as read
-  const markNotificationRead = async (notificationId: string) => {
+  const markNotificationRead = useCallback(async (notificationId: string) => {
     const now = Date.now();
     try {
       await updateNotificationDocument(notificationId, { status: 'read', readAt: now });
@@ -1238,15 +1278,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
-  };
+  }, []);
 
   // Mark all notifications as read (skip player_invite — those need explicit accept/decline)
-  const markAllNotificationsRead = async () => {
-    if (!currentUser) return;
+  const markAllNotificationsRead = useCallback(async () => {
+    const user = currentUserRef.current;
+    if (!user) return;
     const now = Date.now();
     try {
-      const toMark = notifications.filter(
-        n => n.status === 'sent' && n.recipientId === currentUser.id && n.type !== 'player_invite'
+      const toMark = notificationsRef.current.filter(
+        n => n.status === 'sent' && n.recipientId === user.id && n.type !== 'player_invite'
       );
       await Promise.all(
         toMark.map(n => updateNotificationDocument(n.id, { status: 'read', readAt: now }))
@@ -1254,7 +1295,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (toMark.length > 0) {
         setNotifications(prev =>
           prev.map(n =>
-            n.status === 'sent' && n.recipientId === currentUser.id && n.type !== 'player_invite'
+            n.status === 'sent' && n.recipientId === user.id && n.type !== 'player_invite'
               ? { ...n, status: 'read' as const, readAt: now }
               : n
           )
@@ -1263,33 +1304,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
     }
-  };
+  }, []);
 
   // Get notifications for a specific match (used by match creator to see statuses)
-  const getNotificationsForMatch = (matchId: string): MatchNotification[] => {
-    return notifications.filter(n => n.matchId === matchId);
-  };
+  const getNotificationsForMatch = useCallback((matchId: string): MatchNotification[] => {
+    return notificationsRef.current.filter(n => n.matchId === matchId);
+  }, []);
 
   // Send a player_invite notification to an existing user
-  const sendPlayerInvite = async (recipientId: string): Promise<boolean> => {
-    if (!currentUser) return false;
-    if (recipientId === currentUser.id) return false;
-    if (currentUser.connections?.includes(recipientId)) return false;
+  const sendPlayerInvite = useCallback(async (recipientId: string): Promise<boolean> => {
+    const user = currentUserRef.current;
+    if (!user) return false;
+    if (recipientId === user.id) return false;
+    if (user.connections?.includes(recipientId)) return false;
 
     try {
       if (!(await isNotificationEnabled(recipientId, 'player_invite'))) return false;
 
       const now = Date.now();
-      const notifId = `player_invite_${currentUser.id}_${recipientId}_${now}`;
+      const notifId = `player_invite_${user.id}_${recipientId}_${now}`;
       const notification: MatchNotification = {
         id: notifId,
         type: 'player_invite',
         status: 'sent',
         recipientId,
-        senderId: currentUser.id,
-        senderName: currentUser.name,
-        senderProfilePic: currentUser.profilePic,
-        message: `${currentUser.name} wants to add you as a player on PickleGo!`,
+        senderId: user.id,
+        senderName: user.name,
+        senderProfilePic: user.profilePic,
+        message: `${user.name} wants to add you as a player on PickleGo!`,
         createdAt: now,
       };
 
@@ -1302,15 +1344,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error sending player invite:', error);
       return false;
     }
-  };
+  }, []);
 
   // Respond to a player invite: accept adds connections + creates accept notification, decline updates status
-  const respondToPlayerInvite = async (notificationId: string, accept: boolean): Promise<void> => {
-    if (!currentUser) return;
+  const respondToPlayerInvite = useCallback(async (notificationId: string, accept: boolean): Promise<void> => {
+    const user = currentUserRef.current;
+    if (!user) return;
 
-    const notification = notifications.find(n => n.id === notificationId);
+    const notification = notificationsRef.current.find(n => n.id === notificationId);
     if (!notification || notification.type !== 'player_invite') return;
-    if (notification.recipientId !== currentUser.id) return;
+    if (notification.recipientId !== user.id) return;
 
     const now = Date.now();
     const senderId = notification.senderId;
@@ -1321,22 +1364,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await updateNotificationDocument(notificationId, { status: 'accepted', respondedAt: now });
 
         // 2. Add bidirectional connections
-        await addConnectionsBatch(currentUser.id, senderId);
+        await addConnectionsBatch(user.id, senderId);
 
         // 3. Create invite_accepted notification for the sender (if enabled)
         const senderAcceptsNotif = await isNotificationEnabled(senderId, 'invite_accepted');
         let acceptNotification: MatchNotification | null = null;
         if (senderAcceptsNotif) {
-          const acceptNotifId = `invite_accepted_${currentUser.id}_${senderId}_${now}`;
+          const acceptNotifId = `invite_accepted_${user.id}_${senderId}_${now}`;
           acceptNotification = {
             id: acceptNotifId,
             type: 'invite_accepted',
             status: 'sent',
             recipientId: senderId,
-            senderId: currentUser.id,
-            senderName: currentUser.name,
-            senderProfilePic: currentUser.profilePic,
-            message: `${currentUser.name} accepted your player invite!`,
+            senderId: user.id,
+            senderName: user.name,
+            senderProfilePic: user.profilePic,
+            message: `${user.name} accepted your player invite!`,
             createdAt: now,
           };
           await createNotificationDocument(acceptNotification);
@@ -1359,13 +1402,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } : prev);
 
         setPlayers(prev => prev.map(p => {
-          if (p.id === currentUser.id) return { ...p, connections: [...(p.connections || []), senderId] };
-          if (p.id === senderId) return { ...p, connections: [...(p.connections || []), currentUser.id] };
+          if (p.id === user.id) return { ...p, connections: [...(p.connections || []), senderId] };
+          if (p.id === senderId) return { ...p, connections: [...(p.connections || []), user.id] };
           return p;
         }));
 
         // Ensure the sender's player doc is in local state
-        const senderInLocal = players.find(p => p.id === senderId);
+        const senderInLocal = playersRef.current.find(p => p.id === senderId);
         if (!senderInLocal) {
           const senderDoc = await getPlayerDocument(senderId);
           if (senderDoc) {
@@ -1386,17 +1429,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error responding to player invite:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const deleteNotification = async (notificationId: string): Promise<void> => {
+  const deleteNotification = useCallback(async (notificationId: string): Promise<void> => {
     await deleteNotificationDocument(notificationId);
     setNotifications(prev => prev.filter(n => n.id !== notificationId));
-  };
+  }, []);
 
-  const clearAllNotifications = async (): Promise<void> => {
-    if (!currentUser) return;
-    const toClear = notifications.filter(n => n.recipientId === currentUser.id);
-    setNotifications(prev => prev.filter(n => n.recipientId !== currentUser.id));
+  const clearAllNotifications = useCallback(async (): Promise<void> => {
+    const user = currentUserRef.current;
+    if (!user) return;
+    const toClear = notificationsRef.current.filter(n => n.recipientId === user.id);
+    setNotifications(prev => prev.filter(n => n.recipientId !== user.id));
     for (const n of toClear) {
       try {
         await deleteNotificationDocument(n.id);
@@ -1404,33 +1448,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error(`Error deleting notification ${n.id}:`, error);
       }
     }
-  };
+  }, []);
 
   // Only count notifications where the current user is the recipient and status is 'sent'
-  const unreadNotificationCount = notifications.filter(
-    n => n.status === 'sent' && n.recipientId === currentUser?.id
-  ).length;
+  const unreadNotificationCount = useMemo(() =>
+    notifications.filter(n => n.status === 'sent' && n.recipientId === currentUser?.id).length,
+    [notifications, currentUser?.id]
+  );
 
   // SMS invite methods
-  const invitePlayersBySMS = async (contacts: { phone: string; name: string }[]): Promise<{ inviteId: string }> => {
-    if (!currentUser) throw new Error('Must be logged in');
+  const invitePlayersBySMS = useCallback(async (contacts: { phone: string; name: string }[]): Promise<{ inviteId: string }> => {
+    const user = currentUserRef.current;
+    if (!user) throw new Error('Must be logged in');
     const result = await callCreateSMSInvite(
       contacts.map(c => c.phone),
       contacts.map(c => c.name),
     );
     return { inviteId: result.inviteId };
-  };
+  }, []);
 
-  const lookupContactsOnPickleGo = async (phoneHashes: string[]): Promise<Map<string, { playerId: string; playerName: string }>> => {
-    if (!currentUser || phoneHashes.length === 0) return new Map();
+  const lookupContactsOnPickleGo = useCallback(async (phoneHashes: string[]): Promise<Map<string, { playerId: string; playerName: string }>> => {
+    if (!currentUserRef.current || phoneHashes.length === 0) return new Map();
     const result = await callLookupPhoneNumbers(phoneHashes);
     return new Map(Object.entries(result.matches));
-  };
+  }, []);
 
-  const claimPendingSMSInvite = async () => {
+  const claimPendingSMSInvite = useCallback(async () => {
     try {
       const pendingInviteId = await AsyncStorage.getItem('pendingSMSInviteId');
-      if (!pendingInviteId || !currentUser) return;
+      if (!pendingInviteId || !currentUserRef.current) return;
 
       const result = await callClaimSMSInvite(pendingInviteId);
       if (result.claimed) {
@@ -1444,10 +1490,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error claiming SMS invite:', error);
     }
-  };
+  }, [refreshConnectedPlayers, refreshNotifications]);
 
-  // Context value with all the methods and data
-  const contextValue: DataContextType = {
+  // Context value with all the methods and data — memoized to prevent unnecessary re-renders
+  // of all 22+ consumers. Functions are stable (useCallback with [] deps + refs) so they
+  // won't cause the memo to recompute. Only actual state changes trigger a new context value.
+  const contextValue = useMemo<DataContextType>(() => ({
     players,
     matches,
     deletedPlayers,
@@ -1489,7 +1537,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     invitePlayersBySMS,
     lookupContactsOnPickleGo,
     claimPendingSMSInvite,
-  };
+  }), [
+    players, matches, deletedPlayers, currentUser, authLoading,
+    hasCompletedOnboarding, completeOnboarding, notifications, unreadNotificationCount,
+    addPlayer, removePlayer, addMatch, updateMatch, deleteMatch,
+    updatePlayer, getPlayerName, invitePlayer, claimInvitation,
+    getInvitedPlayers, isEmailAvailable, signIn, signInWithSocial,
+    completeSocialSignUp, signOutUser, deleteAccount,
+    sendMatchNotifications, sendMatchUpdateNotifications,
+    markNotificationRead, markAllNotificationsRead, getNotificationsForMatch,
+    sendPlayerInvite, respondToPlayerInvite, deleteNotification,
+    clearAllNotifications, refreshMatches, refreshNotifications,
+    refreshConnectedPlayers, invitePlayersBySMS, lookupContactsOnPickleGo,
+    claimPendingSMSInvite,
+  ]);
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;
 };

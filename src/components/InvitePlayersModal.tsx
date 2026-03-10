@@ -100,6 +100,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
       setInviteName('');
       setInviteEmail('');
       setShowManualForm(false);
+      setHasRequestedContacts(false);
     }
   }, [visible]);
 
@@ -115,6 +116,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [smsAvailable, setSmsAvailable] = useState(true);
   const [sending, setSending] = useState(false);
+  const [hasRequestedContacts, setHasRequestedContacts] = useState(false);
 
   // --- Invite tab: manual form state ---
   const [inviteName, setInviteName] = useState('');
@@ -126,12 +128,10 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     SMS.isAvailableAsync().then(setSmsAvailable);
   }, []);
 
-  // Load contacts when invite tab is shown
-  useEffect(() => {
-    if (visible && activeTab === 'invite' && contactsList.length === 0 && !authLoading) {
-      loadContacts();
-    }
-  }, [visible, activeTab, authLoading]);
+  const handleAllowContacts = () => {
+    setHasRequestedContacts(true);
+    loadContacts();
+  };
 
   // Filter contacts on search
   useEffect(() => {
@@ -545,6 +545,22 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   };
 
   const renderContactsSection = () => {
+    if (!hasRequestedContacts && !permissionDenied && contactsList.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <Icon name="users" size={40} color={colors.primary} />
+          <Text style={styles.emptyStateTitle}>Find friends on PickleGo</Text>
+          <Text style={styles.emptyStateText}>
+            Access your contacts to find friends already on PickleGo and invite others to play.
+          </Text>
+          <AnimatedPressable style={styles.allowContactsButton} onPress={handleAllowContacts}>
+            <Icon name="book-user" size={16} color={colors.white} />
+            <Text style={styles.allowContactsButtonText}>Allow Contact Access</Text>
+          </AnimatedPressable>
+        </View>
+      );
+    }
+
     if (permissionDenied) {
       return (
         <View style={styles.emptyState}>
@@ -1043,6 +1059,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   retryButtonText: {
+    ...typography.button,
+    color: colors.white,
+  },
+  allowContactsButton: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    marginTop: spacing.sm,
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  allowContactsButtonText: {
     ...typography.button,
     color: colors.white,
   },

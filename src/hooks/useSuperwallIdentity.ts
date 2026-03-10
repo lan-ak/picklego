@@ -19,6 +19,10 @@ export function useSuperwallIdentity() {
   const { currentUser, matches } = useData();
   const prevUserIdRef = useRef<string | null>(null);
 
+  // Store update in a ref to keep the attributes effect stable
+  const updateRef = useRef(update);
+  useEffect(() => { updateRef.current = update; }, [update]);
+
   // Identify / reset user when auth state changes
   useEffect(() => {
     if (!isConfigured) return;
@@ -46,7 +50,7 @@ export function useSuperwallIdentity() {
       (Date.now() - currentUser.createdAt) / (1000 * 60 * 60 * 24),
     );
 
-    update({
+    updateRef.current({
       // Profile
       name: currentUser.name,
       email: currentUser.email ?? '',
@@ -87,5 +91,5 @@ export function useSuperwallIdentity() {
             : 'singles'
           : 'none',
     });
-  }, [isConfigured, currentUser, matches, update]);
+  }, [isConfigured, currentUser, matches]);
 }

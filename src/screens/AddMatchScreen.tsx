@@ -11,7 +11,7 @@ import {
   Switch,
   Keyboard,
 } from 'react-native';
-import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect, CommonActions } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Icon } from '../components/Icon';
 import { Chip } from '../components/Chip';
@@ -513,7 +513,9 @@ const AddMatchScreen = () => {
 
         if (onboardingMode) {
           // In onboarding, go to celebration screen
-          (navigation as any).navigate('Celebration', { matchCreated: true });
+          navigation.dispatch(
+            CommonActions.navigate({ name: 'Celebration', params: { matchCreated: true } })
+          );
         } else {
           Alert.alert(
             'Success',

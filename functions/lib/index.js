@@ -602,6 +602,9 @@ exports.deleteAccount = (0, https_1.onCall)(async (request) => {
     if (!playerDoc.exists) {
         throw new https_1.HttpsError('not-found', 'Player document not found');
     }
+    // Delete the Firebase Auth account FIRST — if this fails, Firestore stays intact
+    await (0, auth_1.getAuth)().deleteUser(callerUid);
+    console.log(`deleteAccount: deleted auth user ${callerUid}`);
     // Find all unclaimed placeholder profiles created by this user
     const placeholdersSnapshot = await db
         .collection('players')
@@ -625,9 +628,6 @@ exports.deleteAccount = (0, https_1.onCall)(async (request) => {
     catch {
         // File may not exist, ignore
     }
-    // Delete the Firebase Auth account last
-    await (0, auth_1.getAuth)().deleteUser(callerUid);
-    console.log(`deleteAccount: deleted auth user ${callerUid}`);
     return { deleted: true, placeholdersRemoved };
 });
 //# sourceMappingURL=index.js.map

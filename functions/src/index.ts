@@ -483,20 +483,17 @@ export const claimSMSInvite = onCall(async (request) => {
 
       for (const matchDoc of matchesSnapshot.docs) {
         const match = matchDoc.data();
-        const updatedAllPlayerIds = (match.allPlayerIds || []).map(
-          (id: string) => id === placeholderId ? callerUid : id,
-        );
-        const updatedTeam1 = (match.team1 || []).map(
-          (id: string) => id === placeholderId ? callerUid : id,
-        );
-        const updatedTeam2 = (match.team2 || []).map(
-          (id: string) => id === placeholderId ? callerUid : id,
-        );
+        const replaceId = (ids: string[]) =>
+          ids.map((id: string) => (id === placeholderId ? callerUid : id));
+        const replaceName = (ids: string[], names: string[]) =>
+          ids.map((id: string, i: number) => (id === placeholderId ? callerName : names[i]));
 
         claimBatch.update(matchDoc.ref, {
-          allPlayerIds: updatedAllPlayerIds,
-          team1: updatedTeam1,
-          team2: updatedTeam2,
+          allPlayerIds: replaceId(match.allPlayerIds || []),
+          team1PlayerIds: replaceId(match.team1PlayerIds || []),
+          team2PlayerIds: replaceId(match.team2PlayerIds || []),
+          team1PlayerNames: replaceName(match.team1PlayerIds || [], match.team1PlayerNames || []),
+          team2PlayerNames: replaceName(match.team2PlayerIds || [], match.team2PlayerNames || []),
         });
         matchesUpdated++;
       }
@@ -770,6 +767,10 @@ export const deleteAccount = onCall(async (request) => {
     throw new HttpsError('not-found', 'Player document not found');
   }
 
+  // Delete the Firebase Auth account FIRST — if this fails, Firestore stays intact
+  await getAuth().deleteUser(callerUid);
+  console.log(`deleteAccount: deleted auth user ${callerUid}`);
+
   // Find all unclaimed placeholder profiles created by this user
   const placeholdersSnapshot = await db
     .collection('players')
@@ -798,10 +799,6 @@ export const deleteAccount = onCall(async (request) => {
   } catch {
     // File may not exist, ignore
   }
-
-  // Delete the Firebase Auth account last
-  await getAuth().deleteUser(callerUid);
-  console.log(`deleteAccount: deleted auth user ${callerUid}`);
 
   return { deleted: true, placeholdersRemoved };
 });

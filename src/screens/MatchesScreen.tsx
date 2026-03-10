@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -59,60 +59,40 @@ const MatchesScreen = () => {
     return sortOrder === 'newest' ? timeB - timeA : timeA - timeB;
   };
 
-  // Filter matches based on active tab
-  const getFilteredMatches = (): typeof matches => {
+  // Memoized filtered + sorted matches — computed once per dependency change
+  const filteredMatches = useMemo(() => {
+    const isUserInMatch = (match: Match, userId: string): boolean =>
+      match.allPlayerIds.includes(userId);
+
+    const isUserWinner = (match: Match, userId: string): boolean => {
+      if (match.winnerTeam === null) return false;
+      const userTeam = match.team1PlayerIds.includes(userId) ? 1 : match.team2PlayerIds.includes(userId) ? 2 : null;
+      return match.winnerTeam === userTeam;
+    };
+
     switch (activeTab) {
       case 'all':
         return [...matches].sort(sortByDate);
-
       case 'upcoming':
-        return matches
-          .filter(match => match.status === 'scheduled')
-          .sort(sortByDate);
-
+        return matches.filter(match => match.status === 'scheduled').sort(sortByDate);
       case 'completed':
-        return matches
-          .filter(match => match.status === 'completed')
-          .sort(sortByDate);
-
+        return matches.filter(match => match.status === 'completed').sort(sortByDate);
       case 'won':
-        return matches
-          .filter(match => {
-            if (!currentUser || match.status !== 'completed' || match.winnerTeam === null) return false;
-            const participated = isUserInMatch(match, currentUser.id);
-            if (!participated) return false;
-            return isUserWinner(match, currentUser.id);
-          })
-          .sort(sortByDate);
-
+        return matches.filter(match => {
+          if (!currentUser || match.status !== 'completed' || match.winnerTeam === null) return false;
+          if (!isUserInMatch(match, currentUser.id)) return false;
+          return isUserWinner(match, currentUser.id);
+        }).sort(sortByDate);
       case 'lost':
-        return matches
-          .filter(match => {
-            if (!currentUser || match.status !== 'completed' || match.winnerTeam === null) return false;
-            const participated = isUserInMatch(match, currentUser.id);
-            if (!participated) return false;
-            return !isUserWinner(match, currentUser.id);
-          })
-          .sort(sortByDate);
-
+        return matches.filter(match => {
+          if (!currentUser || match.status !== 'completed' || match.winnerTeam === null) return false;
+          if (!isUserInMatch(match, currentUser.id)) return false;
+          return !isUserWinner(match, currentUser.id);
+        }).sort(sortByDate);
       default:
         return matches;
     }
-  };
-
-  // Helper function to check if a user is in a match
-  const isUserInMatch = (match: Match, userId: string): boolean => {
-    return match.allPlayerIds.includes(userId);
-  };
-
-  // Helper function to check if a user is a winner of a match
-  const isUserWinner = (match: Match, userId: string): boolean => {
-    if (match.winnerTeam === null) return false;
-    const userTeam = match.team1PlayerIds.includes(userId) ? 1 : match.team2PlayerIds.includes(userId) ? 2 : null;
-    return match.winnerTeam === userTeam;
-  };
-
-  const filteredMatches = getFilteredMatches();
+  }, [matches, activeTab, sortOrder, currentUser]);
 
   const renderTabs = () => (
     <View style={styles.tabsContainer}>
@@ -179,16 +159,6 @@ const MatchesScreen = () => {
       title="Matches"
       showBackButton={true}
       isInTabNavigator={true}
-      rightComponent={
-        <AnimatedPressable
-          onPress={() => navigation.navigate('AddMatch')}
-          style={styles.headerButton}
-          accessibilityLabel="Add new match"
-          accessibilityRole="button"
-        >
-          <Icon name="plus-circle" size={24} color={colors.primary} />
-        </AnimatedPressable>
-      }
     >
       <Animated.View style={[styles.container, fadeStyle]}>
         {renderTabs()}
@@ -224,7 +194,7 @@ const MatchesScreen = () => {
               />
             }
           >
-            {getFilteredMatches().length === 0 ? (
+            {filteredMatches.length === 0 ? (
               <View style={styles.emptyState}>
                 <Icon name="calendar" size={60} color={colors.gray300} />
                 <Text style={styles.emptyStateText}>No matches found</Text>
@@ -238,7 +208,7 @@ const MatchesScreen = () => {
                 </AnimatedPressable>
               </View>
             ) : (
-              getFilteredMatches().map((match, index) => (
+              filteredMatches.map((match, index) => (
                 <Animated.View key={match.id} entering={staggeredEntrance(index)}>
                   <MatchCard
                     match={match}
@@ -319,9 +289,6 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxxl,
-  },
-  headerButton: {
-    padding: spacing.sm,
   },
   emptyState: {
     flex: 1,

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { isValidEmail } from '../utils/validation';
+import { getErrorMessage } from '../utils/errorHandler';
 import {
   View,
   Text,
@@ -101,7 +102,7 @@ const AuthScreen = () => {
         password: password,
       });
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to create account');
+      Alert.alert('Error', getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
@@ -115,10 +116,9 @@ const AuthScreen = () => {
 
     setIsLoading(true);
     try {
-      // Sign in with Firebase
       await signIn(email.trim(), password);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Login failed');
+      Alert.alert('Error', getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
@@ -151,7 +151,7 @@ const AuthScreen = () => {
       }
     } catch (error: any) {
       if (error.cancelled) return;
-      showToast(error.message || `${provider} sign-in failed`, 'error');
+      showToast(getErrorMessage(error), 'error');
     } finally {
       setIsSocialLoading(false);
     }
@@ -168,7 +168,7 @@ const AuthScreen = () => {
       setShowNameModal(false);
       setSocialName('');
     } catch (error: any) {
-      showToast(error.message || 'Failed to complete sign-up', 'error');
+      showToast(getErrorMessage(error), 'error');
     } finally {
       setIsSocialLoading(false);
     }
