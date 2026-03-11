@@ -7,7 +7,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { getStorage } from 'firebase-admin/storage';
 import Expo, { ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
-import { randomUUID } from 'crypto';
+import { inviteAcceptedNotifId, matchInviteNotifId, matchUpdatedNotifId, matchRemovedNotifId } from './ids';
 
 const app = initializeApp();
 
@@ -92,7 +92,7 @@ export const acceptPlayerInvite = onCall(async (request) => {
     let acceptNotifId: string | null = null;
 
     if (!senderPrefs || senderPrefs.invite_accepted !== false) {
-      acceptNotifId = `invite_accepted_${callerUid}_${senderId}_${randomUUID()}`;
+      acceptNotifId = inviteAcceptedNotifId(callerUid, senderId);
       const acceptNotifData: Record<string, any> = {
         id: acceptNotifId,
         type: 'invite_accepted',
@@ -232,7 +232,7 @@ if (!realName || typeof realName !== 'string') {
       const match = matchDoc.data();
       if (match.createdBy === realUid) continue; // don't notify yourself
       const team = (match.team1PlayerIds || []).includes(placeholderId) ? 1 : 2;
-      const notifId = `notif_${matchDoc.id}_${realUid}`;
+      const notifId = matchInviteNotifId(matchDoc.id, realUid);
       transaction.set(db.collection('notifications').doc(notifId), {
         id: notifId,
         type: 'match_invite',
@@ -549,7 +549,7 @@ export const claimSMSInvite = onCall(async (request) => {
 
     // Create invite_accepted notification for the inviter (if they haven't disabled it)
     if (!senderPrefs || senderPrefs.invite_accepted !== false) {
-      const acceptNotifId = `invite_accepted_${callerUid}_${senderId}_${randomUUID()}`;
+      const acceptNotifId = inviteAcceptedNotifId(callerUid, senderId);
       const acceptNotifData: Record<string, any> = {
         id: acceptNotifId,
         type: 'invite_accepted',
@@ -654,7 +654,7 @@ export const claimSMSInvite = onCall(async (request) => {
           const match = matchDoc.data();
           if (match.createdBy === callerUid) continue;
           const team = (match.team1PlayerIds || []).includes(placeholderId) ? 1 : 2;
-          const notifId = `notif_${matchDoc.id}_${callerUid}`;
+          const notifId = matchInviteNotifId(matchDoc.id, callerUid);
           transaction.set(db.collection('notifications').doc(notifId), {
             id: notifId,
             type: 'match_invite',
@@ -1064,7 +1064,7 @@ export const createNotificationsOnMatchCreate = onDocumentCreated(
       if (!realRecipientIds.has(recipientId)) continue;
 
       const team = (match.team1PlayerIds || []).includes(recipientId) ? 1 : 2;
-      const notifId = `notif_${matchId}_${recipientId}`;
+      const notifId = matchInviteNotifId(matchId, recipientId);
       const notifData: Record<string, any> = {
         id: notifId,
         type: 'match_invite',
@@ -1165,7 +1165,7 @@ export const createNotificationsOnMatchUpdate = onDocumentUpdated(
     for (const recipientId of added) {
       if (!realRecipientIds.has(recipientId)) continue;
       const team = (after.team1PlayerIds || []).includes(recipientId) ? 1 : 2;
-      const notifId = `notif_${matchId}_${recipientId}`;
+      const notifId = matchInviteNotifId(matchId, recipientId);
       const notifData: Record<string, any> = {
         id: notifId, type: 'match_invite', status: 'sent',
         recipientId, senderId: modifiedBy, senderName,
@@ -1181,7 +1181,7 @@ export const createNotificationsOnMatchUpdate = onDocumentUpdated(
     // Existing players get match_updated (timestamp-suffixed ID)
     for (const recipientId of existing) {
       if (!realRecipientIds.has(recipientId)) continue;
-      const notifId = `notif_updated_${matchId}_${recipientId}_${randomUUID()}`;
+      const notifId = matchUpdatedNotifId(matchId, recipientId);
       const notifData: Record<string, any> = {
         id: notifId, type: 'match_updated', status: 'sent',
         recipientId, senderId: modifiedBy, senderName,
@@ -1199,7 +1199,7 @@ export const createNotificationsOnMatchUpdate = onDocumentUpdated(
     // Removed players get match_cancelled (timestamp-suffixed ID)
     for (const recipientId of removed) {
       if (!realRecipientIds.has(recipientId)) continue;
-      const notifId = `notif_removed_${matchId}_${recipientId}_${randomUUID()}`;
+      const notifId = matchRemovedNotifId(matchId, recipientId);
       const notifData: Record<string, any> = {
         id: notifId, type: 'match_cancelled', status: 'sent',
         recipientId, senderId: modifiedBy, senderName,
@@ -1271,7 +1271,7 @@ export const resendMatchNotifications = onCall({ invoker: "private" }, async (re
     if (!realRecipientIds.has(recipientId)) continue;
 
     const team = (match.team1PlayerIds || []).includes(recipientId) ? 1 : 2;
-    const notifId = `notif_${matchId}_${recipientId}`;
+    const notifId = matchInviteNotifId(matchId, recipientId);
     const notifData: Record<string, any> = {
       id: notifId, type: 'match_invite', status: 'sent',
       recipientId, senderId: callerUid, senderName,

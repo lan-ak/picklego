@@ -39,7 +39,7 @@ import {
 } from '../config/firebase';
 import { registerPushToken, unregisterPushToken } from '../services/pushNotifications';
 import { useOnboardingStatus } from '../hooks/useOnboardingStatus';
-import * as Crypto from 'expo-crypto';
+import { newMatchId, newPlaceholderPlayerId, playerInviteNotifId, matchCancelledNotifId } from '../utils/ids';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -660,7 +660,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const creator = currentUserRef.current;
     const newMatch: Match = {
       ...matchData,
-      id: Crypto.randomUUID(),
+      id: newMatchId(),
       createdAt: now,
       lastModifiedAt: now,
       lastModifiedBy: matchData.createdBy,
@@ -730,7 +730,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         playerId = firebaseUser.uid;
       } else {
         // Generate a local ID for invited/placeholder players
-        playerId = Crypto.randomUUID();
+        playerId = newPlaceholderPlayerId();
         isPlaceholder = true;
       }
 
@@ -838,7 +838,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (recipient?.pendingClaim) continue;
 
         cancelNotifications.push({
-          id: `notif_cancelled_${matchId}_${recipientId}_${now}`,
+          id: matchCancelledNotifId(matchId, recipientId, now),
           type: 'match_cancelled',
           status: 'sent',
           recipientId,
@@ -1290,7 +1290,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const now = Date.now();
       // Use a stable ID (no timestamp) so re-sending overwrites the existing invite
-      const notifId = `player_invite_${user.id}_${recipientId}`;
+      const notifId = playerInviteNotifId(user.id, recipientId);
       const notification: MatchNotification = {
         id: notifId,
         type: 'player_invite',
