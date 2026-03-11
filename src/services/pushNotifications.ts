@@ -14,17 +14,17 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function requestPushPermissions(): Promise<boolean> {
+export async function requestPushPermissions(): Promise<{ granted: boolean; canAskAgain: boolean }> {
   if (!Device.isDevice) {
     console.log('Push notifications require a physical device');
-    return false;
+    return { granted: false, canAskAgain: false };
   }
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  if (existingStatus === 'granted') return true;
+  if (existingStatus === 'granted') return { granted: true, canAskAgain: true };
 
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === 'granted';
+  const { status, canAskAgain } = await Notifications.requestPermissionsAsync();
+  return { granted: status === 'granted', canAskAgain: canAskAgain ?? true };
 }
 
 export async function getDevicePushToken(): Promise<string | null> {
@@ -45,7 +45,7 @@ export async function getDevicePushToken(): Promise<string | null> {
 }
 
 export async function registerPushToken(playerId: string): Promise<string | null> {
-  const granted = await requestPushPermissions();
+  const { granted } = await requestPushPermissions();
   if (!granted) return null;
 
   const token = await getDevicePushToken();

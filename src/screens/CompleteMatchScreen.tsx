@@ -20,7 +20,6 @@ import { AnimatedPressable } from '../components/AnimatedPressable';
 import { PrimaryButton, SecondaryButton } from '../components/Button';
 import { DismissableModal } from '../components/DismissableModal';
 import Layout from '../components/Layout';
-import { KeyboardAwareContainer } from '../components/KeyboardAwareContainer';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import PicklePete from '../components/PicklePete';
@@ -232,13 +231,8 @@ const CompleteMatchScreen = () => {
       return;
     }
 
-    // Superwall: gate match completion via placement
-    let proceedWithCompletion = false;
-    await registerPlacement({
-      placement: PLACEMENTS.MATCH_COMPLETE,
-      feature: () => { proceedWithCompletion = true; },
-    });
-    if (!proceedWithCompletion) return;
+    // Superwall: fire placement for analytics (non-blocking)
+    registerPlacement({ placement: PLACEMENTS.MATCH_COMPLETE });
 
     try {
       console.log('Completing match with winner:', matchWinner);
@@ -510,10 +504,11 @@ const CompleteMatchScreen = () => {
   return (
     <Layout title="Complete Match">
       <Animated.View style={[{ flex: 1 }, fadeStyle]}>
-      <KeyboardAwareContainer>
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
         >
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -624,7 +619,6 @@ const CompleteMatchScreen = () => {
             accessibilityHint="Submit the scores and complete the match"
           />
         </View>
-      </KeyboardAwareContainer>
       </Animated.View>
 
       {renderInvitePlayerModal()}

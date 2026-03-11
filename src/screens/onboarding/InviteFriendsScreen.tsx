@@ -6,6 +6,8 @@ import {
   FlatList,
   Alert,
   ActivityIndicator,
+  Linking,
+  AppState,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -53,14 +55,16 @@ const InviteFriendsScreen = () => {
   const [contactsLoading, setContactsLoading] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [hasRequestedPermission, setHasRequestedPermission] = useState(false);
+  const [canAskAgain, setCanAskAgain] = useState(true);
 
   const loadContacts = useCallback(async () => {
     setContactsLoading(true);
     try {
-      const { status } = await Contacts.requestPermissionsAsync();
+      const { status, canAskAgain: canAsk } = await Contacts.requestPermissionsAsync();
       setHasPermission(status === 'granted');
 
       if (status !== 'granted') {
+        setCanAskAgain(canAsk ?? true);
         setContactsLoading(false);
         return;
       }
@@ -114,6 +118,24 @@ const InviteFriendsScreen = () => {
     setHasRequestedPermission(true);
     loadContacts();
   }, [loadContacts]);
+
+  // Re-check contacts permission when returning from Settings
+  useEffect(() => {
+    if (hasPermission !== false || canAskAgain) return;
+
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'active') {
+        const { status } = await Contacts.getPermissionsAsync();
+        if (status === 'granted') {
+          setHasPermission(true);
+          setCanAskAgain(true);
+          loadContacts();
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [hasPermission, canAskAgain, loadContacts]);
 
   const toggleContact = (contactId: string) => {
     setSelectedContacts(prev => {
@@ -238,7 +260,7 @@ const InviteFriendsScreen = () => {
 
   return (
     <OnboardingLayout
-      step={3}
+      step={4}
       petePose="invite"
       peteSize="md"
       peteMessage={peteMessage}
@@ -291,8 +313,19 @@ const InviteFriendsScreen = () => {
               <View style={styles.emptyContainer}>
                 <Icon name="users" size={32} color={colors.gray400} />
                 <Text style={styles.emptyText}>
-                  Allow contact access to invite friends, or continue to schedule your first match.
+                  {canAskAgain
+                    ? 'Allow contact access to invite friends, or continue to schedule your first match.'
+                    : 'Contact access was denied. Enable it in Settings to invite friends.'}
                 </Text>
+                <AnimatedPressable
+                  style={styles.settingsButton}
+                  onPress={canAskAgain ? loadContacts : () => Linking.openSettings()}
+                  hapticStyle="light"
+                >
+                  <Text style={styles.settingsButtonText}>
+                    {canAskAgain ? 'Try Again' : 'Open Settings'}
+                  </Text>
+                </AnimatedPressable>
               </View>
             ) : contacts.length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -411,6 +444,16 @@ const styles = StyleSheet.create({
     color: colors.gray500,
     textAlign: 'center',
     lineHeight: 24,
+  },
+  settingsButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+  },
+  settingsButtonText: {
+    ...typography.button,
+    color: colors.white,
   },
 });
 

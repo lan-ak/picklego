@@ -101,7 +101,7 @@ const ScheduleMatchScreen = () => {
 
   return (
     <OnboardingLayout
-      step={4}
+      step={5}
       petePose="stopwatch"
       peteSize="lg"
       peteMessage="Let's get on the court!"

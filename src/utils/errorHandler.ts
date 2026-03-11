@@ -18,6 +18,7 @@ const FIREBASE_AUTH_ERRORS: Record<string, string> = {
   'auth/invalid-credential': 'Incorrect email or password. If you don\'t have an account, sign up instead.',
   'auth/account-exists-with-different-credential': 'An account already exists with this email using a different sign-in method.',
   'auth/requires-recent-login': 'Please sign in again to complete this action.',
+  'auth/operation-not-allowed': 'This sign-in method is not enabled. Please try a different method.',
 };
 
 const FIRESTORE_ERRORS: Record<string, string> = {

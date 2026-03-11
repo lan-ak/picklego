@@ -209,6 +209,7 @@ export interface DataContextType {
   invitePlayersBySMS: (contacts: { phone: string; name: string }[]) => Promise<{ inviteId: string }>;
   lookupContactsOnPickleGo: (phoneHashes: string[]) => Promise<Map<string, { playerId: string; playerName: string }>>;
   claimPendingSMSInvite: () => Promise<void>;
+  findSMSInvitesByPhone: (normalizedPhone: string) => Promise<SMSInvite[]>;
 }
 
 export type MainTabParamList = {
@@ -235,6 +236,7 @@ export type MainTabParamList = {
 export type OnboardingStackParamList = {
   Welcome: undefined;
   NotificationPerm: undefined;
+  PhoneNumber: undefined;
   InviteFriends: undefined;
   ScheduleMatch: undefined;
   OnboardingAddMatch: { onboardingMode: true };

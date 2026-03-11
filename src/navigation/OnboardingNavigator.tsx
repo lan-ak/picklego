@@ -4,6 +4,7 @@ import type { OnboardingStackParamList } from '../types';
 
 import WelcomeScreen from '../screens/onboarding/WelcomeScreen';
 import NotificationPermScreen from '../screens/onboarding/NotificationPermScreen';
+import PhoneNumberScreen from '../screens/onboarding/PhoneNumberScreen';
 import InviteFriendsScreen from '../screens/onboarding/InviteFriendsScreen';
 import ScheduleMatchScreen from '../screens/onboarding/ScheduleMatchScreen';
 import CelebrationScreen from '../screens/onboarding/CelebrationScreen';
@@ -22,6 +23,7 @@ const OnboardingNavigator = () => {
     >
       <Stack.Screen name="Welcome" component={WelcomeScreen} />
       <Stack.Screen name="NotificationPerm" component={NotificationPermScreen} />
+      <Stack.Screen name="PhoneNumber" component={PhoneNumberScreen} />
       <Stack.Screen name="InviteFriends" component={InviteFriendsScreen} />
       <Stack.Screen name="ScheduleMatch" component={ScheduleMatchScreen} />
       <Stack.Screen

@@ -473,14 +473,11 @@ const AddMatchScreen = () => {
           ]
         );
       } else {
-        // Superwall: gate new match creation via placement
-        let proceedWithCreation = false;
-        await registerPlacement({
+        // Superwall: fire placement for analytics (non-blocking)
+        registerPlacement({
           placement: PLACEMENTS.MATCH_CREATE,
           params: { match_count: matches.length },
-          feature: () => { proceedWithCreation = true; },
         });
-        if (!proceedWithCreation) return;
 
         // Create new match
         const newMatch = await addMatch({
@@ -827,6 +824,7 @@ const AddMatchScreen = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
       >
         <View style={styles.section}>
           <View style={styles.sectionHeader}>

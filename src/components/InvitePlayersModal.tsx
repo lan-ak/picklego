@@ -8,6 +8,9 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
+  Linking,
+  AppState,
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import * as SMS from 'expo-sms';
@@ -16,6 +19,7 @@ import { AnimatedPressable } from './AnimatedPressable';
 import { DismissableModal } from './DismissableModal';
 import { Icon } from './Icon';
 import { useData } from '../context/DataContext';
+import { getPlayerDocument } from '../config/firebase';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import type { ContactInfo, Player } from '../types';
 
@@ -114,6 +118,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [canAskAgain, setCanAskAgain] = useState(true);
   const [smsAvailable, setSmsAvailable] = useState(true);
   const [sending, setSending] = useState(false);
   const [hasRequestedContacts, setHasRequestedContacts] = useState(false);
@@ -147,6 +152,24 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     );
   }, [searchQuery, contactsList]);
 
+  // Re-check contacts permission when returning from Settings
+  useEffect(() => {
+    if (!permissionDenied || canAskAgain) return;
+
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'active') {
+        const { status } = await Contacts.getPermissionsAsync();
+        if (status === 'granted') {
+          setPermissionDenied(false);
+          setCanAskAgain(true);
+          loadContacts();
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [permissionDenied, canAskAgain]);
+
   // --- My Players tab: get filtered connected players ---
   const getFilteredPlayers = (): Player[] => {
     const excludeSet = new Set(excludePlayerIds);
@@ -179,9 +202,10 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   const loadContacts = async () => {
     setLoadingContacts(true);
     try {
-      const { status } = await Contacts.requestPermissionsAsync();
+      const { status, canAskAgain: canAsk } = await Contacts.requestPermissionsAsync();
       if (status !== 'granted') {
         setPermissionDenied(true);
+        setCanAskAgain(canAsk ?? true);
         setLoadingContacts(false);
         return;
       }
@@ -275,7 +299,14 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
       for (const contact of onPickleGo) {
         try {
           if (isAddMatch && onSelectExistingPlayer) {
-            const existingPlayer = players.find(p => p.id === contact.pickleGoPlayerId);
+            let existingPlayer = players.find(p => p.id === contact.pickleGoPlayerId);
+            // Player found on PickleGo but not in local state — fetch from Firestore
+            if (!existingPlayer && contact.pickleGoPlayerId) {
+              const fetched = await getPlayerDocument(contact.pickleGoPlayerId);
+              if (fetched) {
+                existingPlayer = fetched;
+              }
+            }
             if (existingPlayer) {
               onSelectExistingPlayer(existingPlayer);
               continue;
@@ -293,6 +324,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
             try {
               const placeholder = await addPlayer({
                 name: contact.name,
+                phoneNumber: contact.phone,
                 pendingClaim: true,
                 invitedBy: currentUser.id,
                 isInvited: true,
@@ -484,6 +516,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
           )}
           style={styles.playerList}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>
@@ -567,10 +600,17 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
           <Icon name="book-user" size={40} color={colors.gray400} />
           <Text style={styles.emptyStateTitle}>Contacts Access Required</Text>
           <Text style={styles.emptyStateText}>
-            Allow PickleGo to access your contacts to invite friends. You can enable this in Settings.
+            {canAskAgain
+              ? 'Allow PickleGo to access your contacts to invite friends.'
+              : 'Allow PickleGo to access your contacts to invite friends. You can enable this in Settings.'}
           </Text>
-          <AnimatedPressable style={styles.retryButton} onPress={loadContacts}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
+          <AnimatedPressable
+            style={styles.retryButton}
+            onPress={canAskAgain ? loadContacts : () => Linking.openSettings()}
+          >
+            <Text style={styles.retryButtonText}>
+              {canAskAgain ? 'Try Again' : 'Open Settings'}
+            </Text>
           </AnimatedPressable>
         </View>
       );
@@ -604,6 +644,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
           renderItem={renderContactItem}
           style={styles.contactList}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>
@@ -693,8 +734,8 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
 
   const renderInviteTab = () => (
     <View style={styles.inviteContainer}>
-      {renderContactsSection()}
       {renderManualForm()}
+      {renderContactsSection()}
     </View>
   );
 
@@ -705,7 +746,10 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     : 'Invite Players';
 
   const content = (
-    <View style={renderAsScreen ? styles.screenContent : styles.modalContent}>
+    <KeyboardAvoidingView
+      style={renderAsScreen ? styles.screenContent : styles.modalContent}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>{title}</Text>
@@ -745,7 +789,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
       {isAddMatch && activeTab === 'players'
         ? renderPlayersTab()
         : renderInviteTab()}
-    </View>
+    </KeyboardAvoidingView>
   );
 
   // When used as a navigation screen, skip the Modal wrapper
@@ -859,6 +903,7 @@ const styles = StyleSheet.create({
   // Invite tab
   inviteContainer: {
     paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
   },
 
   // Shared search
@@ -956,10 +1001,10 @@ const styles = StyleSheet.create({
 
   // Manual form
   manualFormContainer: {
-    borderTopWidth: 1,
-    borderTopColor: colors.gray100,
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray100,
+    marginBottom: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   manualFormToggle: {
     flexDirection: 'row',

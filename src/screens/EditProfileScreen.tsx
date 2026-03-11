@@ -10,7 +10,6 @@ import {
   Alert,
 } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
-import { KeyboardAwareContainer } from '../components/KeyboardAwareContainer';
 import { Icon } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
@@ -122,7 +121,7 @@ const EditProfileScreen: React.FC = () => {
   return (
     <Layout title="Edit Profile">
       <Animated.View style={[{ flex: 1 }, fadeStyle]}>
-      <ScrollView style={styles.container}>
+      <ScrollView style={styles.container} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <View style={styles.profilePicEditContainer}>
           {currentUser?.profilePic ? (
             <Image

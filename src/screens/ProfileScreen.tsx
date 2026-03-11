@@ -102,6 +102,8 @@ const ProfileSetupView = () => {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
       >
         <View style={styles.setupContent}>
           <Image
@@ -341,7 +343,7 @@ const ProfileScreen = () => {
   return (
     <Layout title="Profile">
       <Animated.View style={[{ flex: 1 }, fadeStyle]}>
-      <ScrollView style={styles.container}>
+      <ScrollView style={styles.container} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <View style={styles.profileSection}>
           {/* Profile Picture */}
           <AnimatedPressable style={[styles.profilePicContainer, uploading && { opacity: 0.6 }]} onPress={pickAndUploadImage} disabled={uploading}>

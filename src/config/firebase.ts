@@ -34,7 +34,7 @@ import {
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import * as Crypto from 'expo-crypto';
-import { Player, Match, MatchNotification } from '../types';
+import { Player, Match, MatchNotification, SMSInvite } from '../types';
 
 // Firebase configuration from environment variables
 const firebaseConfig = {
@@ -140,16 +140,18 @@ export const getPlayerByEmail = async (email: string) => {
     // Try the indexed emailLowercase field first
     let q = query(collection(db, 'players'), where('emailLowercase', '==', normalizedEmail));
     let querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      return querySnapshot.docs[0].data() as Player;
+
+    if (querySnapshot.empty) {
+      // Fallback: query on the original email field for docs created before migration
+      q = query(collection(db, 'players'), where('email', '==', email));
+      querySnapshot = await getDocs(q);
     }
-    // Fallback: query on the original email field for docs created before migration
-    q = query(collection(db, 'players'), where('email', '==', email));
-    querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      return querySnapshot.docs[0].data() as Player;
-    }
-    return null;
+
+    if (querySnapshot.empty) return null;
+
+    // Prefer real (non-placeholder) players over pending ones
+    const players = querySnapshot.docs.map(d => d.data() as Player);
+    return players.find(p => !p.pendingClaim) || players[0];
   } catch (error: any) {
     throw new Error('Failed to get player by email: ' + error.message);
   }
@@ -534,6 +536,14 @@ export const callLookupPhoneNumbers = (phoneHashes: string[]) =>
     { phoneHashes: string[] },
     { matches: Record<string, { playerId: string; playerName: string }> }
   >('lookupPhoneNumbers', { phoneHashes });
+
+export const callFindSMSInvitesByPhone = async (normalizedPhone: string): Promise<SMSInvite[]> => {
+  const result = await authenticatedCallable<
+    { phoneHashes: string[]; normalizedPhone: string },
+    { matches: Record<string, any>; pendingInvites: SMSInvite[] }
+  >('lookupPhoneNumbers', { phoneHashes: [], normalizedPhone });
+  return result.pendingInvites || [];
+};
 
 export const callDeleteAccount = () =>
   authenticatedCallable<{}, { deleted: boolean; placeholdersRemoved: number }>(

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
 import { AnimatedPressable } from './AnimatedPressable';
@@ -80,9 +80,12 @@ const Layout: React.FC<LayoutProps> = ({
           </View>
         </View>
       )}
-      <View style={[styles.container, !title && { paddingTop: insets.top }]}>
+      <KeyboardAvoidingView
+        style={[styles.container, !title && { paddingTop: insets.top }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         {children}
-      </View>
+      </KeyboardAvoidingView>
     </View>
   );
 };

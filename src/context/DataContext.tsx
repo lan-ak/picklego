@@ -24,7 +24,7 @@ import {
   getNotificationsForPlayer,
   getNotificationsBySender,
   removeConnection,
-  addConnectionsBatch,
+  callAcceptPlayerInvite,
   callClaimPlaceholderProfile,
   callCreateSMSInvite,
   callClaimSMSInvite,
@@ -34,6 +34,7 @@ import {
   updateNotificationDocument,
   deleteNotificationDocument,
   getPlaceholderByEmail,
+  callFindSMSInvitesByPhone,
 } from '../config/firebase';
 import { registerPushToken, unregisterPushToken } from '../services/pushNotifications';
 import { useOnboardingStatus } from '../hooks/useOnboardingStatus';
@@ -624,6 +625,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await createMatchDocument(newMatch);
     } catch (error) {
       console.error('Error saving match to Firestore:', error);
+      // Remove from local state since it didn't persist
+      setMatches(prev => prev.filter(m => m.id !== newMatch.id));
+      throw error;
     }
 
     return newMatch;
@@ -640,10 +644,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lastModifiedBy: currentUserRef.current?.id || matchToUpdate.lastModifiedBy,
     };
 
-    const updatedMatches = matchesRef.current.map(match =>
+    setMatches(prev => prev.map(match =>
       match.id === matchId ? updatedMatch : match
-    );
-    setMatches(updatedMatches);
+    ));
 
     // Persist to Firestore
     try {
@@ -658,7 +661,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Recalculate stats when a match is completed or a completed match is edited
     if (updates.status === 'completed' || (matchToUpdate.status === 'completed' && (updates.games || updates.winnerTeam))) {
-      recalculateStatsForPlayers(updatedMatch.allPlayerIds, updatedMatches);
+      recalculateStatsForPlayers(updatedMatch.allPlayerIds,
+        matchesRef.current.map(m => m.id === matchId ? updatedMatch : m)
+      );
     }
   }, []);
 
@@ -884,6 +889,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const existingPlayer = await getPlayerByEmail(email);
         if (!existingPlayer || !user) return { type: 'error' };
+
+        if (existingPlayer.pendingClaim) {
+          console.warn('getPlayerByEmail returned a placeholder for', email, '— email lookup may be stale');
+        }
 
         // Don't invite yourself
         if (existingPlayer.id === user.id) return { type: 'error' };
@@ -1149,10 +1158,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check if a recipient has opted out of a specific notification type
   const isNotificationEnabled = useCallback(async (recipientId: string, type: MatchNotification['type']): Promise<boolean> => {
     const localPlayer = playersRef.current.find(p => p.id === recipientId);
-    const prefs = localPlayer?.notificationPreferences
-      ?? (await getPlayerDocument(recipientId))?.notificationPreferences;
+    const player = localPlayer ?? (await getPlayerDocument(recipientId));
+
+    // Skip placeholder/non-existing users entirely
+    if (!player || player.pendingClaim) return false;
+
     // Default to enabled if no preferences are set
-    return prefs?.[type] ?? true;
+    return player.notificationPreferences?.[type] ?? true;
   }, []);
 
   // Send notifications to all players in a match (except the creator)
@@ -1360,39 +1372,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       if (accept) {
-        // 1. Update the invite notification status
-        await updateNotificationDocument(notificationId, { status: 'accepted', respondedAt: now });
+        // Use the atomic cloud function — it updates the notification, adds
+        // bidirectional connections, and creates the accept notification in a
+        // single Firestore batch, preventing inconsistent state on partial failure.
+        const result = await callAcceptPlayerInvite(notificationId);
 
-        // 2. Add bidirectional connections
-        await addConnectionsBatch(user.id, senderId);
-
-        // 3. Create invite_accepted notification for the sender (if enabled)
-        const senderAcceptsNotif = await isNotificationEnabled(senderId, 'invite_accepted');
-        let acceptNotification: MatchNotification | null = null;
-        if (senderAcceptsNotif) {
-          const acceptNotifId = `invite_accepted_${user.id}_${senderId}_${now}`;
-          acceptNotification = {
-            id: acceptNotifId,
-            type: 'invite_accepted',
-            status: 'sent',
-            recipientId: senderId,
-            senderId: user.id,
-            senderName: user.name,
-            senderProfilePic: user.profilePic,
-            message: `${user.name} accepted your player invite!`,
-            createdAt: now,
-          };
-          await createNotificationDocument(acceptNotification);
-        }
+        // Build local accept notification from the cloud function result
+        const acceptNotification: MatchNotification = {
+          id: result.acceptNotificationId,
+          type: 'invite_accepted',
+          status: 'sent',
+          recipientId: senderId,
+          senderId: user.id,
+          senderName: user.name,
+          senderProfilePic: user.profilePic,
+          message: `${user.name} accepted your player invite!`,
+          createdAt: now,
+        };
 
         // Update local notification state
         setNotifications(prev => {
           const updated = prev.map(n =>
             n.id === notificationId ? { ...n, status: 'accepted' as const, respondedAt: now } : n
           );
-          return acceptNotification
-            ? [acceptNotification, ...updated].sort((a, b) => b.createdAt - a.createdAt)
-            : updated;
+          return [acceptNotification, ...updated].sort((a, b) => b.createdAt - a.createdAt);
         });
 
         // Update local player connections arrays
@@ -1473,6 +1476,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return new Map(Object.entries(result.matches));
   }, []);
 
+  const findSMSInvitesByPhone = useCallback(async (normalizedPhone: string) => {
+    if (!currentUserRef.current) return [];
+    return callFindSMSInvitesByPhone(normalizedPhone);
+  }, []);
+
   const claimPendingSMSInvite = useCallback(async () => {
     try {
       const pendingInviteId = await AsyncStorage.getItem('pendingSMSInviteId');
@@ -1537,6 +1545,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     invitePlayersBySMS,
     lookupContactsOnPickleGo,
     claimPendingSMSInvite,
+    findSMSInvitesByPhone,
   }), [
     players, matches, deletedPlayers, currentUser, authLoading,
     hasCompletedOnboarding, completeOnboarding, notifications, unreadNotificationCount,
@@ -1550,6 +1559,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearAllNotifications, refreshMatches, refreshNotifications,
     refreshConnectedPlayers, invitePlayersBySMS, lookupContactsOnPickleGo,
     claimPendingSMSInvite,
+    findSMSInvitesByPhone,
   ]);
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;

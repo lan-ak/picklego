@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Linking, AppState } from 'react-native';
 import Animated from 'react-native-reanimated';
 import * as Notifications from 'expo-notifications';
 import { useNavigation } from '@react-navigation/native';
@@ -70,6 +70,8 @@ const NotificationPermScreen = () => {
   const triggerHaptic = useHaptic();
   const [loading, setLoading] = useState(false);
   const [alreadyGranted, setAlreadyGranted] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const [canAskAgain, setCanAskAgain] = useState(true);
 
   useEffect(() => {
     Notifications.getPermissionsAsync().then(({ status }) => {
@@ -80,19 +82,52 @@ const NotificationPermScreen = () => {
   const handleEnable = async () => {
     setLoading(true);
     try {
-      const granted = await requestPushPermissions();
+      const { granted, canAskAgain: canAsk } = await requestPushPermissions();
       if (granted && currentUser?.id) {
         await registerPushToken(currentUser.id);
         triggerHaptic('success');
+        setLoading(false);
+        navigation.navigate('PhoneNumber');
+        return;
+      }
+      if (!granted) {
+        setPermissionDenied(true);
+        setCanAskAgain(canAsk);
       }
     } catch (error) {
       console.error('Error requesting notifications:', error);
     }
     setLoading(false);
-    navigation.navigate('InviteFriends');
   };
 
-  const goNext = () => navigation.navigate('InviteFriends');
+  const goNext = async () => {
+    if (currentUser?.id) {
+      await registerPushToken(currentUser.id);
+    }
+    navigation.navigate('PhoneNumber');
+  };
+
+  // Re-check notification permission when returning from Settings
+  useEffect(() => {
+    if (!permissionDenied || canAskAgain) return;
+
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'active') {
+        const { status } = await Notifications.getPermissionsAsync();
+        if (status === 'granted') {
+          setPermissionDenied(false);
+          setCanAskAgain(true);
+          if (currentUser?.id) {
+            await registerPushToken(currentUser.id);
+          }
+          triggerHaptic('success');
+          navigation.navigate('PhoneNumber');
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [permissionDenied, canAskAgain, currentUser?.id, navigation, triggerHaptic]);
 
   if (alreadyGranted) {
     return (
@@ -118,11 +153,13 @@ const NotificationPermScreen = () => {
       step={2}
       petePose="stopwatch"
       peteSize="lg"
-      peteMessage="Don't miss game time!"
+      peteMessage={permissionDenied && !canAskAgain ? "You can enable this in Settings" : "Don't miss game time!"}
       title="Stay in the Game"
-      subtitle="Here's what you'll get notified about"
-      ctaTitle="Enable Notifications"
-      ctaOnPress={handleEnable}
+      subtitle={permissionDenied && !canAskAgain
+        ? "Notification access was denied. Enable it in Settings to stay updated."
+        : "Here's what you'll get notified about"}
+      ctaTitle={permissionDenied && !canAskAgain ? 'Open Settings' : 'Enable Notifications'}
+      ctaOnPress={permissionDenied && !canAskAgain ? () => Linking.openSettings() : handleEnable}
       ctaLoading={loading}
       secondaryAction={{ title: 'Continue without', onPress: goNext }}
     >

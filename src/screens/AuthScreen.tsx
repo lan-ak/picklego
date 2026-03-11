@@ -10,12 +10,13 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
 import { GoogleIcon } from '../components/GoogleIcon';
-import { KeyboardAwareContainer } from '../components/KeyboardAwareContainer';
 import { useData } from '../context/DataContext';
 import { sendPasswordReset } from '../config/firebase';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
@@ -178,8 +179,8 @@ const AuthScreen = () => {
     <>
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
       <Animated.View style={[{ flex: 1 }, fadeStyle]}>
-      <KeyboardAwareContainer style={styles.keyboardView}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+      <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <View style={styles.logoContainer}>
           <PicklePete pose="welcome" size="xl" />
           <Text style={styles.appName}>PickleGo</Text>
@@ -415,7 +416,7 @@ const AuthScreen = () => {
           </AnimatedPressable>
         </View>
         </ScrollView>
-      </KeyboardAwareContainer>
+      </KeyboardAvoidingView>
       </Animated.View>
     </SafeAreaView>
 
@@ -426,6 +427,7 @@ const AuthScreen = () => {
       animationType="fade"
       onRequestClose={() => setShowNameModal(false)}
     >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>What's your name?</Text>
@@ -455,6 +457,7 @@ const AuthScreen = () => {
           </AnimatedPressable>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
     </>
   );

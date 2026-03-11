@@ -67,6 +67,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       "expo-notifications",
       {
         color: "#4CAF50",
+        mode: "production",
       },
     ],
     "expo-apple-authentication",

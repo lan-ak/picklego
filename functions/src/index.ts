@@ -10,6 +10,13 @@ import Expo, { ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 
 const app = initializeApp();
 
+/** Normalize a phone number to digits-only with US country code. */
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) return '1' + digits;
+  return digits;
+}
+
 const db = getFirestore(app);
 const expo = new Expo();
 
@@ -260,10 +267,39 @@ export const sendPushOnNotificationWrite = firestore
     }
 
     // Look up recipient's push tokens
-    const recipientDoc = await db.collection('players').doc(notification.recipientId).get();
-    if (!recipientDoc.exists) return;
-    const pushTokens: string[] = (recipientDoc.data()!.pushTokens || [])
-      .filter((t: string) => Expo.isExpoPushToken(t));
+    let recipientDoc = await db.collection('players').doc(notification.recipientId).get();
+    // Skip notifications for placeholder users (belt-and-suspenders guard)
+    if (recipientDoc.exists && recipientDoc.data()!.pendingClaim === true) {
+      console.log(`sendPushOnNotificationWrite: skipping placeholder recipient ${notification.recipientId}`);
+      return;
+    }
+
+    let pushTokens: string[] = recipientDoc.exists
+      ? (recipientDoc.data()!.pushTokens || []).filter((t: string) => Expo.isExpoPushToken(t))
+      : [];
+
+    // If no push tokens found and recipientId looks like a placeholder (numeric timestamp),
+    // try to resolve via the match's allPlayerIds (which may have been updated with the real UID)
+    if (pushTokens.length === 0 && /^\d+$/.test(notification.recipientId) && notification.matchId) {
+      const matchDoc = await db.collection('matches').doc(notification.matchId).get();
+      if (matchDoc.exists) {
+        const allIds: string[] = matchDoc.data()!.allPlayerIds || [];
+        for (const id of allIds) {
+          if (id === notification.recipientId || id === notification.senderId) continue;
+          const altDoc = await db.collection('players').doc(id).get();
+          if (altDoc.exists) {
+            const altTokens = (altDoc.data()!.pushTokens || []).filter((t: string) => Expo.isExpoPushToken(t));
+            if (altTokens.length > 0) {
+              recipientDoc = altDoc;
+              pushTokens = altTokens;
+              console.log(`sendPushOnNotificationWrite: resolved placeholder ${notification.recipientId} → ${id}`);
+              break;
+            }
+          }
+        }
+      }
+    }
+
     if (pushTokens.length === 0) return;
 
     // Build message based on notification type
@@ -459,7 +495,10 @@ export const claimSMSInvite = onCall(async (request) => {
 
   // Check for SMS-originated placeholders (no email) created by the inviter for AddMatch context.
   // These need to be merged into the new user's account so match history transfers.
+  // Match by phone number to ensure the correct placeholder is claimed.
   try {
+    const callerPhone = callerDoc.exists ? callerDoc.data()!.phoneNumber : undefined;
+
     const placeholderQuery = await db.collection('players')
       .where('invitedBy', '==', senderId)
       .where('pendingClaim', '==', true)
@@ -470,6 +509,10 @@ export const claimSMSInvite = onCall(async (request) => {
       // Only claim placeholders without email (SMS-originated) — email placeholders
       // are handled by the separate claimPlaceholderProfile flow
       if (placeholder.email) continue;
+
+      // Verify the placeholder's phone number matches the claiming user's phone
+      if (!callerPhone || !placeholder.phoneNumber) continue;
+      if (normalizePhone(placeholder.phoneNumber) !== normalizePhone(callerPhone)) continue;
 
       const placeholderId = placeholderDoc.id;
 
@@ -507,7 +550,6 @@ export const claimSMSInvite = onCall(async (request) => {
 
       await claimBatch.commit();
       console.log(`SMS placeholder ${placeholderId} claimed by ${callerUid}, ${matchesUpdated} matches updated`);
-      break; // Only claim one placeholder per inviter
     }
   } catch (error) {
     // Placeholder claiming is best-effort — don't fail the whole claim
@@ -528,40 +570,80 @@ export const lookupPhoneNumbers = onCall(async (request) => {
   }
 
   const phoneHashes = request.data?.phoneHashes as string[] | undefined;
+  const normalizedPhone = request.data?.normalizedPhone as string | undefined;
 
-  if (!phoneHashes || !Array.isArray(phoneHashes) || phoneHashes.length === 0) {
-    throw new HttpsError('invalid-argument', 'phoneHashes is required');
+  const hasHashes = phoneHashes && Array.isArray(phoneHashes) && phoneHashes.length > 0;
+  const hasPhone = normalizedPhone && typeof normalizedPhone === 'string';
+
+  if (!hasHashes && !hasPhone) {
+    throw new HttpsError('invalid-argument', 'phoneHashes or normalizedPhone is required');
   }
 
   // Limit batch size to prevent abuse
-  if (phoneHashes.length > 500) {
+  if (hasHashes && phoneHashes!.length > 500) {
     throw new HttpsError('invalid-argument', 'Maximum 500 phone hashes per request');
   }
 
   const callerUid = request.auth.uid;
   const results: Record<string, { playerId: string; playerName: string }> = {};
 
-  // Firestore 'in' queries support max 30 items, so chunk
-  const chunkSize = 30;
-  for (let i = 0; i < phoneHashes.length; i += chunkSize) {
-    const chunk = phoneHashes.slice(i, i + chunkSize);
-    const snapshot = await db.collection('players')
-      .where('phoneNumberHash', 'in', chunk)
-      .get();
+  // Look up players by phone hash
+  if (hasHashes) {
+    const chunkSize = 30;
+    for (let i = 0; i < phoneHashes!.length; i += chunkSize) {
+      const chunk = phoneHashes!.slice(i, i + chunkSize);
+      const snapshot = await db.collection('players')
+        .where('phoneNumberHash', 'in', chunk)
+        .get();
 
-    for (const doc of snapshot.docs) {
-      if (doc.id === callerUid) continue; // Skip self
-      const playerData = doc.data();
-      if (playerData.phoneNumberHash) {
-        results[playerData.phoneNumberHash] = {
-          playerId: doc.id,
-          playerName: playerData.name || 'Unknown',
-        };
+      for (const doc of snapshot.docs) {
+        if (doc.id === callerUid) continue; // Skip self
+        const playerData = doc.data();
+        if (playerData.phoneNumberHash) {
+          results[playerData.phoneNumberHash] = {
+            playerId: doc.id,
+            playerName: playerData.name || 'Unknown',
+          };
+        }
       }
     }
   }
 
-  return { matches: results };
+  // Optionally find pending SMS invites for a phone number
+  let pendingInvites: Array<{
+    id: string;
+    inviterId: string;
+    inviterName: string;
+    recipientPhones: string[];
+    recipientNames: string[];
+    status: string;
+    createdAt: number;
+    claimedBy: string[];
+  }> = [];
+
+  if (hasPhone) {
+    const inviteSnapshot = await db.collection('smsInvites')
+      .where('recipientPhones', 'array-contains', normalizedPhone)
+      .where('status', '==', 'sent')
+      .limit(20)
+      .get();
+
+    pendingInvites = inviteSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        inviterId: data.inviterId,
+        inviterName: data.inviterName,
+        recipientPhones: data.recipientPhones,
+        recipientNames: data.recipientNames,
+        status: data.status,
+        createdAt: data.createdAt,
+        claimedBy: data.claimedBy || [],
+      };
+    });
+  }
+
+  return { matches: results, pendingInvites };
 });
 
 // ---- Server-side stats calculation helpers ----

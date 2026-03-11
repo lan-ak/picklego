@@ -116,13 +116,8 @@ const MatchDetailsScreen = () => {
   const handleRematch = async () => {
     if (match.matchType !== 'doubles' || !currentUser) return;
 
-    // Superwall: gate rematch via placement
-    let proceedWithRematch = false;
-    await registerPlacement({
-      placement: PLACEMENTS.REMATCH,
-      feature: () => { proceedWithRematch = true; },
-    });
-    if (!proceedWithRematch) return;
+    // Superwall: fire placement for analytics (non-blocking)
+    registerPlacement({ placement: PLACEMENTS.REMATCH });
 
     Alert.alert(
       'Rematch',
