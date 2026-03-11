@@ -111,6 +111,7 @@ const AddMatchScreen = () => {
     rematchData?.randomizeTeamsPerGame ?? existingMatch?.randomizeTeamsPerGame ?? false
   );
 
+  const scrollRef = useRef<ScrollView>(null);
   const pointsToWinInput = useRef<TextInput>(null);
   const numberOfGamesInput = useRef<TextInput>(null);
 
@@ -192,6 +193,9 @@ const AddMatchScreen = () => {
 
       // Clear params so returning to this tab later doesn't re-apply
       navigation.setParams(undefined as any);
+
+      // Scroll to top when tab gains focus
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
 
       // Refresh connected players to pick up newly accepted connections
       // and prune stale placeholders
@@ -799,6 +803,7 @@ const AddMatchScreen = () => {
     <Layout title={isEditing ? "Edit Match" : "New Match"} isInTabNavigator={true}>
       <Animated.View style={[{ flex: 1 }, fadeStyle]}>
       <ScrollView
+        ref={scrollRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"

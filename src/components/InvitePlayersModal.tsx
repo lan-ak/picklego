@@ -19,6 +19,7 @@ import { DismissableModal } from './DismissableModal';
 import { Icon } from './Icon';
 import { useData } from '../context/DataContext';
 import { getPlayerDocument } from '../config/firebase';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import type { ContactInfo, Player } from '../types';
 import { normalizePhone, hashPhone, formatPhoneDisplay } from '../utils/phone';
@@ -64,6 +65,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     players,
   } = useData();
 
+  const insets = useSafeAreaInsets();
   const isAddMatch = context === 'addMatch';
 
   // Tab state — only used in addMatch context
@@ -484,6 +486,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
         <FlatList
           data={filteredPlayers}
           keyExtractor={item => item.id}
+          contentContainerStyle={{ paddingBottom: spacing.lg }}
           renderItem={({ item }) => (
             <AnimatedPressable
               style={styles.playerItem}
@@ -635,6 +638,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
           keyExtractor={item => item.phone}
           renderItem={renderContactItem}
           style={styles.contactList}
+          contentContainerStyle={{ paddingBottom: spacing.lg }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
@@ -739,7 +743,10 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
 
   const content = (
     <KeyboardAvoidingView
-      style={renderAsScreen ? styles.screenContent : styles.modalContent}
+      style={[
+        renderAsScreen ? styles.screenContent : styles.modalContent,
+        { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+      ]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Header */}
@@ -811,12 +818,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: borderRadius.xl,
     borderTopRightRadius: borderRadius.xl,
     maxHeight: '85%',
-    paddingBottom: Platform.OS === 'ios' ? 34 : spacing.lg,
   },
   screenContent: {
     flex: 1,
     backgroundColor: colors.white,
-    paddingBottom: Platform.OS === 'ios' ? 34 : spacing.lg,
   },
   header: {
     flexDirection: 'row',
