@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, BackHandler, Platform } from 'react-native';
+import { View, Text, StyleSheet, BackHandler, Platform, Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
@@ -52,7 +52,7 @@ const OnboardingLayout = ({
   children,
 }: OnboardingLayoutProps) => {
   const fadeStyle = useFadeIn();
-  const peteScale = useSharedValue(0);
+  const peteScale = useSharedValue(0.8);
 
   useEffect(() => {
     peteScale.value = withDelay(100, withSpring(1, springConfig.bouncy));
@@ -71,47 +71,54 @@ const OnboardingLayout = ({
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
-      <Animated.View style={[styles.content, fadeStyle]}>
-        {showProgressBar && (
-          <OnboardingProgressBar currentStep={step} totalSteps={totalSteps} />
-        )}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <Animated.View style={[styles.content, fadeStyle]}>
+            {showProgressBar && (
+              <OnboardingProgressBar currentStep={step} totalSteps={totalSteps} />
+            )}
 
-        {heroColor ? (
-          <View style={[styles.heroSection, { backgroundColor: heroColor }]}>
-            <Animated.View style={peteAnimStyle}>
-              <PicklePete pose={petePose} size={peteSize} message={peteMessage} />
-            </Animated.View>
-          </View>
-        ) : (
-          <Animated.View style={peteAnimStyle}>
-            <PicklePete pose={petePose} size={peteSize} message={peteMessage} />
+            {heroColor ? (
+              <View style={[styles.heroSection, { backgroundColor: heroColor }]}>
+                <Animated.View style={peteAnimStyle}>
+                  <PicklePete pose={petePose} size={peteSize} message={peteMessage} />
+                </Animated.View>
+              </View>
+            ) : (
+              <Animated.View style={peteAnimStyle}>
+                <PicklePete pose={petePose} size={peteSize} message={peteMessage} />
+              </Animated.View>
+            )}
+
+            {title && <Text style={styles.title}>{title}</Text>}
+            {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+
+            <View style={styles.body}>{children}</View>
+
+            <View style={styles.footer}>
+              <PrimaryButton
+                title={ctaTitle}
+                onPress={ctaOnPress}
+                loading={ctaLoading}
+                disabled={ctaDisabled}
+                style={styles.ctaButton}
+              />
+              {secondaryAction && (
+                <AnimatedPressable
+                  style={styles.secondaryAction}
+                  onPress={secondaryAction.onPress}
+                  hapticStyle="light"
+                >
+                  <Text style={styles.secondaryText}>{secondaryAction.title}</Text>
+                </AnimatedPressable>
+              )}
+            </View>
           </Animated.View>
-        )}
-
-        {title && <Text style={styles.title}>{title}</Text>}
-        {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-
-        <View style={styles.body}>{children}</View>
-
-        <View style={styles.footer}>
-          <PrimaryButton
-            title={ctaTitle}
-            onPress={ctaOnPress}
-            loading={ctaLoading}
-            disabled={ctaDisabled}
-            style={styles.ctaButton}
-          />
-          {secondaryAction && (
-            <AnimatedPressable
-              style={styles.secondaryAction}
-              onPress={secondaryAction.onPress}
-              hapticStyle="light"
-            >
-              <Text style={styles.secondaryText}>{secondaryAction.title}</Text>
-            </AnimatedPressable>
-          )}
-        </View>
-      </Animated.View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -120,6 +127,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.surface,
+  },
+  keyboardAvoid: {
+    flex: 1,
   },
   content: {
     flex: 1,

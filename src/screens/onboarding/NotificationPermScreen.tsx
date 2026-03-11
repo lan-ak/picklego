@@ -72,6 +72,7 @@ const NotificationPermScreen = () => {
   const [alreadyGranted, setAlreadyGranted] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [canAskAgain, setCanAskAgain] = useState(true);
+  const [hasAttempted, setHasAttempted] = useState(false);
 
   useEffect(() => {
     Notifications.getPermissionsAsync().then(({ status }) => {
@@ -80,6 +81,7 @@ const NotificationPermScreen = () => {
   }, []);
 
   const handleEnable = async () => {
+    setHasAttempted(true);
     setLoading(true);
     try {
       const { granted, canAskAgain: canAsk } = await requestPushPermissions();
@@ -153,13 +155,13 @@ const NotificationPermScreen = () => {
       step={2}
       petePose="stopwatch"
       peteSize="lg"
-      peteMessage={permissionDenied && !canAskAgain ? "You can enable this in Settings" : "Don't miss game time!"}
+      peteMessage={hasAttempted && permissionDenied && !canAskAgain ? "You can enable this in Settings" : "Don't miss game time!"}
       title="Stay in the Game"
-      subtitle={permissionDenied && !canAskAgain
+      subtitle={hasAttempted && permissionDenied && !canAskAgain
         ? "Notification access was denied. Enable it in Settings to stay updated."
         : "Here's what you'll get notified about"}
-      ctaTitle={permissionDenied && !canAskAgain ? 'Open Settings' : 'Enable Notifications'}
-      ctaOnPress={permissionDenied && !canAskAgain ? () => Linking.openSettings() : handleEnable}
+      ctaTitle={hasAttempted && permissionDenied && !canAskAgain ? 'Open Settings' : 'Enable Notifications'}
+      ctaOnPress={hasAttempted && permissionDenied && !canAskAgain ? () => Linking.openSettings() : handleEnable}
       ctaLoading={loading}
       secondaryAction={{ title: 'Continue without', onPress: goNext }}
     >

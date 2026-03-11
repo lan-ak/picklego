@@ -18,7 +18,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Contacts from 'expo-contacts';
 import * as SMS from 'expo-sms';
-import * as Crypto from 'expo-crypto';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { OnboardingStackParamList, ContactInfo } from '../../types';
@@ -28,22 +27,9 @@ import { Icon } from '../../components/Icon';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { colors, typography, spacing, borderRadius, shadows, springConfig } from '../../theme';
+import { normalizePhone, hashPhone } from '../../utils/phone';
 
 type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'InviteFriends'>;
-
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) return '1' + digits;
-  if (digits.length === 11 && digits.startsWith('1')) return digits;
-  return digits;
-}
-
-async function hashPhone(normalizedPhone: string): Promise<string> {
-  return Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    normalizedPhone,
-  );
-}
 
 const InviteFriendsScreen = () => {
   const navigation = useNavigation<Nav>();

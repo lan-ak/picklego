@@ -17,6 +17,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Player } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { isValidPhone, formatPhoneInput } from '../utils/phone';
 import { useToast } from '../context/ToastContext';
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import Animated from 'react-native-reanimated';
@@ -80,8 +81,7 @@ const EditProfileScreen: React.FC = () => {
 
     // Phone validation
     if (tempPhone && tempPhone.trim()) {
-      const phoneRegex = /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/;
-      if (!phoneRegex.test(tempPhone.trim())) {
+      if (!isValidPhone(tempPhone)) {
         Alert.alert('Error', 'Please enter a valid phone number');
         return;
       }
@@ -181,8 +181,8 @@ const EditProfileScreen: React.FC = () => {
               <TextInput
                 style={styles.input}
                 value={tempPhone}
-                onChangeText={setTempPhone}
-                placeholder="Your phone number"
+                onChangeText={(text) => setTempPhone(formatPhoneInput(text))}
+                placeholder="(555) 123-4567"
                 keyboardType="phone-pad"
                 accessibilityLabel="Phone number"
                 accessibilityHint="Enter your phone number"

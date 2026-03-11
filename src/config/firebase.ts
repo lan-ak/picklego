@@ -64,13 +64,13 @@ export const stripUndefined = <T extends Record<string, any>>(obj: T): T => {
 };
 
 // Firestore helper functions
-/** Normalize a phone number to digits-only with country code, then SHA-256 hash it. */
+import { normalizePhone, hashPhone } from '../utils/phone';
+
 async function computePhoneHash(phone: string | undefined): Promise<string | undefined> {
   if (!phone) return undefined;
-  const digits = phone.replace(/\D/g, '');
-  const normalized = digits.length === 10 ? '1' + digits : digits;
+  const normalized = normalizePhone(phone);
   if (normalized.length < 10) return undefined;
-  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, normalized);
+  return hashPhone(normalized);
 }
 
 export const createPlayerDocument = async (player: Player) => {
@@ -137,20 +137,20 @@ export const getPlayerDocument = async (playerId: string) => {
 export const getPlayerByEmail = async (email: string) => {
   try {
     const normalizedEmail = email.trim().toLowerCase();
-    // Try the indexed emailLowercase field first
-    let q = query(collection(db, 'players'), where('emailLowercase', '==', normalizedEmail));
-    let querySnapshot = await getDocs(q);
+    // Run both queries in parallel to catch docs with either field format
+    const q1 = query(collection(db, 'players'), where('emailLowercase', '==', normalizedEmail));
+    const q2 = query(collection(db, 'players'), where('email', '==', email));
+    const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
 
-    if (querySnapshot.empty) {
-      // Fallback: query on the original email field for docs created before migration
-      q = query(collection(db, 'players'), where('email', '==', email));
-      querySnapshot = await getDocs(q);
-    }
+    // Merge and deduplicate by document ID
+    const allDocs = new Map<string, Player>();
+    snap1.docs.forEach(d => allDocs.set(d.id, d.data() as Player));
+    snap2.docs.forEach(d => { if (!allDocs.has(d.id)) allDocs.set(d.id, d.data() as Player); });
 
-    if (querySnapshot.empty) return null;
+    const players = Array.from(allDocs.values());
+    if (players.length === 0) return null;
 
     // Prefer real (non-placeholder) players over pending ones
-    const players = querySnapshot.docs.map(d => d.data() as Player);
     return players.find(p => !p.pendingClaim) || players[0];
   } catch (error: any) {
     throw new Error('Failed to get player by email: ' + error.message);
@@ -255,6 +255,11 @@ export const updateMatchDocument = async (matchId: string, data: Partial<Match>)
 
 export const deleteMatchDocument = async (matchId: string) => {
   try {
+    console.log(`[deleteMatch] Deleting match ${matchId}, auth uid: ${auth.currentUser?.uid}`);
+    // Force token refresh to avoid stale auth errors
+    if (auth.currentUser) {
+      await auth.currentUser.getIdToken(true);
+    }
     await deleteDoc(doc(db, 'matches', matchId));
   } catch (error: any) {
     throw new Error('Failed to delete match document: ' + error.message);
@@ -263,6 +268,10 @@ export const deleteMatchDocument = async (matchId: string) => {
 
 export const softDeleteMatch = async (matchId: string, playerId: string) => {
   try {
+    // Force token refresh to avoid stale auth errors
+    if (auth.currentUser) {
+      await auth.currentUser.getIdToken(true);
+    }
     await updateDoc(doc(db, 'matches', matchId), {
       deletedByPlayerIds: arrayUnion(playerId),
     });
@@ -311,6 +320,19 @@ export const createNotificationDocument = async (notification: MatchNotification
   }
 };
 
+export const batchCreateNotificationDocuments = async (notifications: MatchNotification[]) => {
+  if (notifications.length === 0) return;
+  try {
+    const batch = writeBatch(db);
+    for (const notification of notifications) {
+      batch.set(doc(db, 'notifications', notification.id), stripUndefined(notification as unknown as Record<string, any>));
+    }
+    await batch.commit();
+  } catch (error: any) {
+    throw new Error('Failed to batch create notification documents: ' + error.message);
+  }
+};
+
 export const updateNotificationDocument = async (notificationId: string, data: Partial<MatchNotification>) => {
   try {
     await updateDoc(doc(db, 'notifications', notificationId), stripUndefined(data as unknown as Record<string, any>));
@@ -342,18 +364,18 @@ export const getNotificationsForPlayer = async (playerId: string): Promise<Match
   }
 };
 
-export const getNotificationsBySender = async (senderId: string): Promise<MatchNotification[]> => {
+export const getNotificationsForMatchBySender = async (matchId: string, senderId: string): Promise<MatchNotification[]> => {
   try {
     const q = query(
       collection(db, 'notifications'),
+      where('matchId', '==', matchId),
       where('senderId', '==', senderId),
-      orderBy('createdAt', 'desc'),
-      limit(50)
+      orderBy('createdAt', 'desc')
     );
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => doc.data() as MatchNotification);
   } catch (error: any) {
-    throw new Error('Failed to get notifications by sender: ' + error.message);
+    throw new Error('Failed to get notifications for match: ' + error.message);
   }
 };
 
@@ -494,13 +516,15 @@ const authenticatedCallable = async <TData, TResult>(
   if (!auth.currentUser) {
     throw new Error('Must be authenticated');
   }
+  const originalUid = auth.currentUser.uid;
   await auth.currentUser.getIdToken(true);
   const fn = httpsCallable(functions, functionName);
   try {
     const result = await fn(data);
     return result.data as TResult;
   } catch (error: any) {
-    if (error?.code === 'functions/unauthenticated' && auth.currentUser) {
+    // Verify the same user is still signed in before retrying
+    if (error?.code === 'functions/unauthenticated' && auth.currentUser && auth.currentUser.uid === originalUid) {
       await auth.currentUser.getIdToken(true);
       const result = await fn(data);
       return result.data as TResult;
@@ -548,5 +572,10 @@ export const callFindSMSInvitesByPhone = async (normalizedPhone: string): Promis
 export const callDeleteAccount = () =>
   authenticatedCallable<{}, { deleted: boolean; placeholdersRemoved: number }>(
     'deleteAccount', {},
+  );
+
+export const callResendMatchNotifications = (matchId: string) =>
+  authenticatedCallable<{ matchId: string }, { sent: number }>(
+    'resendMatchNotifications', { matchId },
   );
 

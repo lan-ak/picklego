@@ -22,6 +22,7 @@ import { DismissableModal } from '../components/DismissableModal';
 import Layout from '../components/Layout';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { isValidPhone, formatPhoneInput } from '../utils/phone';
 import PicklePete from '../components/PicklePete';
 import { useToast } from '../context/ToastContext';
 import Animated from 'react-native-reanimated';
@@ -278,9 +279,7 @@ const CompleteMatchScreen = () => {
 
     try {
       if (inviteMethod === 'sms' && phoneNumber.trim()) {
-        // Basic phone number validation
-        const phoneRegex = /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/;
-        if (!phoneRegex.test(phoneNumber.trim())) {
+        if (!isValidPhone(phoneNumber)) {
           Alert.alert('Error', 'Please enter a valid phone number');
           return;
         }
@@ -477,8 +476,8 @@ const CompleteMatchScreen = () => {
                 <TextInput
                   style={styles.input}
                   value={phoneNumber}
-                  onChangeText={setPhoneNumber}
-                  placeholder="Enter phone number"
+                  onChangeText={(text) => setPhoneNumber(formatPhoneInput(text))}
+                  placeholder="(555) 123-4567"
                   keyboardType="phone-pad"
                 />
               </View>

@@ -19,17 +19,9 @@ import { useToast } from '../../context/ToastContext';
 import { useSlideIn, useHaptic } from '../../hooks';
 import { callClaimSMSInvite } from '../../config/firebase';
 import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
+import { normalizePhone, formatPhoneInput, isValidPhone } from '../../utils/phone';
 
 type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'PhoneNumber'>;
-
-const PHONE_REGEX = /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/;
-
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) return '1' + digits;
-  if (digits.length === 11 && digits.startsWith('1')) return digits;
-  return digits;
-}
 
 type ScreenState = 'idle' | 'saving' | 'showingInvites' | 'noInvites';
 
@@ -98,10 +90,10 @@ const PhoneNumberScreen = () => {
   const [invites, setInvites] = useState<SMSInvite[]>([]);
   const [accepting, setAccepting] = useState<string | null>(null);
 
-  const isValidPhone = PHONE_REGEX.test(phone.trim());
+  const phoneValid = isValidPhone(phone);
 
   const handleSubmit = useCallback(async () => {
-    if (!currentUser?.id || !isValidPhone) return;
+    if (!currentUser?.id || !phoneValid) return;
 
     setScreenState('saving');
     try {
@@ -124,7 +116,7 @@ const PhoneNumberScreen = () => {
       showToast('Failed to save phone number', 'error');
       setScreenState('idle');
     }
-  }, [currentUser?.id, isValidPhone, phone, updatePlayer, findSMSInvitesByPhone, triggerHaptic, showToast]);
+  }, [currentUser?.id, phoneValid, phone, updatePlayer, findSMSInvitesByPhone, triggerHaptic, showToast]);
 
   const handleAcceptInvite = useCallback(async (invite: SMSInvite) => {
     setAccepting(invite.id);
@@ -174,7 +166,7 @@ const PhoneNumberScreen = () => {
   };
 
   const isCtaDisabled = () => {
-    if (screenState === 'idle') return !isValidPhone;
+    if (screenState === 'idle') return !phoneValid;
     if (screenState === 'saving') return true;
     return false;
   };
@@ -208,8 +200,8 @@ const PhoneNumberScreen = () => {
                 placeholderTextColor={colors.gray300}
                 keyboardType="phone-pad"
                 value={phone}
-                onChangeText={setPhone}
-                autoFocus
+                onChangeText={(text) => setPhone(formatPhoneInput(text))}
+
               />
             </View>
             <View style={styles.privacyNote}>
@@ -218,7 +210,7 @@ const PhoneNumberScreen = () => {
                 Only used to connect you with friends — we'll never call or text you.
               </Text>
             </View>
-            {phone.length > 0 && !isValidPhone && (
+            {phone.length > 0 && !phoneValid && (
               <Text style={styles.validationText}>Enter a valid phone number</Text>
             )}
           </View>

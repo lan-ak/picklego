@@ -92,6 +92,10 @@ export interface Match {
   deletedByPlayerIds?: string[];
   notificationsSent?: boolean;
   randomizeTeamsPerGame?: boolean;
+  createdByName?: string;
+  createdByProfilePic?: string;
+  lastModifiedByName?: string;
+  lastModifiedByProfilePic?: string;
 }
 
 export type InviteResult = {
@@ -198,7 +202,8 @@ export interface DataContextType {
   sendMatchUpdateNotifications: (match: Match) => Promise<{ sent: number; failed: number }>;
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
-  getNotificationsForMatch: (matchId: string) => MatchNotification[];
+  getNotificationsForMatch: (matchId: string) => Promise<MatchNotification[]>;
+  sendMatchRosterChangeNotifications: (match: Match, oldAllPlayerIds: string[]) => Promise<{ sent: number; failed: number }>;
   sendPlayerInvite: (recipientId: string) => Promise<boolean>;
   respondToPlayerInvite: (notificationId: string, accept: boolean) => Promise<void>;
   deleteNotification: (notificationId: string) => Promise<void>;

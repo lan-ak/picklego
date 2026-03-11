@@ -11,14 +11,14 @@ import { Chip } from '../components/Chip';
 import { useData } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import Layout from '../components/Layout';
-import type { Match, Game } from '../types';
+import type { Match, Game, MatchNotification } from '../types';
 import { RootStackParamList } from '../types';
 import { format } from 'date-fns';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import PicklePete from '../components/PicklePete';
 import { shuffleTeams } from '../utils/shuffleTeams';
-import { getMatchDocument } from '../config/firebase';
+import { getMatchDocument, callResendMatchNotifications } from '../config/firebase';
 import { usePlacement } from 'expo-superwall';
 import { PLACEMENTS } from '../services/superwallPlacements';
 
@@ -29,11 +29,12 @@ const MatchDetailsScreen = () => {
   const fadeStyle = useFadeIn();
   const route = useRoute<MatchDetailsRouteProp>();
   const navigation = useNavigation<MatchDetailsNavigationProp>();
-  const { matches, players, deleteMatch, currentUser, getPlayerName, getNotificationsForMatch, sendMatchNotifications } = useData();
+  const { matches, players, deleteMatch, currentUser, getPlayerName, getNotificationsForMatch } = useData();
   const { showToast } = useToast();
   const { registerPlacement } = usePlacement();
   const [directMatch, setDirectMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(false);
+  const [matchNotifications, setMatchNotifications] = useState<MatchNotification[]>([]);
   const match = matches.find(m => m.id === route.params.matchId) || directMatch;
 
   const getUserTeamNumber = useCallback((userId: string, match: Match): number | null => {
@@ -62,6 +63,11 @@ const MatchDetailsScreen = () => {
         .finally(() => setLoading(false));
     }
   }, [route.params.matchId, matches.length]);
+
+  useEffect(() => {
+    if (!match) return;
+    getNotificationsForMatch(match.id).then(setMatchNotifications);
+  }, [match?.id]);
 
   if (loading) {
     return (
@@ -217,8 +223,6 @@ const MatchDetailsScreen = () => {
     return null;
   };
 
-  const matchNotifications = getNotificationsForMatch(match.id);
-
   const getPlayerNotificationStatus = (playerId: string) => {
     const notif = matchNotifications.find(n => n.recipientId === playerId);
     if (!notif) return null;
@@ -226,12 +230,17 @@ const MatchDetailsScreen = () => {
   };
 
   const handleResendNotifications = async () => {
-    const result = await sendMatchNotifications(match);
-    if (result.failed > 0) {
-      showToast(`Failed to notify ${result.failed} player${result.failed > 1 ? 's' : ''}`, 'error');
-    } else if (result.sent > 0) {
-      showToast(`Notifications resent to ${result.sent} player${result.sent > 1 ? 's' : ''}`, 'success');
+    try {
+      const result = await callResendMatchNotifications(match.id);
+      if (result.sent > 0) {
+        showToast(`Notifications resent to ${result.sent} player${result.sent > 1 ? 's' : ''}`, 'success');
+      }
+    } catch (error) {
+      console.error('Error resending notifications:', error);
+      showToast('Failed to resend notifications', 'error');
     }
+    // Refresh notification statuses after resend
+    getNotificationsForMatch(match.id).then(setMatchNotifications);
   };
 
   const getTeamCardVariant = (teamNumber: 1 | 2): 'winner' | 'loser' | 'scheduled' | 'default' => {

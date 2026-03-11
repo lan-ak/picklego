@@ -26,7 +26,7 @@ type LocationPickerProps = {
   initialLocation?: string;
   initialCoords?: Coordinates;
   savedVenues: Venue[];
-  onLocationConfirmed: (location: string, coords: Coordinates) => void;
+  onLocationConfirmed: (location: string, coords: Coordinates, placeId?: string, isExistingVenue?: boolean) => void;
   onCancel: () => void;
 };
 
@@ -55,6 +55,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   const [selectedCoords, setSelectedCoords] = useState<Coordinates | undefined>(initialCoords);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | undefined>(undefined);
+  const [selectedIsExistingVenue, setSelectedIsExistingVenue] = useState(false);
 
   const mapRef = useRef<MapView>(null);
   const debounceRef = useRef<NodeJS.Timeout>(null);
@@ -151,6 +153,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
           500
         );
       }
+      setSelectedPlaceId(place.placeId);
+      setSelectedIsExistingVenue(false);
     } catch (error) {
       console.error('Failed to get place details:', error);
       Alert.alert('Error', 'Could not load location details. Please try again.');
@@ -162,6 +166,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   const handleSelectVenue = useCallback((venue: Venue) => {
     setSelectedLocation(venue.name);
     setSelectedCoords(venue.coords);
+    setSelectedPlaceId(venue.placeId);
+    setSelectedIsExistingVenue(true);
     mapRef.current?.animateToRegion(
       { ...venue.coords, latitudeDelta: 0.01, longitudeDelta: 0.01 },
       500
@@ -171,6 +177,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   const handleMapPress = useCallback(async (e: any) => {
     const coords: Coordinates = e.nativeEvent.coordinate;
     setSelectedCoords(coords);
+    setSelectedPlaceId(undefined);
+    setSelectedIsExistingVenue(false);
 
     try {
       const [result] = await Location.reverseGeocodeAsync(coords);
@@ -203,6 +211,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
         longitude: loc.coords.longitude,
       };
       setSelectedCoords(coords);
+      setSelectedPlaceId(undefined);
+      setSelectedIsExistingVenue(false);
 
       mapRef.current?.animateToRegion(
         { ...coords, latitudeDelta: 0.01, longitudeDelta: 0.01 },
@@ -227,9 +237,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
 
   const handleConfirm = useCallback(() => {
     if (selectedCoords && selectedLocation) {
-      onLocationConfirmed(selectedLocation, selectedCoords);
+      onLocationConfirmed(selectedLocation, selectedCoords, selectedPlaceId, selectedIsExistingVenue);
     }
-  }, [selectedCoords, selectedLocation, onLocationConfirmed]);
+  }, [selectedCoords, selectedLocation, selectedPlaceId, selectedIsExistingVenue, onLocationConfirmed]);
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>

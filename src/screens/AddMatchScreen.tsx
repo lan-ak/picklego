@@ -55,7 +55,7 @@ const AddMatchScreen = () => {
   const fadeStyle = useFadeIn();
   const navigation = useNavigation<AddMatchScreenNavigationProp>();
   const route = useRoute();
-  const { players, addMatch, currentUser, matches, updateMatch, sendMatchNotifications, sendMatchUpdateNotifications, refreshConnectedPlayers } = useData();
+  const { players, addMatch, currentUser, matches, updateMatch, refreshConnectedPlayers } = useData();
   const { showToast } = useToast();
   const { registerPlacement } = usePlacement();
 
@@ -443,22 +443,7 @@ const AddMatchScreen = () => {
           randomizeTeamsPerGame: shufflePerGame,
         });
 
-        // Send update notifications to all players
-        const updatedMatch = matches.find(m => m.id === matchId);
-        if (updatedMatch) {
-          const result = await sendMatchUpdateNotifications({
-            ...updatedMatch,
-            scheduledDate: matchDate.toISOString(),
-            matchType: isDoubles ? 'doubles' : 'singles',
-            team1PlayerIds: team1Players,
-            team2PlayerIds: team2Players,
-            allPlayerIds: [...team1Players, ...team2Players],
-            location: location.trim() || undefined,
-          });
-          if (result.failed > 0) {
-            showToast(`Failed to notify ${result.failed} player${result.failed > 1 ? 's' : ''}`, 'error');
-          }
-        }
+        // Notifications are now handled server-side via Firestore triggers
 
         Alert.alert(
           'Success',
@@ -499,14 +484,7 @@ const AddMatchScreen = () => {
           randomizeTeamsPerGame: shufflePerGame,
         });
 
-        // Send notifications to all players in the match
-        const notifResult = await sendMatchNotifications(newMatch);
-        if (notifResult.failed > 0) {
-          showToast(`Failed to notify ${notifResult.failed} player${notifResult.failed > 1 ? 's' : ''}`, 'error');
-        }
-        if (notifResult.sent > 0) {
-          await updateMatch(newMatch.id, { notificationsSent: true });
-        }
+        // Notifications are now handled server-side via Firestore triggers
 
         if (onboardingMode) {
           // In onboarding, go to celebration screen
@@ -1011,14 +989,21 @@ const AddMatchScreen = () => {
             initialLocation={location}
             initialCoords={locationCoords}
             savedVenues={savedVenues}
-            onLocationConfirmed={(loc, coords) => {
+            onLocationConfirmed={(loc, coords, placeId, isExistingVenue) => {
               setLocation(loc);
               setLocationCoords(coords);
               setShowLocationPicker(false);
-              // Auto-save location if not already saved
-              const alreadySaved = savedVenues.some((v) => v.name === loc);
+              // Don't auto-save if user picked an already-saved venue
+              if (isExistingVenue) return;
+              // Check dedup: placeId match, or coords proximity (~50m)
+              const alreadySaved = savedVenues.some((v) => {
+                if (placeId && v.placeId && v.placeId === placeId) return true;
+                const dlat = v.coords.latitude - coords.latitude;
+                const dlng = v.coords.longitude - coords.longitude;
+                return (dlat * dlat + dlng * dlng) < 0.00045 * 0.00045;
+              });
               if (!alreadySaved) {
-                saveVenue({ name: loc, address: loc, coords, isFavorite: false });
+                saveVenue({ name: loc, address: loc, coords, placeId, isFavorite: false });
               }
             }}
             onCancel={() => setShowLocationPicker(false)}

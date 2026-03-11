@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import * as SMS from 'expo-sms';
-import * as Crypto from 'expo-crypto';
 import { AnimatedPressable } from './AnimatedPressable';
 import { DismissableModal } from './DismissableModal';
 import { Icon } from './Icon';
@@ -22,6 +21,7 @@ import { useData } from '../context/DataContext';
 import { getPlayerDocument } from '../config/firebase';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import type { ContactInfo, Player } from '../types';
+import { normalizePhone, hashPhone, formatPhoneDisplay } from '../utils/phone';
 
 type InviteContext = 'settings' | 'addMatch';
 
@@ -42,31 +42,6 @@ interface InvitePlayersModalProps {
 }
 
 type TabKey = 'players' | 'invite';
-
-/**
- * Normalize a phone number to digits-only with country code.
- * Strips formatting chars; assumes US (+1) if 10 digits.
- */
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) return '1' + digits;
-  if (digits.length === 11 && digits.startsWith('1')) return digits;
-  return digits;
-}
-
-async function hashPhone(normalizedPhone: string): Promise<string> {
-  return Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    normalizedPhone,
-  );
-}
-
-function formatPhoneDisplay(phone: string): string {
-  if (phone.length === 11 && phone.startsWith('1')) {
-    return `+1 (${phone.slice(1, 4)}) ${phone.slice(4, 7)}-${phone.slice(7)}`;
-  }
-  return phone;
-}
 
 export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   visible,
@@ -195,7 +170,24 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
       }
     }
 
-    return [...emailMap.values(), ...noEmailPlayers];
+    // Also deduplicate by phone: if a real (non-placeholder) player exists with
+    // the same phone number, filter out the stale placeholder from noEmailPlayers
+    const allDeduped = [...emailMap.values()];
+    const realPhones = new Set<string>();
+    for (const p of [...allDeduped, ...noEmailPlayers]) {
+      if (p.phoneNumber && !p.pendingClaim) {
+        const digits = p.phoneNumber.replace(/\D/g, '');
+        realPhones.add(digits.length === 10 ? '1' + digits : digits);
+      }
+    }
+    const dedupedNoEmail = noEmailPlayers.filter(p => {
+      if (!p.pendingClaim || !p.phoneNumber) return true;
+      const digits = p.phoneNumber.replace(/\D/g, '');
+      const norm = digits.length === 10 ? '1' + digits : digits;
+      return !realPhones.has(norm);
+    });
+
+    return [...allDeduped, ...dedupedNoEmail];
   };
 
   // --- Contacts loading ---
