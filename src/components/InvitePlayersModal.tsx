@@ -18,6 +18,7 @@ import { AnimatedPressable } from './AnimatedPressable';
 import { DismissableModal } from './DismissableModal';
 import { Icon } from './Icon';
 import { useData } from '../context/DataContext';
+import { generateOneLink } from '../services/appsflyer';
 import { getPlayerDocument } from '../config/firebase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography, spacing, borderRadius } from '../theme';
@@ -82,6 +83,9 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
       setInviteEmail('');
       setShowManualForm(false);
       setHasRequestedContacts(false);
+      setContactsList([]);
+      setFilteredContacts([]);
+      setInvitePhone('');
     }
   }, [visible]);
 
@@ -99,9 +103,11 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   const [smsAvailable, setSmsAvailable] = useState(true);
   const [sending, setSending] = useState(false);
   const [hasRequestedContacts, setHasRequestedContacts] = useState(false);
+  const [isLimitedAccess, setIsLimitedAccess] = useState(false);
 
   // --- Invite tab: manual form state ---
   const [inviteName, setInviteName] = useState('');
+  const [invitePhone, setInvitePhone] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
 
@@ -110,9 +116,33 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     SMS.isAvailableAsync().then(setSmsAvailable);
   }, []);
 
+  // Auto-load contacts when invite tab becomes active
+  useEffect(() => {
+    if (!visible) return;
+    const showingInvite = isAddMatch ? activeTab === 'invite' : true;
+    if (!showingInvite) return;
+
+    (async () => {
+      const { status } = await Contacts.getPermissionsAsync();
+      if (status === 'granted') {
+        setHasRequestedContacts(true);
+        loadContacts();
+      }
+    })();
+  }, [visible, activeTab]);
+
   const handleAllowContacts = () => {
     setHasRequestedContacts(true);
     loadContacts();
+  };
+
+  const handleExpandAccess = async () => {
+    try {
+      await Contacts.presentAccessPickerAsync?.();
+      loadContacts();
+    } catch {
+      // User dismissed the picker
+    }
   };
 
   // Filter contacts on search
@@ -196,13 +226,15 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   const loadContacts = async () => {
     setLoadingContacts(true);
     try {
-      const { status, canAskAgain: canAsk } = await Contacts.requestPermissionsAsync();
+      const { status, canAskAgain: canAsk, accessPrivileges } = await Contacts.requestPermissionsAsync();
       if (status !== 'granted') {
         setPermissionDenied(true);
         setCanAskAgain(canAsk ?? true);
         setLoadingContacts(false);
         return;
       }
+
+      setIsLimitedAccess(accessPrivileges === 'limited');
 
       const { data } = await Contacts.getContactsAsync({
         fields: [
@@ -280,6 +312,24 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     });
   };
 
+  // Shared helper: create SMS invite record, generate deep link, and open SMS composer
+  const sendSMSInviteToContacts = async (contacts: { phone: string; name: string }[]) => {
+    const { inviteId } = await invitePlayersBySMS(contacts);
+    const deepLink = await generateOneLink(inviteId);
+    const message = `Hey! I'm using PickleGo to track our pickleball matches. Join me and let's play! ${deepLink}`;
+    const phones = contacts.map(c => {
+      const p = c.phone;
+      if (p.length === 11 && p.startsWith('1')) return `+${p}`;
+      return p;
+    });
+    const canSend = await SMS.isAvailableAsync();
+    if (canSend) {
+      await SMS.sendSMSAsync(phones, message);
+    } else {
+      Alert.alert('SMS Not Available', 'SMS is not available on this device.');
+    }
+  };
+
   // --- Send contact invites ---
   const handleSendInvites = async () => {
     if (selectedContacts.size === 0 || authLoading) return;
@@ -303,6 +353,8 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
             }
             if (existingPlayer) {
               onSelectExistingPlayer(existingPlayer);
+              // Also send a player_invite if not already connected
+              await sendPlayerInvite(contact.pickleGoPlayerId!);
               continue;
             }
           }
@@ -313,44 +365,21 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
       }
 
       if (notOnPickleGo.length > 0) {
-        if (isAddMatch && currentUser) {
-          for (const contact of notOnPickleGo) {
-            try {
-              const placeholder = await addPlayer({
-                name: contact.name,
-                phoneNumber: contact.phone,
-                pendingClaim: true,
-                invitedBy: currentUser.id,
-                isInvited: true,
-              } as any);
-              if (onPlaceholderCreated) {
-                onPlaceholderCreated(placeholder);
-              }
-            } catch {
-              // Placeholder creation is best-effort in addMatch context
+        // Create placeholders via unified invitePlayer
+        for (const contact of notOnPickleGo) {
+          try {
+            const result = await invitePlayer(contact.name, { phone: contact.phone });
+            if (isAddMatch && result.player && onPlaceholderCreated) {
+              onPlaceholderCreated(result.player);
             }
+          } catch {
+            // Placeholder creation is best-effort
           }
         }
 
-        const { inviteId } = await invitePlayersBySMS(
+        await sendSMSInviteToContacts(
           notOnPickleGo.map(c => ({ phone: c.phone, name: c.name })),
         );
-
-        const deepLink = `picklego://invite/${inviteId}`;
-        const message = `Hey! I'm using PickleGo to track our pickleball matches. Join me and let's play! ${deepLink}`;
-
-        const phones = notOnPickleGo.map(c => {
-          const p = c.phone;
-          if (p.length === 11 && p.startsWith('1')) return `+${p}`;
-          return p;
-        });
-
-        const canSend = await SMS.isAvailableAsync();
-        if (canSend) {
-          await SMS.sendSMSAsync(phones, message);
-        } else {
-          Alert.alert('SMS Not Available', 'SMS is not available on this device.');
-        }
       }
 
       if (!isAddMatch) {
@@ -379,23 +408,31 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const hasEmail = inviteEmail.trim().length > 0;
+    const hasPhone = invitePhone.trim().length > 0;
+    const normalizedPhone = hasPhone ? normalizePhone(invitePhone.trim()) : '';
 
     if (hasEmail && !emailRegex.test(inviteEmail)) {
       Alert.alert('Error', 'Please enter a valid email address.');
       return;
     }
 
+    if (hasPhone && normalizedPhone.length < 10) {
+      Alert.alert('Error', 'Please enter a valid phone number.');
+      return;
+    }
+
     const clearAndClose = () => {
       setInviteName('');
+      setInvitePhone('');
       setInviteEmail('');
       setShowManualForm(false);
       onClose();
     };
 
-    // If no email (addMatch context allows this) — create a local placeholder
-    if (!hasEmail) {
+    // No email and no phone (addMatch context allows name-only) — create a local placeholder
+    if (!hasEmail && !hasPhone) {
       if (!isAddMatch) {
-        Alert.alert('Error', 'Please enter an email address.');
+        Alert.alert('Error', 'Please enter a phone number or email address.');
         return;
       }
       try {
@@ -415,45 +452,59 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
       return;
     }
 
-    // Has email — use the invite flow
-    const result = await invitePlayer(inviteName.trim(), inviteEmail.trim());
+    // Unified invite — handles email, phone, or both
+    try {
+      const result = await invitePlayer(inviteName.trim(), {
+        email: hasEmail ? inviteEmail.trim() : undefined,
+        phone: hasPhone ? normalizedPhone : undefined,
+      });
 
-    switch (result.type) {
-      case 'invited':
-        if (isAddMatch && result.player && onPlaceholderCreated) {
-          onPlaceholderCreated(result.player);
-        }
-        Alert.alert(
-          'Success',
-          `${inviteName} has been invited. They can join the app using this email address.`,
-          [{ text: 'OK', onPress: clearAndClose }],
-        );
-        break;
-      case 'invite_sent':
-      case 'existing_player':
-        if (isAddMatch && result.player && onSelectExistingPlayer) {
-          onSelectExistingPlayer(result.player);
-        }
-        Alert.alert(
-          'Player Invite Sent',
-          `${result.player?.name || inviteName} is already on PickleGo! A player invite has been sent.`,
-          [{ text: 'OK', onPress: clearAndClose }],
-        );
-        break;
-      case 'already_connected':
-        if (isAddMatch && result.player && onSelectExistingPlayer) {
-          onSelectExistingPlayer(result.player);
-          clearAndClose();
-        } else {
-          Alert.alert('Already Connected', `You're already connected with ${result.player?.name || inviteName}.`);
-        }
-        break;
-      case 'request_pending':
-        Alert.alert('Invite Pending', `A player invite to ${result.player?.name || inviteName} is already pending.`);
-        break;
-      default:
-        Alert.alert('Error', 'There was an error sending the invitation. Please try again.');
-        break;
+      // If phone was provided and a new placeholder was created, send SMS
+      if (hasPhone && result.type === 'invited') {
+        await sendSMSInviteToContacts([{ phone: normalizedPhone, name: inviteName.trim() }]);
+      }
+
+      switch (result.type) {
+        case 'invited':
+          if (isAddMatch && result.player && onPlaceholderCreated) {
+            onPlaceholderCreated(result.player);
+          }
+          Alert.alert(
+            'Success',
+            hasPhone
+              ? `SMS invite sent to ${inviteName.trim()}.`
+              : `${inviteName} has been invited. They can join the app using this email address.`,
+            [{ text: 'OK', onPress: clearAndClose }],
+          );
+          break;
+        case 'invite_sent':
+        case 'existing_player':
+          if (isAddMatch && result.player && onSelectExistingPlayer) {
+            onSelectExistingPlayer(result.player);
+          }
+          Alert.alert(
+            'Player Invite Sent',
+            `${result.player?.name || inviteName} is already on PickleGo! A player invite has been sent.`,
+            [{ text: 'OK', onPress: clearAndClose }],
+          );
+          break;
+        case 'already_connected':
+          if (isAddMatch && result.player && onSelectExistingPlayer) {
+            onSelectExistingPlayer(result.player);
+            clearAndClose();
+          } else {
+            Alert.alert('Already Connected', `You're already connected with ${result.player?.name || inviteName}.`);
+          }
+          break;
+        case 'request_pending':
+          Alert.alert('Invite Pending', `A player invite to ${result.player?.name || inviteName} is already pending.`);
+          break;
+        default:
+          Alert.alert('Error', 'There was an error sending the invitation. Please try again.');
+          break;
+      }
+    } catch {
+      Alert.alert('Error', 'Failed to send invite. Please try again.');
     }
   };
 
@@ -633,6 +684,16 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
           />
         </View>
 
+        {isLimitedAccess && (
+          <AnimatedPressable style={styles.limitedAccessBanner} onPress={handleExpandAccess}>
+            <View style={styles.limitedAccessContent}>
+              <Icon name="info" size={16} color={colors.primary} />
+              <Text style={styles.limitedAccessText}>Not seeing all your contacts?</Text>
+            </View>
+            <Text style={styles.limitedAccessAction}>Grant More Access</Text>
+          </AnimatedPressable>
+        )}
+
         <FlatList
           data={filteredContacts}
           keyExtractor={item => item.phone}
@@ -681,7 +742,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
         <View style={styles.manualFormToggleRow}>
           <Icon name="user-plus" size={16} color={colors.primary} />
           <Text style={styles.manualFormToggleText}>
-            {isAddMatch ? 'Add by name / email' : 'Add by email'}
+            {isAddMatch ? 'Add by name / phone / email' : 'Add by phone / email'}
           </Text>
         </View>
         <Icon
@@ -704,8 +765,19 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
           </View>
 
           <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Phone Number{inviteEmail.trim() ? ' (optional)' : ''}</Text>
+            <TextInput
+              style={styles.input}
+              value={invitePhone}
+              onChangeText={setInvitePhone}
+              placeholder="Enter phone number"
+              keyboardType="phone-pad"
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>
-              {isAddMatch ? 'Email Address (optional)' : 'Email Address'}
+              {isAddMatch ? 'Email Address (optional)' : `Email Address${invitePhone.trim() ? ' (optional)' : ''}`}
             </Text>
             <TextInput
               style={styles.input}
@@ -814,10 +886,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
+    flex: 1,
+    marginTop: 60,
     backgroundColor: colors.white,
     borderTopLeftRadius: borderRadius.xl,
     borderTopRightRadius: borderRadius.xl,
-    maxHeight: '85%',
   },
   screenContent: {
     flex: 1,
@@ -872,10 +945,11 @@ const styles = StyleSheet.create({
 
   // My Players tab
   playersContainer: {
+    flex: 1,
     paddingHorizontal: spacing.lg,
   },
   playerList: {
-    maxHeight: 400,
+    flex: 1,
   },
   playerItem: {
     flexDirection: 'row',
@@ -899,6 +973,7 @@ const styles = StyleSheet.create({
 
   // Invite tab
   inviteContainer: {
+    flex: 1,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
   },
@@ -922,8 +997,7 @@ const styles = StyleSheet.create({
 
   // Contact items
   contactList: {
-    flexGrow: 1,
-    maxHeight: 300,
+    flex: 1,
   },
   contactItem: {
     flexDirection: 'row',
@@ -1021,6 +1095,32 @@ const styles = StyleSheet.create({
   },
   manualFormFields: {
     paddingTop: spacing.sm,
+  },
+
+  // Limited access banner
+  limitedAccessBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.primaryOverlay,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  limitedAccessContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  limitedAccessText: {
+    ...typography.caption,
+    color: colors.neutral,
+  },
+  limitedAccessAction: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '600',
   },
 
   // Send button

@@ -18,11 +18,15 @@ import { ToastProvider } from './src/context/ToastContext';
 import { navigationRef } from './src/navigation/navigationRef';
 import { useSuperwallIdentity } from './src/hooks/useSuperwallIdentity';
 import type { PushNotificationData } from './src/types';
+import { initAppsFlyer } from './src/services/appsflyer';
 
 // Import to register the foreground notification handler
 import './src/services/pushNotifications';
 
 SplashScreen.preventAutoHideAsync();
+
+// Initialize AppsFlyer SDK
+initAppsFlyer();
 
 // Set up Android notification channel
 if (Platform.OS === 'android') {

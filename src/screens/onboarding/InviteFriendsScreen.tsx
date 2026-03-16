@@ -26,6 +26,7 @@ import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { Icon } from '../../components/Icon';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
+import { generateOneLink } from '../../services/appsflyer';
 import { colors, typography, spacing, borderRadius, shadows, springConfig } from '../../theme';
 import { normalizePhone, hashPhone } from '../../utils/phone';
 
@@ -33,7 +34,7 @@ type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'InviteFriends'>;
 
 const InviteFriendsScreen = () => {
   const navigation = useNavigation<Nav>();
-  const { currentUser, invitePlayersBySMS, lookupContactsOnPickleGo, addPlayer } = useData();
+  const { currentUser, invitePlayersBySMS, lookupContactsOnPickleGo, invitePlayer } = useData();
   const { showToast } = useToast();
   const [contacts, setContacts] = useState<ContactInfo[]>([]);
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
@@ -149,28 +150,22 @@ const InviteFriendsScreen = () => {
         name: c.name,
       }));
 
-      await invitePlayersBySMS(contactsToInvite);
+      const { inviteId } = await invitePlayersBySMS(contactsToInvite);
 
-      // Create placeholder players so they appear in "My Players" tab
-      if (currentUser) {
-        for (const contact of selected) {
-          try {
-            await addPlayer({
-              name: contact.name,
-              pendingClaim: true,
-              invitedBy: currentUser.id,
-              isInvited: true,
-            } as any);
-          } catch {
-            // Placeholder creation is best-effort
-          }
+      // Create placeholder players via unified invitePlayer
+      for (const contact of selected) {
+        try {
+          await invitePlayer(contact.name, { phone: normalizePhone(contact.phone) });
+        } catch {
+          // Placeholder creation is best-effort
         }
       }
 
       const isAvailable = await SMS.isAvailableAsync();
       if (isAvailable) {
         const phones = selected.map(c => c.phone);
-        const message = `${currentUser?.name || 'A friend'} invited you to join PickleGo - the best way to track your pickleball matches! Download now: https://picklego.app/invite`;
+        const deepLink = await generateOneLink(inviteId);
+        const message = `${currentUser?.name || 'A friend'} invited you to join PickleGo - the best way to track your pickleball matches! Download now: ${deepLink}`;
         await SMS.sendSMSAsync(phones, message);
       }
 

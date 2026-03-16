@@ -16,6 +16,7 @@ import {
   updateMatchDocument,
   deleteMatchDocument,
   softDeleteMatch,
+  getMatchDocument,
   getMatchesForPlayer,
   sendPasswordReset,
   signInWithGoogle,
@@ -36,7 +37,10 @@ import {
   deleteNotificationDocument,
   getPlaceholderByEmail,
   callFindSMSInvitesByPhone,
+  getPlaceholdersByInviter,
+  addPendingConnection,
 } from '../config/firebase';
+import { hashPhone } from '../utils/phone';
 import { registerPushToken, unregisterPushToken } from '../services/pushNotifications';
 import { useOnboardingStatus } from '../hooks/useOnboardingStatus';
 import { newMatchId, newPlaceholderPlayerId, playerInviteNotifId, matchCancelledNotifId } from '../utils/ids';
@@ -57,6 +61,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Reset all user-scoped state. Called from onAuthStateChanged when user signs out.
   // When adding new user-scoped state, add its reset here.
   const isResettingRef = useRef(false);
+  const socialSignUpInProgressRef = useRef(false);
   const resetUserState = () => {
     isResettingRef.current = true;
     unstable_batchedUpdates(() => {
@@ -143,17 +148,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         expiredIds.has(match.id) ? { ...match, status: 'expired' as const } : match
       ));
 
-      // Update expired status in Firestore — revert local state on failure
+      // Update expired status in Firestore — skip if match doesn't exist (ghost match)
       Promise.all(
-        expiredMatches.map(match =>
-          updateMatchDocument(match.id, { status: 'expired' }).catch(error => {
+        expiredMatches.map(async match => {
+          try {
+            const firestoreMatch = await getMatchDocument(match.id);
+            if (firestoreMatch) {
+              await updateMatchDocument(match.id, { status: 'expired' });
+            }
+          } catch (error) {
             console.error('Error marking match as expired in Firestore:', error);
             // Revert this match back to scheduled locally so we retry next render
             setMatches(prev => prev.map(m =>
               m.id === match.id ? { ...m, status: 'scheduled' as const } : m
             ));
-          })
-        )
+          }
+        })
       );
     }
   }, [matches.length]);
@@ -163,15 +173,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (notifications.length === 0) return;
 
     const now = Date.now();
-    const matchStaleThreshold = 24 * 60 * 60 * 1000; // 24 hours
-    const inviteStaleThreshold = 7 * 24 * 60 * 60 * 1000; // 7 days
+    const staleThreshold = 7 * 24 * 60 * 60 * 1000; // 7 days
 
     const expiredIds = new Set<string>();
     for (const notif of notifications) {
-      // Expire match notifications past their date + 24 hours
-      if (notif.matchDate) {
+      // Expire read match notifications 7 days past their match date
+      if (notif.matchDate && notif.status !== 'sent') {
         const matchTime = new Date(notif.matchDate).getTime();
-        if (now - matchTime > matchStaleThreshold) {
+        if (now - matchTime > staleThreshold) {
           expiredIds.add(notif.id);
         }
       }
@@ -179,13 +188,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (
         (notif.type === 'player_invite' || notif.type === 'invite_accepted') &&
         notif.status !== 'sent' &&
-        now - notif.createdAt > inviteStaleThreshold
+        now - notif.createdAt > staleThreshold
       ) {
         expiredIds.add(notif.id);
       }
     }
 
     if (expiredIds.size > 0) {
+      console.log(`[Notifications] Expiring ${expiredIds.size} stale notifications:`, [...expiredIds]);
       setNotifications(prev => prev.filter(n => !expiredIds.has(n.id)));
     }
   }, [notifications.length]);
@@ -293,6 +303,80 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  // Centralised loader for all player relationships: connections, placeholders, and pending invites.
+  // Called by both auth init and refreshConnectedPlayers to avoid duplication.
+  const loadRelatedPlayers = useCallback(async (userDoc: Player) => {
+    const connectionIds = userDoc.connections || [];
+    let newConnectedPlayers: Player[] = [];
+
+    // 1. Load missing connected player docs
+    if (connectionIds.length > 0) {
+      const existingIds = new Set(playersRef.current.map(p => p.id));
+      const missingIds = connectionIds.filter((id: string) => !existingIds.has(id));
+      if (missingIds.length > 0) {
+        const docs = await Promise.all(
+          missingIds.map((id: string) => getPlayerDocument(id))
+        );
+        newConnectedPlayers = docs.filter((d): d is Player => d !== null);
+      }
+    }
+
+    // 2. Prune stale placeholders + add new connected players
+    const allConnected = [
+      ...playersRef.current.filter(p => connectionIds.includes(p.id)),
+      ...newConnectedPlayers,
+    ];
+    const connectedEmails = new Set(
+      allConnected
+        .filter(p => p.email && !p.pendingClaim)
+        .map(p => p.email!.trim().toLowerCase())
+    );
+
+    setPlayers(prev => {
+      let updated = prev.filter(p => {
+        if (!p.pendingClaim) return true;
+        if (!p.email) return true;
+        return !connectedEmails.has(p.email.trim().toLowerCase());
+      });
+      if (newConnectedPlayers.length > 0) {
+        const currentIds = new Set(updated.map(p => p.id));
+        const toAdd = newConnectedPlayers.filter(p => !currentIds.has(p.id));
+        if (toAdd.length > 0) updated = [...updated, ...toAdd];
+      }
+      return updated;
+    });
+
+    // 3. Load invited placeholders
+    const invitedPlaceholders = await getPlaceholdersByInviter(userDoc.id);
+    if (invitedPlaceholders.length > 0) {
+      setPlayers(prev => {
+        const currentIds = new Set(prev.map(p => p.id));
+        const newOnes = invitedPlaceholders.filter(p => !currentIds.has(p.id));
+        return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+      });
+    }
+
+    // 4. Load pending connection player docs (outgoing invites not yet accepted)
+    const pendingIds = userDoc.pendingConnections || [];
+    if (pendingIds.length > 0) {
+      const existingIds = new Set(playersRef.current.map(p => p.id));
+      const missingIds = pendingIds.filter((id: string) => !existingIds.has(id));
+      if (missingIds.length > 0) {
+        const docs = await Promise.all(
+          missingIds.map((id: string) => getPlayerDocument(id))
+        );
+        const validPlayers = docs.filter((d): d is Player => d !== null);
+        if (validPlayers.length > 0) {
+          setPlayers(prev => {
+            const currentIds = new Set(prev.map(p => p.id));
+            const toAdd = validPlayers.filter(p => !currentIds.has(p.id));
+            return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+          });
+        }
+      }
+    }
+  }, []);
+
   // Refresh connected players from Firestore, load missing docs, and prune stale placeholders
   const refreshConnectedPlayers = useCallback(async () => {
     const user = currentUserRef.current;
@@ -304,53 +388,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentUser(freshUserDoc);
       setPlayers(prev => prev.map(p => p.id === freshUserDoc.id ? freshUserDoc : p));
 
-      const connectionIds = freshUserDoc.connections || [];
-      if (connectionIds.length === 0) return;
-
-      // Load any connected player docs not already in local state
-      const existingIds = new Set(playersRef.current.map(p => p.id));
-      const missingIds = connectionIds.filter((id: string) => !existingIds.has(id));
-      let newConnectedPlayers: Player[] = [];
-
-      if (missingIds.length > 0) {
-        const docs = await Promise.all(
-          missingIds.map((id: string) => getPlayerDocument(id))
-        );
-        newConnectedPlayers = docs.filter((d): d is Player => d !== null);
-      }
-
-      // Build email set of real connected players to prune stale placeholders
-      const allConnected = [
-        ...playersRef.current.filter(p => connectionIds.includes(p.id)),
-        ...newConnectedPlayers,
-      ];
-      const connectedEmails = new Set(
-        allConnected
-          .filter(p => p.email && !p.pendingClaim)
-          .map(p => p.email!.trim().toLowerCase())
-      );
-
-      setPlayers(prev => {
-        let updated = prev.filter(p => {
-          if (!p.pendingClaim) return true;
-          if (!p.email) return true;
-          return !connectedEmails.has(p.email.trim().toLowerCase());
-        });
-
-        if (newConnectedPlayers.length > 0) {
-          const currentIds = new Set(updated.map(p => p.id));
-          const toAdd = newConnectedPlayers.filter(p => !currentIds.has(p.id));
-          if (toAdd.length > 0) {
-            updated = [...updated, ...toAdd];
-          }
-        }
-
-        return updated;
-      });
+      await loadRelatedPlayers(freshUserDoc);
     } catch (error) {
       console.error('Error refreshing connected players:', error);
     }
-  }, []);
+  }, [loadRelatedPlayers]);
 
   // Initialize Firebase auth state listener.
   // A version counter prevents stale async callbacks from writing data
@@ -383,9 +425,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const visibleMatches = firestoreMatches.filter(
                 m => !m.deletedByPlayerIds?.includes(firebaseUser.uid)
               );
-              if (visibleMatches.length > 0) {
+              const alreadyMigrated = await AsyncStorage.getItem('matchesMigrated');
+              if (alreadyMigrated === 'true') {
+                // Migration is done — Firestore is the source of truth, drop local-only ghosts
+                setMatches(visibleMatches);
+              } else if (visibleMatches.length > 0) {
+                // Pre-migration: merge Firestore matches with local, keep local-only for migration
                 setMatches(prev => {
-                  // Merge: Firestore matches take precedence, keep local-only matches
                   const firestoreIds = new Set(visibleMatches.map(m => m.id));
                   const localOnly = prev.filter(m => !firestoreIds.has(m.id));
                   return [...visibleMatches, ...localOnly];
@@ -401,46 +447,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await migrateLocalMatchesToFirestore(firebaseUser.uid);
             if (isStale()) return;
 
-            // Load connected player docs if not already in local state
+            // Load connections, placeholders, and pending invite player docs
             try {
-              if (playerDoc.connections && playerDoc.connections.length > 0) {
-                const existingIds = new Set(playersRef.current.map(p => p.id));
-                const missingIds = playerDoc.connections.filter((id: string) => !existingIds.has(id));
-                if (missingIds.length > 0) {
-                  const connectedDocs = await Promise.all(
-                    missingIds.map((id: string) => getPlayerDocument(id))
-                  );
-                  if (isStale()) return;
-                  const validPlayers = connectedDocs.filter((d): d is Player => d !== null);
-                  if (validPlayers.length > 0) {
-                    // Build email set of real connected players to prune stale placeholders
-                    const allConnected = [
-                      ...playersRef.current.filter(p => playerDoc.connections!.includes(p.id)),
-                      ...validPlayers,
-                    ];
-                    const connectedEmails = new Set(
-                      allConnected
-                        .filter(p => p.email && !p.pendingClaim)
-                        .map(p => p.email!.trim().toLowerCase())
-                    );
-
-                    setPlayers(prev => {
-                      // Remove stale placeholders whose email matches a real connected player
-                      let updated = prev.filter(p => {
-                        if (!p.pendingClaim) return true;
-                        if (!p.email) return true;
-                        return !connectedEmails.has(p.email.trim().toLowerCase());
-                      });
-                      // Add newly loaded connected players
-                      const currentIds = new Set(updated.map(p => p.id));
-                      const newPlayers = validPlayers.filter(p => !currentIds.has(p.id));
-                      return newPlayers.length > 0 ? [...updated, ...newPlayers] : updated;
-                    });
-                  }
-                }
-              }
+              await loadRelatedPlayers(playerDoc);
             } catch (error) {
-              console.error('Error loading connected players:', error);
+              console.error('Error loading related players:', error);
             }
 
             if (isStale()) return;
@@ -459,8 +470,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               console.error('Error registering push token:', error);
             }
           } else {
-            // Auth user exists but player doc is missing (e.g., partial account deletion)
-            await signOut();
+            // Auth user exists but player doc is missing.
+            // Skip sign-out if a social sign-up is in progress — the player doc
+            // will be created momentarily by signInWithSocial / completeSocialSignUp.
+            if (!socialSignUpInProgressRef.current) {
+              await signOut();
+            }
           }
         } else {
           resetUserState();
@@ -740,7 +755,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: Date.now(),
         updatedAt: Date.now(),
         ...(!isPlaceholder ? { authProvider: 'email' as const } : {}),
-        ...(isPlaceholder && currentUserRef.current && playerData.email ? {
+        ...(isPlaceholder && currentUserRef.current && (playerData.email || (playerData as any).phoneNumber) ? {
           pendingClaim: true,
           invitedBy: currentUserRef.current.id,
           isInvited: true,
@@ -800,13 +815,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isScheduled = matchToDelete?.status === 'scheduled';
 
     try {
-      if (isScheduled) {
-        // Hard-delete scheduled matches for everyone
-        await deleteMatchDocument(matchId);
-      } else {
-        // Soft-delete completed matches (only hide for current user)
-        await softDeleteMatch(matchId, user.id);
+      // Check if the match exists in Firestore (it may be a local-only ghost match)
+      const firestoreMatch = await getMatchDocument(matchId);
+
+      if (firestoreMatch) {
+        if (isScheduled) {
+          // Hard-delete scheduled matches for everyone
+          await deleteMatchDocument(matchId);
+        } else {
+          // Soft-delete completed matches (only hide for current user)
+          await softDeleteMatch(matchId, user.id);
+        }
       }
+      // If not in Firestore, just removing from local state (already done above) is sufficient
     } catch (error) {
       console.error('Error deleting match from Firestore:', error);
       // Restore on failure
@@ -934,48 +955,88 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
   
-  // Invite a player by creating a placeholder account, or send a player invite if they already exist
-  const invitePlayer = useCallback(async (name: string, email: string): Promise<InviteResult> => {
-    if (!name || !email) return { type: 'error' };
+  // Unified invite: handles both email and phone invites.
+  // Creates a placeholder player, or returns an existing player if already on PickleGo.
+  // Does NOT handle SMS compose — that stays in the UI layer.
+  const invitePlayer = useCallback(async (
+    name: string,
+    contact: { email?: string; phone?: string },
+  ): Promise<InviteResult> => {
+    if (!name) return { type: 'error' };
+    const { email, phone } = contact;
+    if (!email && !phone) return { type: 'error' };
 
-    // Check if email is already in use
-    const emailAvailable = await isEmailAvailable(email);
     const user = currentUserRef.current;
+    if (!user) return { type: 'error' };
 
-    if (!emailAvailable) {
-      // Email exists — look up the existing player and return them for team assignment
-      try {
-        const existingPlayer = await getPlayerByEmail(email);
-        if (!existingPlayer || !user) return { type: 'error' };
+    // --- Email path: check if a real player already exists with this email ---
+    if (email) {
+      const emailAvailable = await isEmailAvailable(email);
+      if (!emailAvailable) {
+        try {
+          const existingPlayer = await getPlayerByEmail(email);
+          if (!existingPlayer) return { type: 'error' };
 
-        if (existingPlayer.pendingClaim) {
-          console.warn('getPlayerByEmail returned a placeholder for', email, '— email lookup may be stale');
+          if (existingPlayer.pendingClaim) {
+            console.warn('getPlayerByEmail returned a placeholder for', email, '— email lookup may be stale');
+          }
+
+          if (existingPlayer.id === user.id) return { type: 'error' };
+
+          if (!user.connections?.includes(existingPlayer.id)) {
+            await sendPlayerInvite(existingPlayer.id);
+          }
+
+          if (!playersRef.current.some(p => p.id === existingPlayer.id)) {
+            setPlayers(prev => [...prev, existingPlayer]);
+          }
+
+          return { type: 'existing_player', player: existingPlayer };
+        } catch (error) {
+          console.error('Error handling existing player invite:', error);
+          return { type: 'error' };
         }
-
-        // Don't invite yourself
-        if (existingPlayer.id === user.id) return { type: 'error' };
-
-        // Send a connection invite if not already connected (sendPlayerInvite handles duplicate check)
-        if (!user.connections?.includes(existingPlayer.id)) {
-          await sendPlayerInvite(existingPlayer.id);
-        }
-
-        // Ensure the existing player is in local state for name resolution
-        if (!playersRef.current.some(p => p.id === existingPlayer.id)) {
-          setPlayers(prev => [...prev, existingPlayer]);
-        }
-
-        // Return the player so they can be added to the match team
-        return { type: 'existing_player', player: existingPlayer };
-      } catch (error) {
-        console.error('Error handling existing player invite:', error);
-        return { type: 'error' };
       }
     }
 
-    // Email is available — create a placeholder (existing behavior)
+    // --- Phone path (no email): check if player is already on PickleGo ---
+    if (phone && !email) {
+      try {
+        const phoneHash = await hashPhone(phone);
+        const matches = await lookupContactsOnPickleGo([phoneHash]);
+        const match = matches.get(phoneHash);
+        if (match) {
+          let existingPlayer = playersRef.current.find(p => p.id === match.playerId);
+          if (!existingPlayer) {
+            const fetched = await getPlayerDocument(match.playerId);
+            if (fetched) existingPlayer = fetched;
+          }
+          if (existingPlayer && existingPlayer.id !== user.id) {
+            if (!user.connections?.includes(existingPlayer.id)) {
+              await sendPlayerInvite(existingPlayer.id);
+            }
+            if (!playersRef.current.some(p => p.id === existingPlayer!.id)) {
+              setPlayers(prev => [...prev, existingPlayer!]);
+            }
+            return { type: 'existing_player', player: existingPlayer };
+          }
+        }
+      } catch (error) {
+        console.error('Error looking up phone:', error);
+        // Fall through to placeholder creation
+      }
+    }
+
+    // --- Create placeholder player ---
     try {
-      const createdPlayer = await addPlayer({ name, email });
+      const createdPlayer = await addPlayer({
+        name,
+        ...(email ? { email } : {}),
+        ...(phone ? { phoneNumber: phone } : {}),
+        pendingClaim: true,
+        invitedBy: user.id,
+        isInvited: true,
+      } as any);
       return { type: 'invited', player: createdPlayer };
     } catch (error) {
       console.error('Error creating placeholder player:', error);
@@ -983,11 +1044,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [addPlayer, isEmailAvailable]);
 
-  // Get all players invited by the current user
-  const getInvitedPlayers = useCallback((): Player[] => {
+  // Get all players invited by the current user (placeholders + pending in-app invites)
+  const getInvitedPlayers = useCallback((playersList?: Player[]): Player[] => {
     const user = currentUserRef.current;
     if (!user) return [];
-    return playersRef.current.filter(player => player.invitedBy === user.id && player.email);
+    const source = playersList ?? playersRef.current;
+    return source.filter(player => {
+      // Placeholder players created by current user
+      if (player.invitedBy === user.id && (player.email || player.phoneNumber)) return true;
+      // Existing players with a pending outgoing invite
+      if (user.pendingConnections?.includes(player.id)) return true;
+      return false;
+    });
+  }, []);
+
+  // Check if there's a pending outgoing invite to this player
+  const isOutgoingInvitePending = useCallback((playerId: string): boolean => {
+    const user = currentUserRef.current;
+    if (!user) return false;
+    return user.pendingConnections?.includes(playerId) ?? false;
   }, []);
 
   // Claim an invitation - used when a new player registers from an invitation
@@ -1072,6 +1147,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signInWithSocial = useCallback(async (provider: 'google' | 'apple'): Promise<{ needsName: boolean }> => {
+    socialSignUpInProgressRef.current = true;
     try {
       let firebaseUser;
       let socialDisplayName: string | null = null;
@@ -1088,6 +1164,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Check if Player doc already exists (returning user)
       const existingPlayer = await getPlayerDocument(firebaseUser.uid);
       if (existingPlayer) {
+        socialSignUpInProgressRef.current = false;
         setCurrentUser(existingPlayer);
         setPlayers(prev => {
           const filtered = prev.filter(p => p.id !== existingPlayer.id);
@@ -1123,10 +1200,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await createPlayerDocument(newPlayer);
         setPlayers(prev => [...prev, newPlayer]);
         setCurrentUser(newPlayer);
+        socialSignUpInProgressRef.current = false;
       }
+      // If needsName is true, flag stays set until completeSocialSignUp clears it
 
       return { needsName };
     } catch (error: any) {
+      socialSignUpInProgressRef.current = false;
       if (error.cancelled) {
         throw error;
       }
@@ -1165,6 +1245,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentUser(newPlayer);
     } catch (error: any) {
       throw new Error(error.message);
+    } finally {
+      socialSignUpInProgressRef.current = false;
     }
   }, []);
 
@@ -1306,6 +1388,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log(`[Notifications] sendPlayerInvite: sender=${user.id}, recipient=${recipientId}, notifId=${notifId}`);
       await createNotificationDocument(notification);
       console.log(`[Notifications] sendPlayerInvite: wrote player_invite doc`);
+
+      // Track the outgoing invite on the sender's player doc
+      await addPendingConnection(user.id, recipientId);
+
+      // Update local state
+      const updatedPending = [...(user.pendingConnections || []), recipientId];
+      const updatedUser = { ...user, pendingConnections: updatedPending };
+      currentUserRef.current = updatedUser;
+      setCurrentUser(updatedUser);
+      setPlayers(prev => prev.map(p => p.id === user.id ? updatedUser : p));
+
+      // Fetch recipient player doc if not already in local state
+      if (!playersRef.current.find(p => p.id === recipientId)) {
+        const recipientDoc = await getPlayerDocument(recipientId);
+        if (recipientDoc) {
+          setPlayers(prev => {
+            if (prev.find(p => p.id === recipientId)) return prev;
+            return [...prev, recipientDoc];
+          });
+        }
+      }
+
       return true;
     } catch (error) {
       console.error('Error sending player invite:', error);
@@ -1485,6 +1589,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     markAllNotificationsRead,
     getNotificationsForMatch,
     sendPlayerInvite,
+    isOutgoingInvitePending,
     respondToPlayerInvite,
     deleteNotification,
     clearAllNotifications,
@@ -1504,7 +1609,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     completeSocialSignUp, signOutUser, deleteAccount,
     sendMatchNotifications, sendMatchUpdateNotifications, sendMatchRosterChangeNotifications,
     markNotificationRead, markAllNotificationsRead, getNotificationsForMatch,
-    sendPlayerInvite, respondToPlayerInvite, deleteNotification,
+    sendPlayerInvite, isOutgoingInvitePending, respondToPlayerInvite, deleteNotification,
     clearAllNotifications, refreshMatches, refreshNotifications,
     refreshConnectedPlayers, invitePlayersBySMS, lookupContactsOnPickleGo,
     claimPendingSMSInvite,

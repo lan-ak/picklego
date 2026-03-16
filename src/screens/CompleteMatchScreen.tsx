@@ -284,11 +284,8 @@ const CompleteMatchScreen = () => {
           return;
         }
 
-        // Add the player without email
-        const newPlayer = await addPlayer({
-          name: newPlayerName.trim(),
-          phoneNumber: phoneNumber.trim(),
-        });
+        // Create placeholder via unified invitePlayer
+        await invitePlayer(newPlayerName.trim(), { phone: phoneNumber.trim() });
 
         // Send SMS invitation
         const message = `Hi ${newPlayerName}, you've been invited to join PickleGo! Download the app to track your pickleball matches and stats.`;
@@ -314,7 +311,7 @@ const CompleteMatchScreen = () => {
           return;
         }
 
-        const result = await invitePlayer(newPlayerName.trim(), newPlayerEmail.trim());
+        const result = await invitePlayer(newPlayerName.trim(), { email: newPlayerEmail.trim() });
 
         if (result.type === 'invited' && result.player) {
           Alert.alert(

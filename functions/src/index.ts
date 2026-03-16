@@ -70,13 +70,14 @@ export const acceptPlayerInvite = onCall(async (request) => {
     const callerName = callerDoc.exists ? (callerDoc.data()!.name || 'A player') : 'A player';
     const callerProfilePic = callerDoc.exists ? callerDoc.data()!.profilePic : undefined;
 
-    // Add bidirectional connections
+    // Add bidirectional connections and clean up pendingConnections
     transaction.update(db.collection('players').doc(callerUid), {
       connections: FieldValue.arrayUnion(senderId),
       updatedAt: now,
     });
     transaction.update(db.collection('players').doc(senderId), {
       connections: FieldValue.arrayUnion(callerUid),
+      pendingConnections: FieldValue.arrayRemove(callerUid),
       updatedAt: now,
     });
 

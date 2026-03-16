@@ -24,6 +24,14 @@
         { "fieldPath": "senderId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "players",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "invitedBy", "order": "ASCENDING" },
+        { "fieldPath": "pendingClaim", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

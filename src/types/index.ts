@@ -40,6 +40,7 @@ export interface Player {
   authProvider?: 'email' | 'google' | 'apple';
   pushTokens?: string[];
   connections?: string[];
+  pendingConnections?: string[];
   phoneNumberHash?: string;
   notificationPreferences?: NotificationPreferences;
 }
@@ -99,7 +100,7 @@ export interface Match {
 }
 
 export type InviteResult = {
-  type: 'invited' | 'existing_player' | 'invite_sent' | 'already_connected' | 'request_pending' | 'sms_invited' | 'error';
+  type: 'invited' | 'existing_player' | 'invite_sent' | 'already_connected' | 'request_pending' | 'error';
   player?: Player;
 };
 
@@ -189,9 +190,9 @@ export interface DataContextType {
   updatePlayer: (playerId: string, updates: Partial<Player>) => Promise<void>;
   getPlayerName: (playerId: string) => string;
   setCurrentUser: (player: Player | null) => void;
-  invitePlayer: (name: string, email: string) => Promise<InviteResult>;
+  invitePlayer: (name: string, contact: { email?: string; phone?: string }) => Promise<InviteResult>;
   claimInvitation: (email: string, playerData: Partial<Player>) => Promise<boolean>;
-  getInvitedPlayers: () => Player[];
+  getInvitedPlayers: (playersList?: Player[]) => Player[];
   isEmailAvailable: (email: string) => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<void>;
   signInWithSocial: (provider: 'google' | 'apple') => Promise<{ needsName: boolean }>;
@@ -205,6 +206,7 @@ export interface DataContextType {
   getNotificationsForMatch: (matchId: string) => Promise<MatchNotification[]>;
   sendMatchRosterChangeNotifications: (match: Match, oldAllPlayerIds: string[]) => Promise<{ sent: number; failed: number }>;
   sendPlayerInvite: (recipientId: string) => Promise<boolean>;
+  isOutgoingInvitePending: (playerId: string) => boolean;
   respondToPlayerInvite: (notificationId: string, accept: boolean) => Promise<void>;
   deleteNotification: (notificationId: string) => Promise<void>;
   clearAllNotifications: () => Promise<void>;

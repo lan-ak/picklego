@@ -24,10 +24,13 @@ import { useToast } from '../context/ToastContext';
 import PicklePete from '../components/PicklePete';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Animated from 'react-native-reanimated';
-import { useFadeIn, useContentTransition } from '../hooks';
+import { useFadeIn, useContentTransition, useSlideIn, useHaptic, staggeredEntrance } from '../hooks';
 
 const AuthScreen = () => {
   const fadeStyle = useFadeIn();
+  const logoSlide = useSlideIn(0, 'down', 20);
+  const formSlide = useSlideIn(1, 'up', 30);
+  const triggerHaptic = useHaptic();
   const { addPlayer, setCurrentUser, signIn, signInWithSocial, completeSocialSignUp } = useData();
   const { showToast } = useToast();
 
@@ -43,7 +46,7 @@ const AuthScreen = () => {
   const [showNameModal, setShowNameModal] = useState(false);
   const [socialName, setSocialName] = useState('');
   const [socialProvider, setSocialProvider] = useState<'google' | 'apple'>('google');
-  const [isSocialLoading, setIsSocialLoading] = useState(false);
+  const [socialLoadingProvider, setSocialLoadingProvider] = useState<'google' | 'apple' | null>(null);
   const [isAppleAuthAvailable, setIsAppleAuthAvailable] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const contentStyle = useContentTransition(isLogin ? 'login' : 'signup');
@@ -53,6 +56,7 @@ const AuthScreen = () => {
   }, []);
 
   const handleToggleMode = () => {
+    triggerHaptic('light');
     setIsLogin(!isLogin);
     // Clear form fields when switching modes
     setName('');
@@ -132,6 +136,7 @@ const AuthScreen = () => {
     }
     try {
       await sendPasswordReset(resetEmail.trim());
+      triggerHaptic('success');
       showToast('If an account exists with this email, a password reset link has been sent.', 'success');
       setShowForgotPassword(false);
       setResetEmail('');
@@ -143,7 +148,8 @@ const AuthScreen = () => {
   };
 
   const handleSocialSignIn = async (provider: 'google' | 'apple') => {
-    setIsSocialLoading(true);
+    triggerHaptic('light');
+    setSocialLoadingProvider(provider);
     try {
       const result = await signInWithSocial(provider);
       if (result.needsName) {
@@ -152,26 +158,27 @@ const AuthScreen = () => {
       }
     } catch (error: any) {
       if (error.cancelled) return;
-      showToast(getErrorMessage(error), 'error');
+      Alert.alert('Error', getErrorMessage(error));
     } finally {
-      setIsSocialLoading(false);
+      setSocialLoadingProvider(null);
     }
   };
 
   const handleNameSubmit = async () => {
     if (!socialName.trim()) {
-      showToast('Please enter your name', 'error');
+      Alert.alert('Error', 'Please enter your name');
       return;
     }
-    setIsSocialLoading(true);
+    setSocialLoadingProvider(socialProvider);
     try {
       await completeSocialSignUp(socialName.trim(), socialProvider);
+      triggerHaptic('success');
       setShowNameModal(false);
       setSocialName('');
     } catch (error: any) {
-      showToast(getErrorMessage(error), 'error');
+      Alert.alert('Error', getErrorMessage(error));
     } finally {
-      setIsSocialLoading(false);
+      setSocialLoadingProvider(null);
     }
   };
 
@@ -181,17 +188,18 @@ const AuthScreen = () => {
       <Animated.View style={[{ flex: 1 }, fadeStyle]}>
       <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-        <View style={styles.logoContainer}>
+        <Animated.View style={[styles.logoContainer, logoSlide]}>
           <PicklePete pose="welcome" size="xl" />
           <Text style={styles.appName}>PickleGo</Text>
           <Text style={styles.tagline}>Track your pickleball matches and stats</Text>
-        </View>
+        </Animated.View>
 
-        <View style={styles.formContainer}>
+        <Animated.View style={[styles.formContainer, formSlide]}>
           <View style={styles.tabContainer}>
             <AnimatedPressable
               style={[styles.tabButton, isLogin ? styles.activeTab : styles.inactiveTab]}
               onPress={() => setIsLogin(true)}
+              hapticStyle="light"
               accessibilityRole="tab"
               accessibilityLabel="Login"
               accessibilityState={{ selected: isLogin }}
@@ -204,6 +212,7 @@ const AuthScreen = () => {
             <AnimatedPressable
               style={[styles.tabButton, isLogin ? styles.inactiveTab : styles.activeTab]}
               onPress={() => setIsLogin(false)}
+              hapticStyle="light"
               accessibilityRole="tab"
               accessibilityLabel="Sign Up"
               accessibilityState={{ selected: !isLogin }}
@@ -218,31 +227,35 @@ const AuthScreen = () => {
           {/* Social Sign-In Buttons */}
           <View style={styles.socialContainer}>
             {isAppleAuthAvailable && (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                cornerRadius={borderRadius.sm}
-                style={styles.appleButton}
-                onPress={() => handleSocialSignIn('apple')}
-              />
+              <Animated.View entering={staggeredEntrance(0)}>
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={isLogin ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN : AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={borderRadius.sm}
+                  style={styles.appleButton}
+                  onPress={() => handleSocialSignIn('apple')}
+                />
+              </Animated.View>
             )}
 
+            <Animated.View entering={staggeredEntrance(1)}>
             <AnimatedPressable
               style={styles.googleButton}
               onPress={() => handleSocialSignIn('google')}
-              disabled={isSocialLoading}
-              accessibilityLabel="Sign in with Google"
+              disabled={socialLoadingProvider !== null}
+              accessibilityLabel={isLogin ? "Sign in with Google" : "Sign up with Google"}
               accessibilityRole="button"
             >
-              {isSocialLoading ? (
+              {socialLoadingProvider === 'google' ? (
                 <ActivityIndicator color="#1F1F1F" />
               ) : (
                 <>
                   <GoogleIcon size={20} />
-                  <Text style={styles.googleButtonText}>Sign in with Google</Text>
+                  <Text style={styles.googleButtonText}>{isLogin ? 'Sign in with Google' : 'Sign up with Google'}</Text>
                 </>
               )}
             </AnimatedPressable>
+            </Animated.View>
           </View>
 
           {/* Divider */}
@@ -337,6 +350,7 @@ const AuthScreen = () => {
                   <AnimatedPressable
                     style={styles.resetButton}
                     onPress={handleForgotPassword}
+                    hapticStyle="medium"
                     accessibilityLabel="Send reset link"
                     accessibilityRole="button"
                   >
@@ -376,6 +390,7 @@ const AuthScreen = () => {
               <AnimatedPressable
                 style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
                 onPress={isLogin ? handleLogin : handleSignUp}
+                hapticStyle="medium"
                 disabled={isLoading}
                 accessibilityLabel={isLogin ? 'Login' : 'Create Account'}
                 accessibilityRole="button"
@@ -394,6 +409,7 @@ const AuthScreen = () => {
             <AnimatedPressable
               style={styles.emailButton}
               onPress={() => setShowEmailForm(true)}
+              hapticStyle="light"
               accessibilityLabel="Continue with email"
               accessibilityRole="button"
             >
@@ -414,7 +430,7 @@ const AuthScreen = () => {
               {isLogin ? 'Need an account? Sign up' : 'Already have an account? Login'}
             </Text>
           </AnimatedPressable>
-        </View>
+        </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
       </Animated.View>
@@ -443,13 +459,13 @@ const AuthScreen = () => {
             accessibilityLabel="Full name"
           />
           <AnimatedPressable
-            style={[styles.submitButton, isSocialLoading && styles.submitButtonDisabled]}
+            style={[styles.submitButton, socialLoadingProvider !== null && styles.submitButtonDisabled]}
             onPress={handleNameSubmit}
-            disabled={isSocialLoading}
+            disabled={socialLoadingProvider !== null}
             accessibilityLabel="Continue"
             accessibilityRole="button"
           >
-            {isSocialLoading ? (
+            {socialLoadingProvider !== null ? (
               <ActivityIndicator color={colors.white} />
             ) : (
               <Text style={styles.submitButtonText}>Continue</Text>

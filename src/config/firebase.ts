@@ -201,6 +201,21 @@ export const getPlaceholderByEmail = async (email: string): Promise<Player | nul
   }
 };
 
+export const getPlaceholdersByInviter = async (inviterId: string): Promise<Player[]> => {
+  try {
+    const q = query(
+      collection(db, 'players'),
+      where('invitedBy', '==', inviterId),
+      where('pendingClaim', '==', true)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Player));
+  } catch (error: any) {
+    console.error('Failed to get placeholders by inviter:', error.message);
+    return [];
+  }
+};
+
 // Authentication functions
 export const signUpWithEmail = async (email: string, password: string) => {
   try {
@@ -247,6 +262,10 @@ export const createMatchDocument = async (match: Match) => {
 
 export const updateMatchDocument = async (matchId: string, data: Partial<Match>) => {
   try {
+    // Force token refresh to avoid stale auth errors
+    if (auth.currentUser) {
+      await auth.currentUser.getIdToken(true);
+    }
     await updateDoc(doc(db, 'matches', matchId), stripUndefined(data));
   } catch (error: any) {
     throw new Error('Failed to update match document: ' + error.message);
@@ -505,6 +524,17 @@ export const removeConnection = async (playerId: string, connectionId: string) =
     });
   } catch (error: any) {
     throw new Error('Failed to remove connection: ' + error.message);
+  }
+};
+
+export const addPendingConnection = async (playerId: string, recipientId: string) => {
+  try {
+    await updateDoc(doc(db, 'players', playerId), {
+      pendingConnections: arrayUnion(recipientId),
+      updatedAt: Date.now(),
+    });
+  } catch (error: any) {
+    throw new Error('Failed to add pending connection: ' + error.message);
   }
 };
 

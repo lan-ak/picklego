@@ -78,6 +78,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           "Allow PickleGo to access your contacts to invite friends to play pickleball.",
       },
     ],
+    "react-native-appsflyer",
     ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
       ? [[
           "@react-native-google-signin/google-signin",

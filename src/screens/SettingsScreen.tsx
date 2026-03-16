@@ -45,7 +45,7 @@ type SettingSection = {
 type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const SettingsScreen: React.FC = () => {
-  const { currentUser, updatePlayer, getInvitedPlayers, players, removePlayer, signOutUser, deleteAccount } = useData();
+  const { currentUser, updatePlayer, getInvitedPlayers, isOutgoingInvitePending, players, removePlayer, signOutUser, deleteAccount } = useData();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showInvitedPlayers, setShowInvitedPlayers] = useState(false);
   const [showManagePlayers, setShowManagePlayers] = useState(false);
@@ -70,7 +70,7 @@ const SettingsScreen: React.FC = () => {
   }, [navigation]);
 
   // Get invited players (memoized — getInvitedPlayers reads from refs internally)
-  const invitedPlayers = useMemo(() => getInvitedPlayers(), [players, currentUser]);
+  const invitedPlayers = useMemo(() => getInvitedPlayers(players), [players, currentUser]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert(
@@ -238,11 +238,11 @@ const SettingsScreen: React.FC = () => {
                 <View style={styles.invitedPlayerItem}>
                   <View style={styles.invitedPlayerInfo}>
                     <Text style={styles.invitedPlayerName}>{item.name}</Text>
-                    <Text style={styles.invitedPlayerEmail}>{item.email}</Text>
+                    <Text style={styles.invitedPlayerEmail}>{item.email || item.phoneNumber || ''}</Text>
                   </View>
                   <View style={styles.invitedPlayerStatus}>
                     <Text style={styles.pendingText}>
-                      {item.pendingClaim ? 'Pending' : 'Claimed'}
+                      {item.pendingClaim ? 'Pending' : isOutgoingInvitePending(item.id) ? 'Invite Sent' : 'Connected'}
                     </Text>
                   </View>
                 </View>
