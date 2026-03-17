@@ -31,7 +31,7 @@ const AuthScreen = () => {
   const logoSlide = useSlideIn(0, 'down', 20);
   const formSlide = useSlideIn(1, 'up', 30);
   const triggerHaptic = useHaptic();
-  const { addPlayer, setCurrentUser, signIn, signInWithSocial, completeSocialSignUp } = useData();
+  const { addPlayer, setCurrentUser, signIn, signInWithSocial, completeSocialSignUp, signOutUser } = useData();
   const { showToast } = useToast();
 
   const [isLogin, setIsLogin] = useState(true);
@@ -180,6 +180,12 @@ const AuthScreen = () => {
     } finally {
       setSocialLoadingProvider(null);
     }
+  };
+
+  const handleNameModalCancel = async () => {
+    setShowNameModal(false);
+    setSocialName('');
+    await signOutUser();
   };
 
   return (
@@ -441,7 +447,7 @@ const AuthScreen = () => {
       visible={showNameModal}
       transparent
       animationType="fade"
-      onRequestClose={() => setShowNameModal(false)}
+      onRequestClose={handleNameModalCancel}
     >
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.modalOverlay}>
@@ -470,6 +476,13 @@ const AuthScreen = () => {
             ) : (
               <Text style={styles.submitButtonText}>Continue</Text>
             )}
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={handleNameModalCancel}
+            accessibilityLabel="Cancel"
+            accessibilityRole="button"
+          >
+            <Text style={styles.cancelButtonText}>Cancel</Text>
           </AnimatedPressable>
         </View>
       </View>
@@ -583,6 +596,12 @@ const styles = StyleSheet.create({
   submitButtonText: {
     ...typography.button,
     color: colors.white,
+  },
+  cancelButtonText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.md,
   },
   toggleButton: {
     marginTop: spacing.lg,

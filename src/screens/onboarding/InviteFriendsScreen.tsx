@@ -7,7 +7,6 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
-  AppState,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -16,8 +15,6 @@ import Animated, {
   withRepeat,
   withSequence,
 } from 'react-native-reanimated';
-import * as Contacts from 'expo-contacts';
-import * as SMS from 'expo-sms';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { OnboardingStackParamList, ContactInfo } from '../../types';
@@ -26,116 +23,29 @@ import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { Icon } from '../../components/Icon';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
-import { generateOneLink } from '../../services/appsflyer';
+import { useContacts } from '../../hooks/useContacts';
+import { sendSMSInviteToContacts } from '../../utils/smsInvite';
 import { colors, typography, spacing, borderRadius, shadows, springConfig } from '../../theme';
-import { normalizePhone, hashPhone } from '../../utils/phone';
 
 type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'InviteFriends'>;
 
 const InviteFriendsScreen = () => {
   const navigation = useNavigation<Nav>();
-  const { currentUser, invitePlayersBySMS, lookupContactsOnPickleGo, invitePlayer } = useData();
+  const { currentUser, invitePlayersBySMS, invitePlayer, sendPlayerInvite } = useData();
   const { showToast } = useToast();
-  const [contacts, setContacts] = useState<ContactInfo[]>([]);
-  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [contactsLoading, setContactsLoading] = useState(false);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [hasRequestedPermission, setHasRequestedPermission] = useState(false);
-  const [canAskAgain, setCanAskAgain] = useState(true);
 
-  const loadContacts = useCallback(async () => {
-    setContactsLoading(true);
-    try {
-      const { status, canAskAgain: canAsk } = await Contacts.requestPermissionsAsync();
-      setHasPermission(status === 'granted');
-
-      if (status !== 'granted') {
-        setCanAskAgain(canAsk ?? true);
-        setContactsLoading(false);
-        return;
-      }
-
-      const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Image],
-      });
-
-      const contactsWithPhone: ContactInfo[] = data
-        .filter(c => c.phoneNumbers && c.phoneNumbers.length > 0 && c.name)
-        .map(c => ({
-          name: c.name || 'Unknown',
-          phone: c.phoneNumbers![0].number || '',
-          contactId: c.id,
-          imageUri: c.image?.uri,
-        }))
-        .slice(0, 100); // Limit for performance
-
-      // Look up which contacts are already on PickleGo
-      if (contactsWithPhone.length > 0) {
-        const hashes = await Promise.all(
-          contactsWithPhone.map(c => hashPhone(normalizePhone(c.phone)))
-        );
-        const matches = await lookupContactsOnPickleGo(hashes);
-
-        contactsWithPhone.forEach((contact, i) => {
-          const match = matches.get(hashes[i]);
-          if (match) {
-            contact.isOnPickleGo = true;
-            contact.pickleGoPlayerId = match.playerId;
-            contact.pickleGoPlayerName = match.playerName;
-          }
-        });
-      }
-
-      // Sort: PickleGo users first, then alphabetical
-      contactsWithPhone.sort((a, b) => {
-        if (a.isOnPickleGo && !b.isOnPickleGo) return -1;
-        if (!a.isOnPickleGo && b.isOnPickleGo) return 1;
-        return a.name.localeCompare(b.name);
-      });
-
-      setContacts(contactsWithPhone);
-    } catch (error) {
-      console.error('Error loading contacts:', error);
-    }
-    setContactsLoading(false);
-  }, [lookupContactsOnPickleGo]);
+  const contacts = useContacts({ enabled: hasRequestedPermission });
 
   const handleInvitePress = useCallback(() => {
     setHasRequestedPermission(true);
-    loadContacts();
-  }, [loadContacts]);
-
-  // Re-check contacts permission when returning from Settings
-  useEffect(() => {
-    if (hasPermission !== false || canAskAgain) return;
-
-    const subscription = AppState.addEventListener('change', async (nextState) => {
-      if (nextState === 'active') {
-        const { status } = await Contacts.getPermissionsAsync();
-        if (status === 'granted') {
-          setHasPermission(true);
-          setCanAskAgain(true);
-          loadContacts();
-        }
-      }
-    });
-
-    return () => subscription.remove();
-  }, [hasPermission, canAskAgain, loadContacts]);
-
-  const toggleContact = (contactId: string) => {
-    setSelectedContacts(prev => {
-      const next = new Set(prev);
-      if (next.has(contactId)) next.delete(contactId);
-      else next.add(contactId);
-      return next;
-    });
-  };
+    contacts.handleAllowContacts();
+  }, [contacts.handleAllowContacts]);
 
   const handleSendInvites = async () => {
-    const selected = contacts.filter(
-      c => selectedContacts.has(c.contactId || c.phone) && !c.isOnPickleGo
+    const selected = contacts.contactsList.filter(
+      c => contacts.selectedContacts.has(c.phone),
     );
 
     if (selected.length === 0) {
@@ -145,32 +55,37 @@ const InviteFriendsScreen = () => {
 
     setLoading(true);
     try {
-      const contactsToInvite = selected.map(c => ({
-        phone: normalizePhone(c.phone),
-        name: c.name,
-      }));
+      const onPickleGo = selected.filter(c => c.isOnPickleGo && c.pickleGoPlayerId);
+      const notOnPickleGo = selected.filter(c => !c.isOnPickleGo);
 
-      const { inviteId } = await invitePlayersBySMS(contactsToInvite);
-
-      // Create placeholder players via unified invitePlayer
-      for (const contact of selected) {
+      // Send in-app invites to contacts already on PickleGo
+      for (const contact of onPickleGo) {
         try {
-          await invitePlayer(contact.name, { phone: normalizePhone(contact.phone) });
-        } catch {
-          // Placeholder creation is best-effort
+          await sendPlayerInvite(contact.pickleGoPlayerId!);
+        } catch (error) {
+          console.error(`Error sending invite to ${contact.name}:`, error);
         }
       }
 
-      const isAvailable = await SMS.isAvailableAsync();
-      if (isAvailable) {
-        const phones = selected.map(c => c.phone);
-        const deepLink = await generateOneLink(inviteId);
-        const message = `${currentUser?.name || 'A friend'} invited you to join PickleGo - the best way to track your pickleball matches! Download now: ${deepLink}`;
-        await SMS.sendSMSAsync(phones, message);
+      // For contacts not on PickleGo: create placeholders first, then send SMS
+      if (notOnPickleGo.length > 0) {
+        for (const contact of notOnPickleGo) {
+          try {
+            await invitePlayer(contact.name, { phone: contact.phone });
+          } catch {
+            // Placeholder creation is best-effort
+          }
+        }
+
+        await sendSMSInviteToContacts(
+          notOnPickleGo.map(c => ({ phone: c.phone, name: c.name })),
+          invitePlayersBySMS,
+        );
       }
 
-      showToast(`Invited ${selected.length} friend${selected.length > 1 ? 's' : ''}!`, 'success');
-      setSelectedContacts(new Set());
+      const totalInvited = onPickleGo.length + notOnPickleGo.length;
+      showToast(`Invited ${totalInvited} friend${totalInvited > 1 ? 's' : ''}!`, 'success');
+      contacts.resetSelection();
     } catch (error) {
       console.error('Error sending invites:', error);
       showToast('Failed to send invites', 'error');
@@ -178,39 +93,7 @@ const InviteFriendsScreen = () => {
     setLoading(false);
   };
 
-  const renderContact = ({ item }: { item: ContactInfo }) => {
-    const id = item.contactId || item.phone;
-    const isSelected = selectedContacts.has(id);
-
-    return (
-      <AnimatedPressable
-        style={[styles.contactRow, isSelected && styles.contactRowSelected]}
-        onPress={() => !item.isOnPickleGo && toggleContact(id)}
-        hapticStyle="light"
-      >
-        <View style={styles.contactAvatar}>
-          <Icon
-            name={item.isOnPickleGo ? 'check-circle' : 'user'}
-            size={20}
-            color={item.isOnPickleGo ? colors.primary : colors.gray400}
-          />
-        </View>
-        <View style={styles.contactInfo}>
-          <Text style={styles.contactName}>{item.name}</Text>
-          {item.isOnPickleGo && (
-            <Text style={styles.onPickleGo}>Already on PickleGo</Text>
-          )}
-        </View>
-        {!item.isOnPickleGo && (
-          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-            {isSelected && <Icon name="check" size={14} color={colors.white} />}
-          </View>
-        )}
-      </AnimatedPressable>
-    );
-  };
-
-  const selectedCount = selectedContacts.size;
+  const selectedCount = contacts.selectedContacts.size;
   const [invitedCount, setInvitedCount] = useState(0);
 
   // Pulsing animation for send button when contacts are selected
@@ -238,6 +121,38 @@ const InviteFriendsScreen = () => {
   const peteMessage = invitedCount > 0
     ? `${invitedCount} friend${invitedCount > 1 ? 's' : ''} invited!`
     : `${firstName}'s crew is empty... let's fix that!`;
+
+  const renderContact = ({ item }: { item: ContactInfo }) => {
+    const id = item.phone;
+    const isSelected = contacts.selectedContacts.has(id);
+
+    return (
+      <AnimatedPressable
+        style={[styles.contactRow, isSelected && styles.contactRowSelected]}
+        onPress={() => contacts.toggleContact(id)}
+        hapticStyle="light"
+      >
+        <View style={styles.contactAvatar}>
+          <Icon
+            name={item.isOnPickleGo ? 'check-circle' : 'user'}
+            size={20}
+            color={item.isOnPickleGo ? colors.primary : colors.gray400}
+          />
+        </View>
+        <View style={styles.contactInfo}>
+          <Text style={styles.contactName}>
+            {item.isOnPickleGo ? item.pickleGoPlayerName || item.name : item.name}
+          </Text>
+          {item.isOnPickleGo && (
+            <Text style={styles.onPickleGo}>Already on PickleGo</Text>
+          )}
+        </View>
+        <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+          {isSelected && <Icon name="check" size={14} color={colors.white} />}
+        </View>
+      </AnimatedPressable>
+    );
+  };
 
   return (
     <OnboardingLayout
@@ -285,39 +200,39 @@ const InviteFriendsScreen = () => {
               </Animated.View>
             )}
 
-            {contactsLoading ? (
+            {contacts.loadingContacts ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.loadingText}>Loading contacts...</Text>
               </View>
-            ) : hasPermission === false ? (
+            ) : contacts.permissionDenied ? (
               <View style={styles.emptyContainer}>
                 <Icon name="users" size={32} color={colors.gray400} />
                 <Text style={styles.emptyText}>
-                  {canAskAgain
+                  {contacts.canAskAgain
                     ? 'Allow contact access to invite friends, or continue to schedule your first match.'
                     : 'Contact access was denied. Enable it in Settings to invite friends.'}
                 </Text>
                 <AnimatedPressable
                   style={styles.settingsButton}
-                  onPress={canAskAgain ? loadContacts : () => Linking.openSettings()}
+                  onPress={contacts.canAskAgain ? contacts.loadContacts : () => Linking.openSettings()}
                   hapticStyle="light"
                 >
                   <Text style={styles.settingsButtonText}>
-                    {canAskAgain ? 'Try Again' : 'Open Settings'}
+                    {contacts.canAskAgain ? 'Try Again' : 'Open Settings'}
                   </Text>
                 </AnimatedPressable>
               </View>
-            ) : contacts.length === 0 ? (
+            ) : contacts.contactsList.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Icon name="users" size={32} color={colors.gray400} />
                 <Text style={styles.emptyText}>No contacts found</Text>
               </View>
             ) : (
               <FlatList
-                data={contacts}
+                data={contacts.contactsList}
                 renderItem={renderContact}
-                keyExtractor={item => item.contactId || item.phone}
+                keyExtractor={item => item.phone}
                 style={styles.list}
                 showsVerticalScrollIndicator={false}
               />

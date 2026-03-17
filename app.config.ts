@@ -80,11 +80,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     "react-native-appsflyer",
     ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
-      ? [[
-          "@react-native-google-signin/google-signin",
-          { iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME },
-        ]]
-      : [["@react-native-google-signin/google-signin"]]),
+      ? [
+          [
+            "@react-native-google-signin/google-signin",
+            { iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME },
+          ] as [string, any],
+        ]
+      : ["@react-native-google-signin/google-signin"]),
   ],
   extra: {
     eas: {

@@ -5,10 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   Image,
-  TextInput,
   Alert,
-  Platform,
-  FlatList,
   Linking,
   ActivityIndicator,
   Modal,
@@ -16,17 +13,15 @@ import {
 import Animated from 'react-native-reanimated';
 import { useFadeIn, staggeredEntrance } from '../hooks';
 import { AnimatedPressable } from '../components/AnimatedPressable';
-import { DismissableModal } from '../components/DismissableModal';
 import { Icon, IconName } from '../components/Icon';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, Player } from '../types';
+import { RootStackParamList } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useToast } from '../context/ToastContext';
 import { useProfilePicture } from '../hooks/useProfilePicture';
-import { InvitePlayersModal } from '../components/InvitePlayersModal';
 import { usePlacement } from 'expo-superwall';
 import { PLACEMENTS } from '../services/superwallPlacements';
 
@@ -45,10 +40,7 @@ type SettingSection = {
 type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const SettingsScreen: React.FC = () => {
-  const { currentUser, updatePlayer, getInvitedPlayers, isOutgoingInvitePending, players, removePlayer, signOutUser, deleteAccount } = useData();
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [showInvitedPlayers, setShowInvitedPlayers] = useState(false);
-  const [showManagePlayers, setShowManagePlayers] = useState(false);
+  const { currentUser, updatePlayer, signOutUser, deleteAccount } = useData();
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const navigation = useNavigation<SettingsScreenNavigationProp>();
   const { showToast } = useToast();
@@ -68,9 +60,6 @@ const SettingsScreen: React.FC = () => {
   const handleEditProfile = useCallback(() => {
     navigation.navigate('EditProfile');
   }, [navigation]);
-
-  // Get invited players (memoized — getInvitedPlayers reads from refs internally)
-  const invitedPlayers = useMemo(() => getInvitedPlayers(players), [players, currentUser]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert(
@@ -129,29 +118,6 @@ const SettingsScreen: React.FC = () => {
     );
   }, [deleteAccount]);
 
-  // Handle player removal
-  const handleRemovePlayer = useCallback((player: Player) => {
-    Alert.alert(
-      'Remove Player',
-      `Are you sure you want to remove ${player.name} from your contacts?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            const success = await removePlayer(player.id);
-            if (success) {
-              showToast(`${player.name} has been removed from your contacts.`, 'success');
-            } else {
-              Alert.alert('Error', 'Failed to remove player. You cannot remove yourself.');
-            }
-          }
-        }
-      ]
-    );
-  }, [removePlayer, showToast]);
-
   const settingSections = useMemo<SettingSection[]>(() => [
     {
       title: 'Account',
@@ -162,19 +128,9 @@ const SettingsScreen: React.FC = () => {
           onPress: handleEditProfile,
         },
         {
-          icon: 'mail',
-          label: 'Invite Players',
-          onPress: () => setShowInviteModal(true),
-        },
-        {
           icon: 'users',
-          label: 'Manage Players',
-          onPress: () => setShowManagePlayers(true),
-        },
-        {
-          icon: 'user-plus',
-          label: 'View Invited Players',
-          onPress: () => setShowInvitedPlayers(true),
+          label: 'Players',
+          onPress: () => navigation.navigate('ManagePlayers'),
         },
       ],
     },
@@ -185,11 +141,6 @@ const SettingsScreen: React.FC = () => {
           icon: 'bell',
           label: 'Notifications',
           onPress: () => navigation.navigate('NotificationPreferences'),
-        },
-        {
-          icon: 'palette',
-          label: 'Appearance',
-          onPress: () => Alert.alert('Coming Soon', 'Appearance settings will be available in a future update.')
         },
       ],
     },
@@ -211,114 +162,6 @@ const SettingsScreen: React.FC = () => {
       ]
     }
   ], [handleEditProfile, handleSignOut, handleDeleteAccount, navigation]);
-
-  // Invited Players Modal
-  const renderInvitedPlayersModal = () => (
-    <DismissableModal
-      visible={showInvitedPlayers}
-      onClose={() => setShowInvitedPlayers(false)}
-      overlayStyle={styles.modalOverlay}
-    >
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Invited Players</Text>
-            <AnimatedPressable
-              style={styles.closeButton}
-              onPress={() => setShowInvitedPlayers(false)}
-            >
-              <Icon name="x" size={24} color={colors.primary} />
-            </AnimatedPressable>
-          </View>
-
-          {invitedPlayers.length > 0 ? (
-            <FlatList
-              data={invitedPlayers}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <View style={styles.invitedPlayerItem}>
-                  <View style={styles.invitedPlayerInfo}>
-                    <Text style={styles.invitedPlayerName}>{item.name}</Text>
-                    <Text style={styles.invitedPlayerEmail}>{item.email || item.phoneNumber || ''}</Text>
-                  </View>
-                  <View style={styles.invitedPlayerStatus}>
-                    <Text style={styles.pendingText}>
-                      {item.pendingClaim ? 'Pending' : isOutgoingInvitePending(item.id) ? 'Invite Sent' : 'Connected'}
-                    </Text>
-                  </View>
-                </View>
-              )}
-            />
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>
-                You haven't invited any players yet
-              </Text>
-            </View>
-          )}
-        </View>
-    </DismissableModal>
-  );
-
-  // Render the manage players modal
-  const renderManagePlayersModal = () => {
-    // Filter out the current user from the list
-    const otherPlayers = players.filter(player => !currentUser || player.id !== currentUser.id);
-
-    return (
-      <DismissableModal
-        visible={showManagePlayers}
-        onClose={() => setShowManagePlayers(false)}
-        overlayStyle={styles.modalOverlay}
-      >
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Manage Players</Text>
-              <AnimatedPressable
-                style={styles.closeButton}
-                onPress={() => setShowManagePlayers(false)}
-              >
-                <Icon name="x" size={24} color={colors.primary} />
-              </AnimatedPressable>
-            </View>
-
-            {otherPlayers.length > 0 ? (
-              <FlatList
-                data={otherPlayers}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <View style={styles.playerListItem}>
-                    <View style={styles.playerInfo}>
-                      {item.profilePic ? (
-                        <Image source={{ uri: item.profilePic }} style={styles.playerAvatar} />
-                      ) : (
-                        <View style={styles.playerAvatarPlaceholder}>
-                          <Text style={styles.playerAvatarText}>{item.name.charAt(0).toUpperCase()}</Text>
-                        </View>
-                      )}
-                      <View>
-                        <Text style={styles.playerName}>{item.name}</Text>
-                        {item.email && <Text style={styles.playerEmail}>{item.email}</Text>}
-                      </View>
-                    </View>
-                    <AnimatedPressable
-                      style={styles.removePlayerButton}
-                      onPress={() => handleRemovePlayer(item)}
-                    >
-                      <Icon name="trash" size={20} color={colors.error} />
-                    </AnimatedPressable>
-                  </View>
-                )}
-                contentContainerStyle={styles.playerList}
-              />
-            ) : (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>No other players in your contacts</Text>
-              </View>
-            )}
-          </View>
-      </DismissableModal>
-    );
-  };
 
   return (
     <Layout title="Settings" isInTabNavigator={true}>
@@ -402,15 +245,6 @@ const SettingsScreen: React.FC = () => {
           </View>
           </Animated.View>
         ))}
-
-        {/* Render modals */}
-        <InvitePlayersModal
-          visible={showInviteModal}
-          onClose={() => setShowInviteModal(false)}
-          context="settings"
-        />
-        {renderInvitedPlayersModal()}
-        {renderManagePlayersModal()}
 
         {/* Footer links */}
         <View style={styles.footerLinks}>
@@ -561,176 +395,6 @@ const styles = StyleSheet.create({
   dangerText: {
     color: colors.error,
     fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.backdrop,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.xxxxl,
-  },
-  modalContent: {
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    width: '85%',
-    maxWidth: 360,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  closeButton: {
-    padding: spacing.xs,
-  },
-  modalDescription: {
-    ...typography.bodyLarge,
-    color: colors.gray500,
-    marginBottom: spacing.xl,
-    lineHeight: 22,
-  },
-  inviteButton: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.sm,
-    padding: spacing.lg,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  inviteButtonText: {
-    ...typography.button,
-    color: colors.white,
-  },
-  invitedPlayersList: {
-    maxHeight: 300,
-  },
-  invitedPlayerItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-  },
-  invitedPlayerInfo: {
-    flex: 1,
-  },
-  invitedPlayerName: {
-    ...typography.bodyLarge,
-    fontWeight: '500',
-    color: colors.neutral,
-  },
-  invitedPlayerEmail: {
-    ...typography.bodySmall,
-    color: colors.gray500,
-    marginTop: 2,
-  },
-  invitedPlayerStatus: {
-    fontSize: 14,
-    fontWeight: '500',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.md,
-    overflow: 'hidden',
-  },
-  pendingStatus: {
-    backgroundColor: colors.actionOverlay,
-    color: colors.warning,
-  },
-  claimedStatus: {
-    backgroundColor: colors.primaryOverlay,
-    color: colors.primary,
-  },
-  noInvitesText: {
-    ...typography.bodyLarge,
-    color: colors.gray500,
-    textAlign: 'center',
-    padding: spacing.xl,
-  },
-  playerList: {
-    paddingBottom: spacing.xl,
-  },
-  playerListItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-  },
-  playerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  playerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: spacing.md,
-  },
-  playerAvatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: spacing.md,
-  },
-  playerAvatarText: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  playerName: {
-    ...typography.bodyLarge,
-    fontWeight: '500',
-    color: colors.neutral,
-  },
-  playerEmail: {
-    ...typography.bodySmall,
-    color: colors.gray500,
-  },
-  removePlayerButton: {
-    padding: spacing.sm,
-  },
-  emptyState: {
-    padding: spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyStateText: {
-    ...typography.bodyLarge,
-    color: colors.gray500,
-    textAlign: 'center',
-  },
-  modalTitle: {
-    ...typography.h3,
-    color: colors.primary,
-  },
-  inputContainer: {
-    marginBottom: spacing.sm,
-  },
-  inputLabel: {
-    ...typography.label,
-    color: colors.neutral,
-    marginBottom: spacing.xs,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    borderRadius: borderRadius.sm,
-    padding: spacing.sm,
-    fontSize: 13,
-  },
-  pendingText: {
-    ...typography.bodySmall,
-    fontWeight: '500',
-    color: colors.warning,
   },
   footerLinks: {
     alignItems: 'center',

@@ -6,3 +6,4 @@ export { useReducedMotion } from './useReducedMotion';
 export { useHaptic } from './useHaptic';
 export { staggeredEntrance } from './useStaggeredList';
 export { useContentTransition } from './useContentTransition';
+export { useContacts } from './useContacts';

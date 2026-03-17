@@ -17,6 +17,7 @@ import CourtsDiscoveryScreen from '../screens/CourtsDiscoveryScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import NotificationPreferencesScreen from '../screens/NotificationPreferencesScreen';
 import InvitePlayersScreen from '../screens/InvitePlayersScreen';
+import PlayersScreen from '../screens/PlayersScreen';
 import MainTabs from './TabNavigator';
 import OnboardingNavigator from './OnboardingNavigator';
 
@@ -59,6 +60,7 @@ const Navigation = () => {
             <Stack.Screen name="CompleteMatch" component={CompleteMatchScreen} options={modalScreenOptions} />
             <Stack.Screen name="PlayerStats" component={PlayerStatsScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="ManagePlayers" component={PlayersScreen} />
             <Stack.Screen name="EditProfile" component={EditProfileScreen} />
             <Stack.Screen name="CourtsDiscovery" component={CourtsDiscoveryScreen} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} />

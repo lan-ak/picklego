@@ -9,7 +9,7 @@ const firestore_2 = require("firebase-admin/firestore");
 const auth_1 = require("firebase-admin/auth");
 const storage_1 = require("firebase-admin/storage");
 const expo_server_sdk_1 = require("expo-server-sdk");
-const crypto_1 = require("crypto");
+const ids_1 = require("./ids");
 const app = (0, app_1.initializeApp)();
 /** Normalize a phone number to digits-only with US country code. */
 function normalizePhone(phone) {
@@ -59,13 +59,17 @@ exports.acceptPlayerInvite = (0, https_1.onCall)(async (request) => {
         const callerDoc = await transaction.get(db.collection('players').doc(callerUid));
         const callerName = callerDoc.exists ? (callerDoc.data().name || 'A player') : 'A player';
         const callerProfilePic = callerDoc.exists ? callerDoc.data().profilePic : undefined;
-        // Add bidirectional connections
+        // Read sender doc for notification preferences (all reads must precede writes)
+        const senderDoc = await transaction.get(db.collection('players').doc(senderId));
+        const senderPrefs = senderDoc.exists ? senderDoc.data().notificationPreferences : undefined;
+        // Add bidirectional connections and clean up pendingConnections
         transaction.update(db.collection('players').doc(callerUid), {
             connections: firestore_2.FieldValue.arrayUnion(senderId),
             updatedAt: now,
         });
         transaction.update(db.collection('players').doc(senderId), {
             connections: firestore_2.FieldValue.arrayUnion(callerUid),
+            pendingConnections: firestore_2.FieldValue.arrayRemove(callerUid),
             updatedAt: now,
         });
         // Update the invite notification to accepted
@@ -73,12 +77,9 @@ exports.acceptPlayerInvite = (0, https_1.onCall)(async (request) => {
             status: 'accepted',
             respondedAt: now,
         });
-        // Create invite_accepted notification for the sender (if they haven't disabled it)
-        const senderDoc = await transaction.get(db.collection('players').doc(senderId));
-        const senderPrefs = senderDoc.exists ? senderDoc.data().notificationPreferences : undefined;
         let acceptNotifId = null;
         if (!senderPrefs || senderPrefs.invite_accepted !== false) {
-            acceptNotifId = `invite_accepted_${callerUid}_${senderId}_${(0, crypto_1.randomUUID)()}`;
+            acceptNotifId = (0, ids_1.inviteAcceptedNotifId)(callerUid, senderId);
             const acceptNotifData = {
                 id: acceptNotifId,
                 type: 'invite_accepted',
@@ -191,7 +192,7 @@ exports.claimPlaceholderProfile = (0, https_1.onCall)(async (request) => {
             if (match.createdBy === realUid)
                 continue; // don't notify yourself
             const team = (match.team1PlayerIds || []).includes(placeholderId) ? 1 : 2;
-            const notifId = `notif_${matchDoc.id}_${realUid}`;
+            const notifId = (0, ids_1.matchInviteNotifId)(matchDoc.id, realUid);
             transaction.set(db.collection('notifications').doc(notifId), {
                 id: notifId,
                 type: 'match_invite',
@@ -462,7 +463,7 @@ exports.claimSMSInvite = (0, https_1.onCall)(async (request) => {
         transaction.update(inviteRef, fullyClaimedUpdate);
         // Create invite_accepted notification for the inviter (if they haven't disabled it)
         if (!senderPrefs || senderPrefs.invite_accepted !== false) {
-            const acceptNotifId = `invite_accepted_${callerUid}_${senderId}_${(0, crypto_1.randomUUID)()}`;
+            const acceptNotifId = (0, ids_1.inviteAcceptedNotifId)(callerUid, senderId);
             const acceptNotifData = {
                 id: acceptNotifId,
                 type: 'invite_accepted',
@@ -552,7 +553,7 @@ exports.claimSMSInvite = (0, https_1.onCall)(async (request) => {
                     if (match.createdBy === callerUid)
                         continue;
                     const team = (match.team1PlayerIds || []).includes(placeholderId) ? 1 : 2;
-                    const notifId = `notif_${matchDoc.id}_${callerUid}`;
+                    const notifId = (0, ids_1.matchInviteNotifId)(matchDoc.id, callerUid);
                     transaction.set(db.collection('notifications').doc(notifId), {
                         id: notifId,
                         type: 'match_invite',
@@ -846,7 +847,7 @@ exports.createNotificationsOnMatchCreate = (0, firestore_1.onDocumentCreated)('m
         if (!realRecipientIds.has(recipientId))
             continue;
         const team = (match.team1PlayerIds || []).includes(recipientId) ? 1 : 2;
-        const notifId = `notif_${matchId}_${recipientId}`;
+        const notifId = (0, ids_1.matchInviteNotifId)(matchId, recipientId);
         const notifData = {
             id: notifId,
             type: 'match_invite',
@@ -933,7 +934,7 @@ exports.createNotificationsOnMatchUpdate = (0, firestore_1.onDocumentUpdated)('m
         if (!realRecipientIds.has(recipientId))
             continue;
         const team = (after.team1PlayerIds || []).includes(recipientId) ? 1 : 2;
-        const notifId = `notif_${matchId}_${recipientId}`;
+        const notifId = (0, ids_1.matchInviteNotifId)(matchId, recipientId);
         const notifData = {
             id: notifId, type: 'match_invite', status: 'sent',
             recipientId, senderId: modifiedBy, senderName,
@@ -950,7 +951,7 @@ exports.createNotificationsOnMatchUpdate = (0, firestore_1.onDocumentUpdated)('m
     for (const recipientId of existing) {
         if (!realRecipientIds.has(recipientId))
             continue;
-        const notifId = `notif_updated_${matchId}_${recipientId}_${(0, crypto_1.randomUUID)()}`;
+        const notifId = (0, ids_1.matchUpdatedNotifId)(matchId, recipientId);
         const notifData = {
             id: notifId, type: 'match_updated', status: 'sent',
             recipientId, senderId: modifiedBy, senderName,
@@ -969,7 +970,7 @@ exports.createNotificationsOnMatchUpdate = (0, firestore_1.onDocumentUpdated)('m
     for (const recipientId of removed) {
         if (!realRecipientIds.has(recipientId))
             continue;
-        const notifId = `notif_removed_${matchId}_${recipientId}_${(0, crypto_1.randomUUID)()}`;
+        const notifId = (0, ids_1.matchRemovedNotifId)(matchId, recipientId);
         const notifData = {
             id: notifId, type: 'match_cancelled', status: 'sent',
             recipientId, senderId: modifiedBy, senderName,
@@ -1029,7 +1030,7 @@ exports.resendMatchNotifications = (0, https_1.onCall)({ invoker: "private" }, a
         if (!realRecipientIds.has(recipientId))
             continue;
         const team = (match.team1PlayerIds || []).includes(recipientId) ? 1 : 2;
-        const notifId = `notif_${matchId}_${recipientId}`;
+        const notifId = (0, ids_1.matchInviteNotifId)(matchId, recipientId);
         const notifData = {
             id: notifId, type: 'match_invite', status: 'sent',
             recipientId, senderId: callerUid, senderName,

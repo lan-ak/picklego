@@ -1049,7 +1049,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const user = currentUserRef.current;
     if (!user) return [];
     const source = playersList ?? playersRef.current;
+    const connections = user.connections || [];
     return source.filter(player => {
+      // Already connected — never show as "invited"
+      if (connections.includes(player.id)) return false;
       // Placeholder players created by current user
       if (player.invitedBy === user.id && (player.email || player.phoneNumber)) return true;
       // Existing players with a pending outgoing invite
@@ -1456,11 +1459,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setCurrentUser(prev => prev ? {
             ...prev,
             connections: [...(prev.connections || []), senderId],
+            pendingConnections: (prev.pendingConnections || []).filter(id => id !== senderId),
           } : prev);
 
           setPlayers(prev => {
             let updated = prev.map(p => {
-              if (p.id === user.id) return { ...p, connections: [...(p.connections || []), senderId] };
+              if (p.id === user.id) return { ...p, connections: [...(p.connections || []), senderId], pendingConnections: (p.pendingConnections || []).filter((id: string) => id !== senderId) };
               if (p.id === senderId) return { ...p, connections: [...(p.connections || []), user.id] };
               return p;
             });

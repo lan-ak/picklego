@@ -10,20 +10,18 @@ import {
   Platform,
   KeyboardAvoidingView,
   Linking,
-  AppState,
 } from 'react-native';
-import * as Contacts from 'expo-contacts';
-import * as SMS from 'expo-sms';
 import { AnimatedPressable } from './AnimatedPressable';
 import { DismissableModal } from './DismissableModal';
 import { Icon } from './Icon';
 import { useData } from '../context/DataContext';
-import { generateOneLink } from '../services/appsflyer';
 import { getPlayerDocument } from '../config/firebase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import type { ContactInfo, Player } from '../types';
-import { normalizePhone, hashPhone, formatPhoneDisplay } from '../utils/phone';
+import { normalizePhone, formatPhoneDisplay } from '../utils/phone';
+import { sendSMSInviteToContacts } from '../utils/smsInvite';
+import { useContacts } from '../hooks/useContacts';
 
 type InviteContext = 'settings' | 'addMatch';
 
@@ -61,7 +59,6 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     addPlayer,
     invitePlayer,
     invitePlayersBySMS,
-    lookupContactsOnPickleGo,
     sendPlayerInvite,
     players,
   } = useData();
@@ -72,110 +69,33 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   // Tab state — only used in addMatch context
   const [activeTab, setActiveTab] = useState<TabKey>(isAddMatch ? 'players' : 'invite');
 
+  const showingInvite = isAddMatch ? activeTab === 'invite' : true;
+
+  // Shared contacts hook
+  const contacts = useContacts({ enabled: visible && showingInvite });
+
   // Reset tab when modal opens
   useEffect(() => {
     if (visible) {
       setActiveTab(isAddMatch ? 'players' : 'invite');
       setPlayerSearchQuery('');
-      setSearchQuery('');
-      setSelectedContacts(new Set());
       setInviteName('');
       setInviteEmail('');
       setShowManualForm(false);
-      setHasRequestedContacts(false);
-      setContactsList([]);
-      setFilteredContacts([]);
       setInvitePhone('');
+      contacts.resetAll();
     }
   }, [visible]);
 
   // --- My Players tab state ---
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
 
-  // --- Invite tab: contacts state ---
-  const [contactsList, setContactsList] = useState<ContactInfo[]>([]);
-  const [filteredContacts, setFilteredContacts] = useState<ContactInfo[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
-  const [loadingContacts, setLoadingContacts] = useState(false);
-  const [permissionDenied, setPermissionDenied] = useState(false);
-  const [canAskAgain, setCanAskAgain] = useState(true);
-  const [smsAvailable, setSmsAvailable] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [hasRequestedContacts, setHasRequestedContacts] = useState(false);
-  const [isLimitedAccess, setIsLimitedAccess] = useState(false);
-
   // --- Invite tab: manual form state ---
   const [inviteName, setInviteName] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
-
-  // Check SMS availability
-  useEffect(() => {
-    SMS.isAvailableAsync().then(setSmsAvailable);
-  }, []);
-
-  // Auto-load contacts when invite tab becomes active
-  useEffect(() => {
-    if (!visible) return;
-    const showingInvite = isAddMatch ? activeTab === 'invite' : true;
-    if (!showingInvite) return;
-
-    (async () => {
-      const { status } = await Contacts.getPermissionsAsync();
-      if (status === 'granted') {
-        setHasRequestedContacts(true);
-        loadContacts();
-      }
-    })();
-  }, [visible, activeTab]);
-
-  const handleAllowContacts = () => {
-    setHasRequestedContacts(true);
-    loadContacts();
-  };
-
-  const handleExpandAccess = async () => {
-    try {
-      await Contacts.presentAccessPickerAsync?.();
-      loadContacts();
-    } catch {
-      // User dismissed the picker
-    }
-  };
-
-  // Filter contacts on search
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredContacts(contactsList);
-      return;
-    }
-    const q = searchQuery.toLowerCase();
-    setFilteredContacts(
-      contactsList.filter(
-        c => c.name.toLowerCase().includes(q) || c.phone.includes(q),
-      ),
-    );
-  }, [searchQuery, contactsList]);
-
-  // Re-check contacts permission when returning from Settings
-  useEffect(() => {
-    if (!permissionDenied || canAskAgain) return;
-
-    const subscription = AppState.addEventListener('change', async (nextState) => {
-      if (nextState === 'active') {
-        const { status } = await Contacts.getPermissionsAsync();
-        if (status === 'granted') {
-          setPermissionDenied(false);
-          setCanAskAgain(true);
-          loadContacts();
-        }
-      }
-    });
-
-    return () => subscription.remove();
-  }, [permissionDenied, canAskAgain]);
+  const [sending, setSending] = useState(false);
 
   // --- My Players tab: get filtered connected players ---
   const getFilteredPlayers = (): Player[] => {
@@ -222,121 +142,13 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     return [...allDeduped, ...dedupedNoEmail];
   };
 
-  // --- Contacts loading ---
-  const loadContacts = async () => {
-    setLoadingContacts(true);
-    try {
-      const { status, canAskAgain: canAsk, accessPrivileges } = await Contacts.requestPermissionsAsync();
-      if (status !== 'granted') {
-        setPermissionDenied(true);
-        setCanAskAgain(canAsk ?? true);
-        setLoadingContacts(false);
-        return;
-      }
-
-      setIsLimitedAccess(accessPrivileges === 'limited');
-
-      const { data } = await Contacts.getContactsAsync({
-        fields: [
-          Contacts.Fields.PhoneNumbers,
-          Contacts.Fields.Name,
-          Contacts.Fields.Image,
-        ],
-      });
-
-      const contacts: ContactInfo[] = [];
-      const seenPhones = new Set<string>();
-
-      for (const contact of data) {
-        if (!contact.phoneNumbers) continue;
-        const name = contact.name || contact.firstName || contact.lastName || '';
-        for (const pn of contact.phoneNumbers) {
-          if (!pn.number) continue;
-          const normalized = normalizePhone(pn.number);
-          if (normalized.length < 10 || seenPhones.has(normalized)) continue;
-          seenPhones.add(normalized);
-          contacts.push({
-            name: name || pn.number,
-            phone: normalized,
-            contactId: contact.id,
-            imageUri: contact.image?.uri,
-          });
-        }
-      }
-
-      contacts.sort((a, b) => a.name.localeCompare(b.name));
-
-      if (contacts.length > 0) {
-        try {
-          const hashes = await Promise.all(
-            contacts.map(c => hashPhone(c.phone)),
-          );
-          const hashToContact = new Map<string, number>();
-          hashes.forEach((h, i) => hashToContact.set(h, i));
-
-          const matches = await lookupContactsOnPickleGo(hashes);
-          for (const [hash, info] of matches) {
-            const idx = hashToContact.get(hash);
-            if (idx !== undefined) {
-              contacts[idx].isOnPickleGo = true;
-              contacts[idx].pickleGoPlayerId = info.playerId;
-              contacts[idx].pickleGoPlayerName = info.playerName;
-            }
-          }
-        } catch (error) {
-          console.error('Error looking up phone numbers:', error);
-        }
-      }
-
-      contacts.sort((a, b) => {
-        if (a.isOnPickleGo && !b.isOnPickleGo) return -1;
-        if (!a.isOnPickleGo && b.isOnPickleGo) return 1;
-        return a.name.localeCompare(b.name);
-      });
-
-      setContactsList(contacts);
-      setFilteredContacts(contacts);
-    } catch (error) {
-      console.error('Error loading contacts:', error);
-      Alert.alert('Error', 'Failed to load contacts.');
-    }
-    setLoadingContacts(false);
-  };
-
-  const toggleContact = (phone: string) => {
-    setSelectedContacts(prev => {
-      const next = new Set(prev);
-      if (next.has(phone)) next.delete(phone);
-      else next.add(phone);
-      return next;
-    });
-  };
-
-  // Shared helper: create SMS invite record, generate deep link, and open SMS composer
-  const sendSMSInviteToContacts = async (contacts: { phone: string; name: string }[]) => {
-    const { inviteId } = await invitePlayersBySMS(contacts);
-    const deepLink = await generateOneLink(inviteId);
-    const message = `Hey! I'm using PickleGo to track our pickleball matches. Join me and let's play! ${deepLink}`;
-    const phones = contacts.map(c => {
-      const p = c.phone;
-      if (p.length === 11 && p.startsWith('1')) return `+${p}`;
-      return p;
-    });
-    const canSend = await SMS.isAvailableAsync();
-    if (canSend) {
-      await SMS.sendSMSAsync(phones, message);
-    } else {
-      Alert.alert('SMS Not Available', 'SMS is not available on this device.');
-    }
-  };
-
   // --- Send contact invites ---
   const handleSendInvites = async () => {
-    if (selectedContacts.size === 0 || authLoading) return;
+    if (contacts.selectedContacts.size === 0 || authLoading) return;
     setSending(true);
 
     try {
-      const selected = contactsList.filter(c => selectedContacts.has(c.phone));
+      const selected = contacts.contactsList.filter(c => contacts.selectedContacts.has(c.phone));
       const onPickleGo = selected.filter(c => c.isOnPickleGo && c.pickleGoPlayerId);
       const notOnPickleGo = selected.filter(c => !c.isOnPickleGo);
 
@@ -379,6 +191,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
 
         await sendSMSInviteToContacts(
           notOnPickleGo.map(c => ({ phone: c.phone, name: c.name })),
+          invitePlayersBySMS,
         );
       }
 
@@ -389,7 +202,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
         );
       }
 
-      setSelectedContacts(new Set());
+      contacts.resetSelection();
       onClose();
     } catch (error) {
       console.error('Error sending invites:', error);
@@ -461,7 +274,10 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
 
       // If phone was provided and a new placeholder was created, send SMS
       if (hasPhone && result.type === 'invited') {
-        await sendSMSInviteToContacts([{ phone: normalizedPhone, name: inviteName.trim() }]);
+        await sendSMSInviteToContacts(
+          [{ phone: normalizedPhone, name: inviteName.trim() }],
+          invitePlayersBySMS,
+        );
       }
 
       switch (result.type) {
@@ -509,8 +325,8 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   };
 
   const handleClose = () => {
-    setSelectedContacts(new Set());
-    setSearchQuery('');
+    contacts.resetSelection();
+    contacts.setSearchQuery('');
     setPlayerSearchQuery('');
     onClose();
   };
@@ -547,7 +363,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
                 }
                 handleClose();
               }}
-  
+
             >
               <View style={styles.playerRow}>
                 <View style={styles.avatar}>
@@ -583,7 +399,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   // ==================== RENDER: Invite Tab (contacts + manual form) ====================
 
   const renderContactItem = ({ item }: { item: ContactInfo }) => {
-    const isSelected = selectedContacts.has(item.phone);
+    const isSelected = contacts.selectedContacts.has(item.phone);
     const initials = item.name
       .split(' ')
       .map(n => n[0])
@@ -594,7 +410,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     return (
       <AnimatedPressable
         style={[styles.contactItem, isSelected && styles.contactItemSelected]}
-        onPress={() => toggleContact(item.phone)}
+        onPress={() => contacts.toggleContact(item.phone)}
       >
         <View style={[styles.avatar, item.isOnPickleGo && styles.avatarOnPickleGo]}>
           <Text style={styles.avatarText}>{initials || '?'}</Text>
@@ -624,7 +440,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   };
 
   const renderContactsSection = () => {
-    if (!hasRequestedContacts && !permissionDenied && contactsList.length === 0) {
+    if (!contacts.hasRequestedContacts && !contacts.permissionDenied && contacts.contactsList.length === 0) {
       return (
         <View style={styles.emptyState}>
           <Icon name="users" size={40} color={colors.primary} />
@@ -632,7 +448,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
           <Text style={styles.emptyStateText}>
             Access your contacts to find friends already on PickleGo and invite others to play.
           </Text>
-          <AnimatedPressable style={styles.allowContactsButton} onPress={handleAllowContacts}>
+          <AnimatedPressable style={styles.allowContactsButton} onPress={contacts.handleAllowContacts}>
             <Icon name="book-user" size={16} color={colors.white} />
             <Text style={styles.allowContactsButtonText}>Allow Contact Access</Text>
           </AnimatedPressable>
@@ -640,29 +456,29 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
       );
     }
 
-    if (permissionDenied) {
+    if (contacts.permissionDenied) {
       return (
         <View style={styles.emptyState}>
           <Icon name="book-user" size={40} color={colors.gray400} />
           <Text style={styles.emptyStateTitle}>Contacts Access Required</Text>
           <Text style={styles.emptyStateText}>
-            {canAskAgain
+            {contacts.canAskAgain
               ? 'Allow PickleGo to access your contacts to invite friends.'
               : 'Allow PickleGo to access your contacts to invite friends. You can enable this in Settings.'}
           </Text>
           <AnimatedPressable
             style={styles.retryButton}
-            onPress={canAskAgain ? loadContacts : () => Linking.openSettings()}
+            onPress={contacts.canAskAgain ? contacts.loadContacts : () => Linking.openSettings()}
           >
             <Text style={styles.retryButtonText}>
-              {canAskAgain ? 'Try Again' : 'Open Settings'}
+              {contacts.canAskAgain ? 'Try Again' : 'Open Settings'}
             </Text>
           </AnimatedPressable>
         </View>
       );
     }
 
-    if (loadingContacts) {
+    if (contacts.loadingContacts) {
       return (
         <View style={styles.loadingState}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -678,14 +494,14 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
           <TextInput
             style={styles.searchInput}
             placeholder="Search contacts..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            value={contacts.searchQuery}
+            onChangeText={contacts.setSearchQuery}
             autoCapitalize="none"
           />
         </View>
 
-        {isLimitedAccess && (
-          <AnimatedPressable style={styles.limitedAccessBanner} onPress={handleExpandAccess}>
+        {contacts.isLimitedAccess && (
+          <AnimatedPressable style={styles.limitedAccessBanner} onPress={contacts.handleExpandAccess}>
             <View style={styles.limitedAccessContent}>
               <Icon name="info" size={16} color={colors.primary} />
               <Text style={styles.limitedAccessText}>Not seeing all your contacts?</Text>
@@ -695,7 +511,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
         )}
 
         <FlatList
-          data={filteredContacts}
+          data={contacts.filteredContacts}
           keyExtractor={item => item.phone}
           renderItem={renderContactItem}
           style={styles.contactList}
@@ -705,13 +521,13 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>
-                {searchQuery ? 'No contacts match your search' : 'No contacts with phone numbers found'}
+                {contacts.searchQuery ? 'No contacts match your search' : 'No contacts with phone numbers found'}
               </Text>
             </View>
           }
         />
 
-        {selectedContacts.size > 0 && (
+        {contacts.selectedContacts.size > 0 && (
           <AnimatedPressable
             style={[styles.sendButton, sending && styles.sendButtonDisabled]}
             onPress={handleSendInvites}
@@ -723,7 +539,7 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
               <>
                 <Icon name="send" size={18} color={colors.white} />
                 <Text style={styles.sendButtonText}>
-                  {`Send ${selectedContacts.size} Invite${selectedContacts.size > 1 ? 's' : ''}`}
+                  {`Send ${contacts.selectedContacts.size} Invite${contacts.selectedContacts.size > 1 ? 's' : ''}`}
                 </Text>
               </>
             )}

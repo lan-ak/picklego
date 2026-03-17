@@ -70,6 +70,10 @@ export const acceptPlayerInvite = onCall(async (request) => {
     const callerName = callerDoc.exists ? (callerDoc.data()!.name || 'A player') : 'A player';
     const callerProfilePic = callerDoc.exists ? callerDoc.data()!.profilePic : undefined;
 
+    // Read sender doc for notification preferences (all reads must precede writes)
+    const senderDoc = await transaction.get(db.collection('players').doc(senderId));
+    const senderPrefs = senderDoc.exists ? senderDoc.data()!.notificationPreferences : undefined;
+
     // Add bidirectional connections and clean up pendingConnections
     transaction.update(db.collection('players').doc(callerUid), {
       connections: FieldValue.arrayUnion(senderId),
@@ -86,10 +90,6 @@ export const acceptPlayerInvite = onCall(async (request) => {
       status: 'accepted',
       respondedAt: now,
     });
-
-    // Create invite_accepted notification for the sender (if they haven't disabled it)
-    const senderDoc = await transaction.get(db.collection('players').doc(senderId));
-    const senderPrefs = senderDoc.exists ? senderDoc.data()!.notificationPreferences : undefined;
     let acceptNotifId: string | null = null;
 
     if (!senderPrefs || senderPrefs.invite_accepted !== false) {

@@ -258,6 +258,7 @@ export type RootStackParamList = {
   CompleteMatch: { matchId: string };
   PlayerStats: { playerId: string };
   Settings: undefined;
+  ManagePlayers: undefined;
   Auth: undefined;
   EditProfile: undefined;
   CourtsDiscovery: undefined;
