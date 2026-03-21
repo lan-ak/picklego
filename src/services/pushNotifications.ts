@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { addPushToken, removePushToken } from '../config/firebase';
+import { updateAppsFlyerPushToken } from './appsflyer';
 
 // Configure how notifications appear when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -53,6 +54,7 @@ export async function registerPushToken(playerId: string): Promise<string | null
 
   try {
     await addPushToken(playerId, token);
+    updateAppsFlyerPushToken(token);
     return token;
   } catch (error) {
     console.error('Error storing push token:', error);

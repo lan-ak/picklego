@@ -188,7 +188,7 @@ export interface DataContextType {
   updateMatch: (matchId: string, updates: Partial<Match>) => Promise<void>;
   deleteMatch: (matchId: string) => Promise<void>;
   updatePlayer: (playerId: string, updates: Partial<Player>) => Promise<void>;
-  getPlayerName: (playerId: string) => string;
+  getPlayerName: (playerId: string, fallbackName?: string) => string;
   setCurrentUser: (player: Player | null) => void;
   invitePlayer: (name: string, contact: { email?: string; phone?: string }) => Promise<InviteResult>;
   claimInvitation: (email: string, playerData: Partial<Player>) => Promise<boolean>;

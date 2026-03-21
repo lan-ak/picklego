@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, BackHandler, Platform, Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, BackHandler, Platform, Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
@@ -29,6 +29,7 @@ interface OnboardingLayoutProps {
   ctaLoading?: boolean;
   ctaDisabled?: boolean;
   secondaryAction?: { title: string; onPress: () => void };
+  scrollableBody?: boolean;
   showProgressBar?: boolean;
   heroColor?: string;
   children: React.ReactNode;
@@ -47,6 +48,7 @@ const OnboardingLayout = ({
   ctaLoading,
   ctaDisabled,
   secondaryAction,
+  scrollableBody = false,
   showProgressBar = true,
   heroColor,
   children,
@@ -96,7 +98,17 @@ const OnboardingLayout = ({
             {title && <Text style={styles.title}>{title}</Text>}
             {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
 
-            <View style={styles.body}>{children}</View>
+            {scrollableBody ? (
+              <ScrollView
+                style={styles.body}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {children}
+              </ScrollView>
+            ) : (
+              <View style={styles.body}>{children}</View>
+            )}
 
             <View style={styles.footer}>
               <PrimaryButton

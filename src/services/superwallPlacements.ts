@@ -11,6 +11,8 @@ export const PLACEMENTS = {
   ONBOARDING_COMPLETE: 'OnboardingComplete',
 
   // Match creation & completion
+  ADD_MATCH_TAPPED: 'AddMatchTapped',
+  COMPLETE_MATCH_TAPPED: 'CompleteMatchTapped',
   MATCH_CREATE: 'MatchCreate',
   MATCH_CREATE_LIMIT: 'MatchCreateLimitReached',
   MATCH_COMPLETE: 'MatchComplete',
@@ -24,6 +26,7 @@ export const PLACEMENTS = {
 
   // Actions
   REMATCH: 'Rematch',
+  ALL_TIME_TAPPED: 'AllTimeTapped',
   FILTER_STATS_BY_TIME: 'FilterStatsByTime',
 
   // Settings / profile

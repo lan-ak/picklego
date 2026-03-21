@@ -597,12 +597,7 @@ const styles = StyleSheet.create({
     ...typography.button,
     color: colors.white,
   },
-  cancelButtonText: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: spacing.md,
-  },
+  // cancelButtonText defined below in nameModal styles
   toggleButton: {
     marginTop: spacing.lg,
     alignItems: 'center',

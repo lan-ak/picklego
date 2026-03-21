@@ -42,6 +42,7 @@ import {
 } from '../config/firebase';
 import { hashPhone } from '../utils/phone';
 import { registerPushToken, unregisterPushToken } from '../services/pushNotifications';
+import { setAppsFlyerUserId, logAppsFlyerEvent } from '../services/appsflyer';
 import { useOnboardingStatus } from '../hooks/useOnboardingStatus';
 import { newMatchId, newPlaceholderPlayerId, playerInviteNotifId, matchCancelledNotifId } from '../utils/ids';
 
@@ -375,6 +376,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     }
+
+    // 5. Load players referenced in matches but not yet in local state
+    const matchPlayerIds = new Set<string>();
+    matchesRef.current.forEach(m => {
+      m.allPlayerIds?.forEach((id: string) => matchPlayerIds.add(id));
+    });
+    const loadedIds = new Set(playersRef.current.map(p => p.id));
+    const missingMatchPlayerIds = [...matchPlayerIds].filter(id => !loadedIds.has(id));
+    if (missingMatchPlayerIds.length > 0) {
+      const docs = await Promise.all(
+        missingMatchPlayerIds.map((id: string) => getPlayerDocument(id))
+      );
+      const validPlayers = docs.filter((d): d is Player => d !== null);
+      if (validPlayers.length > 0) {
+        setPlayers(prev => {
+          const currentIds = new Set(prev.map(p => p.id));
+          const toAdd = validPlayers.filter(p => !currentIds.has(p.id));
+          return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+        });
+      }
+    }
   }, []);
 
   // Refresh connected players from Firestore, load missing docs, and prune stale placeholders
@@ -412,6 +434,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (playerDoc) {
             setCurrentUser(playerDoc);
+            setAppsFlyerUserId(playerDoc.id);
             setPlayers(prev => {
               const filtered = prev.filter(p => p.id !== playerDoc.id);
               return [...filtered, playerDoc];
@@ -694,6 +717,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw error;
     }
 
+    logAppsFlyerEvent('af_add_to_cart', { af_content_id: newMatch.id, af_content_type: 'match' });
     return newMatch;
   }, []);
 
@@ -731,6 +755,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       recalculateStatsForPlayers(updatedMatch.allPlayerIds,
         matchesRef.current.map(m => m.id === matchId ? updatedMatch : m)
       );
+      if (updates.status === 'completed') {
+        logAppsFlyerEvent('match_complete', { af_content_id: matchId });
+      }
     }
   }, []);
 
@@ -777,6 +804,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Only set as current user for auth signups
       if (playerData.email && playerData.password) {
         setCurrentUser(newPlayer);
+        logAppsFlyerEvent('af_complete_registration', { af_registration_method: 'email' });
       }
 
       return newPlayer;
@@ -1086,8 +1114,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   }, [updatePlayer]);
 
-  // Get player name even if they've been deleted
-  const getPlayerName = useCallback((playerId: string): string => {
+  // Get player name even if they've been deleted.
+  // An optional fallbackName (e.g. a snapshotted match name) is used before the
+  // generic "Unknown Player" string so callers can provide context-specific defaults.
+  const getPlayerName = useCallback((playerId: string, fallbackName?: string): string => {
     // First check active players
     const activePlayer = playersRef.current.find(p => p.id === playerId);
     if (activePlayer) return activePlayer.name;
@@ -1095,6 +1125,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Then check deleted players
     const deletedPlayer = deletedPlayersRef.current.find(p => p.id === playerId);
     if (deletedPlayer) return `${deletedPlayer.name} (Removed)`;
+
+    // Caller-supplied fallback (e.g. snapshotted name from match document)
+    if (fallbackName) return fallbackName;
 
     // If not found anywhere
     return 'Unknown Player';
@@ -1246,6 +1279,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await createPlayerDocument(newPlayer);
       setPlayers(prev => [...prev, newPlayer]);
       setCurrentUser(newPlayer);
+      logAppsFlyerEvent('af_complete_registration', { af_registration_method: provider });
     } catch (error: any) {
       throw new Error(error.message);
     } finally {
@@ -1438,6 +1472,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // bidirectional connections, and creates the accept notification in a
         // single Firestore batch, preventing inconsistent state on partial failure.
         const result = await callAcceptPlayerInvite(notificationId);
+        logAppsFlyerEvent('player_connected', { af_description: 'invite_accepted' });
 
         // Fetch sender doc before batching state updates (so we can include it in a single render)
         let senderDoc: Player | null = null;
@@ -1523,6 +1558,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       contacts.map(c => c.phone),
       contacts.map(c => c.name),
     );
+    logAppsFlyerEvent('af_invite', { af_description: 'sms', af_quantity: String(contacts.length) });
     return { inviteId: result.inviteId };
   }, []);
 
@@ -1545,6 +1581,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await callClaimSMSInvite(pendingInviteId);
       if (result.claimed) {
         await AsyncStorage.removeItem('pendingSMSInviteId');
+        logAppsFlyerEvent('invite_claimed', { invite_id: pendingInviteId });
         await refreshConnectedPlayers();
         await refreshNotifications();
       } else {

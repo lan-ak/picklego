@@ -11,14 +11,14 @@ export function initAppsFlyer() {
   });
 
   // Handle deferred deep links (user installs app after clicking link)
-  appsflyer.onInstallConversionData((data) => {
+  appsflyer.onInstallConversionData((data: any) => {
     if (data?.data?.af_dp) {
       handleDeepLinkUrl(data.data.af_dp);
     }
   });
 
   // Handle direct deep links (app already installed)
-  appsflyer.onDeepLink((res) => {
+  appsflyer.onDeepLink((res: any) => {
     if (res?.deepLinkStatus === 'FOUND') {
       const inviteId = res.data?.inviteId || res.data?.deep_link_value;
       if (inviteId) {
@@ -35,6 +35,18 @@ function handleDeepLinkUrl(url: string) {
   }
 }
 
+export function setAppsFlyerUserId(userId: string) {
+  appsflyer.setCustomerUserId(userId);
+}
+
+export function logAppsFlyerEvent(eventName: string, eventValues: Record<string, string> = {}) {
+  appsflyer.logEvent(eventName, eventValues);
+}
+
+export function updateAppsFlyerPushToken(token: string) {
+  appsflyer.updateServerUninstallToken(token);
+}
+
 export async function generateOneLink(inviteId: string): Promise<string> {
   return new Promise((resolve) => {
     appsflyer.generateInviteLink(
@@ -47,7 +59,7 @@ export async function generateOneLink(inviteId: string): Promise<string> {
           deep_link_value: inviteId,
         },
       },
-      (link) => resolve(link),
+      (link: string) => resolve(link),
       () => resolve(`picklego://invite/${inviteId}`), // fallback
     );
   });

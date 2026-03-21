@@ -18,6 +18,7 @@ import { ToastProvider } from './src/context/ToastContext';
 import { navigationRef } from './src/navigation/navigationRef';
 import { useSuperwallIdentity } from './src/hooks/useSuperwallIdentity';
 import type { PushNotificationData } from './src/types';
+import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
 import { initAppsFlyer } from './src/services/appsflyer';
 
 // Import to register the foreground notification handler
@@ -25,8 +26,17 @@ import './src/services/pushNotifications';
 
 SplashScreen.preventAutoHideAsync();
 
-// Initialize AppsFlyer SDK
-initAppsFlyer();
+// Initialize AppsFlyer SDK (request ATT on iOS first)
+(async () => {
+  if (Platform.OS === 'ios') {
+    try {
+      await requestTrackingPermissionsAsync();
+    } catch {
+      // ATT not available (e.g. iOS < 14.5) — continue without it
+    }
+  }
+  initAppsFlyer();
+})();
 
 // Set up Android notification channel
 if (Platform.OS === 'android') {

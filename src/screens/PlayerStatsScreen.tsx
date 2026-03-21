@@ -58,7 +58,7 @@ type TimeFilter = 'all' | 'recent';
 const MyStatsScreen = () => {
   const { players, matches, currentUser } = useData();
   const [statsMode, setStatsMode] = useState<StatsMode>('overall');
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('recent');
   const fadeStyle = useFadeIn();
   const contentStyle = useContentTransition(`${statsMode}-${timeFilter}`);
   const { registerPlacement } = usePlacement();
@@ -616,16 +616,6 @@ const MyStatsScreen = () => {
   const renderTimeFilters = () => (
     <View style={styles.timeFiltersContainer}>
       <AnimatedPressable
-        style={[styles.timeFilterTab, timeFilter === 'all' && styles.activeTimeFilter]}
-        onPress={() => setTimeFilter('all')}
-        accessibilityRole="tab"
-        accessibilityState={{ selected: timeFilter === 'all' }}
-      >
-        <Text style={[styles.timeFilterText, timeFilter === 'all' && styles.activeTimeFilterText]}>
-          All Time
-        </Text>
-      </AnimatedPressable>
-      <AnimatedPressable
         style={[styles.timeFilterTab, timeFilter === 'recent' && styles.activeTimeFilter]}
         onPress={() => {
           registerPlacement({ placement: PLACEMENTS.FILTER_STATS_BY_TIME });
@@ -636,6 +626,19 @@ const MyStatsScreen = () => {
       >
         <Text style={[styles.timeFilterText, timeFilter === 'recent' && styles.activeTimeFilterText]}>
           Last 30 Days
+        </Text>
+      </AnimatedPressable>
+      <AnimatedPressable
+        style={[styles.timeFilterTab, timeFilter === 'all' && styles.activeTimeFilter]}
+        onPress={() => {
+          registerPlacement({ placement: PLACEMENTS.ALL_TIME_TAPPED });
+          setTimeFilter('all');
+        }}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: timeFilter === 'all' }}
+      >
+        <Text style={[styles.timeFilterText, timeFilter === 'all' && styles.activeTimeFilterText]}>
+          All Time
         </Text>
       </AnimatedPressable>
     </View>

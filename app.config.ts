@@ -20,10 +20,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: "com.picklego.picklego",
     googleServicesFile: process.env.GOOGLE_SERVICE_INFO_PLIST ?? "./GoogleService-Info.plist",
     usesAppleSignIn: true,
+    associatedDomains: [
+      "applinks:picklego.onelink.me",
+    ],
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSLocationWhenInUseUsageDescription:
         "PickleGo needs your location to show nearby pickleball courts and set match locations.",
+      NSUserTrackingUsageDescription:
+        "This allows PickleGo to provide personalized recommendations and measure the effectiveness of our campaigns.",
     },
   },
   android: {
@@ -39,6 +44,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     },
     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+    intentFilters: [
+      {
+        action: "VIEW",
+        autoVerify: true,
+        data: [
+          { scheme: "https", host: "picklego.onelink.me", pathPrefix: "/" },
+        ],
+        category: ["BROWSABLE", "DEFAULT"],
+      },
+    ],
   },
   web: {
     favicon: "./assets/favicon.png",
@@ -78,7 +93,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           "Allow PickleGo to access your contacts to invite friends to play pickleball.",
       },
     ],
-    "react-native-appsflyer",
+    "expo-tracking-transparency",
+    [
+      "react-native-appsflyer",
+      {
+        devKey: process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY,
+        appId: "6743630735",
+        timeToWaitForATTUserAuthorization: 10,
+      },
+    ],
     ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
       ? [
           [

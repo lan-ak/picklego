@@ -43,7 +43,7 @@ const CompleteMatchScreen = () => {
   const fadeStyle = useFadeIn();
   const route = useRoute<CompleteMatchRouteProp>();
   const navigation = useNavigation();
-  const { matches, players, updateMatch, invitePlayer, addPlayer, currentUser } = useData();
+  const { matches, players, updateMatch, invitePlayer, addPlayer, currentUser, getPlayerName } = useData();
   const { showToast } = useToast();
   const { registerPlacement } = usePlacement();
   const match = matches.find(m => m.id === route.params.matchId);
@@ -60,6 +60,11 @@ const CompleteMatchScreen = () => {
   const [sendInvite, setSendInvite] = useState(true);
   const [inviteMethod, setInviteMethod] = useState<'email' | 'sms'>('email');
   const [phoneNumber, setPhoneNumber] = useState('');
+
+  // Superwall: fire placement when user taps to complete a match
+  useEffect(() => {
+    registerPlacement({ placement: PLACEMENTS.COMPLETE_MATCH_TAPPED });
+  }, []);
 
   useEffect(() => {
     if (match) {
@@ -116,15 +121,19 @@ const CompleteMatchScreen = () => {
         ? (teamNumber === 1 ? gameSpecific.team1PlayerIds : gameSpecific.team2PlayerIds)
         : (teamNumber === 1 ? match.team1PlayerIds : match.team2PlayerIds);
 
-      const getName = (id: string) => {
+      const snapshotNames = teamNumber === 1
+        ? match.team1PlayerNames
+        : match.team2PlayerNames;
+
+      const getName = (id: string, idx: number) => {
         if (currentUser && id === currentUser.id) return 'Me';
-        return players.find(p => p.id === id)?.name || 'Unknown Player';
+        return getPlayerName(id, snapshotNames?.[idx]);
       };
 
       if (match.matchType !== 'doubles') {
-        return getName(playerIds[0]);
+        return getName(playerIds[0], 0);
       }
-      return playerIds.map(id => getName(id)).join(' & ');
+      return playerIds.map((id, idx) => getName(id, idx)).join(' & ');
     } catch (error) {
       console.error('Error in getTeamNames:', error);
       return `Team ${teamNumber}`;

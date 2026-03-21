@@ -55,7 +55,7 @@ const AddMatchScreen = () => {
   const fadeStyle = useFadeIn();
   const navigation = useNavigation<AddMatchScreenNavigationProp>();
   const route = useRoute();
-  const { players, addMatch, currentUser, matches, updateMatch, refreshConnectedPlayers } = useData();
+  const { players, addMatch, currentUser, matches, updateMatch, refreshConnectedPlayers, getPlayerName } = useData();
   const { showToast } = useToast();
   const { registerPlacement } = usePlacement();
 
@@ -171,6 +171,9 @@ const AddMatchScreen = () => {
         setShufflePerGame(editMatch.randomizeTeamsPerGame ?? false);
         setAutoRandomize(false);
       } else {
+        // Superwall: fire placement when user taps "New Match"
+        registerPlacement({ placement: PLACEMENTS.ADD_MATCH_TAPPED });
+
         const user = currentUserRef.current;
         setDate(new Date());
         setLocation('');
@@ -437,8 +440,8 @@ const AddMatchScreen = () => {
           matchType: isDoubles ? 'doubles' : 'singles',
           team1PlayerIds: team1Players,
           team2PlayerIds: team2Players,
-          team1PlayerNames: team1Players.map(id => players.find(p => p.id === id)?.name || 'Unknown'),
-          team2PlayerNames: team2Players.map(id => players.find(p => p.id === id)?.name || 'Unknown'),
+          team1PlayerNames: team1Players.map(id => getPlayerName(id)),
+          team2PlayerNames: team2Players.map(id => getPlayerName(id)),
           allPlayerIds: [...team1Players, ...team2Players],
           location: location.trim() || undefined,
           locationCoords: locationCoords || undefined,
@@ -475,8 +478,8 @@ const AddMatchScreen = () => {
           createdBy: currentUser?.id || '',
           team1PlayerIds: team1Players,
           team2PlayerIds: team2Players,
-          team1PlayerNames: team1Players.map(id => players.find(p => p.id === id)?.name || 'Unknown'),
-          team2PlayerNames: team2Players.map(id => players.find(p => p.id === id)?.name || 'Unknown'),
+          team1PlayerNames: team1Players.map(id => getPlayerName(id)),
+          team2PlayerNames: team2Players.map(id => getPlayerName(id)),
           allPlayerIds: [...team1Players, ...team2Players],
           games: [],
           winnerTeam: null,
@@ -587,7 +590,7 @@ const AddMatchScreen = () => {
 
   const displayName = (playerId: string) => {
     if (currentUser && playerId === currentUser.id) return 'Me';
-    return players.find(p => p.id === playerId)?.name || 'Unknown';
+    return getPlayerName(playerId);
   };
 
   const getTeamLabel = (teamNumber: 1 | 2) => {

@@ -18,6 +18,7 @@ import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { useSlideIn, useHaptic } from '../../hooks';
 import { callClaimSMSInvite } from '../../config/firebase';
+import { logAppsFlyerEvent } from '../../services/appsflyer';
 import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
 import { normalizePhone, formatPhoneInput, isValidPhone } from '../../utils/phone';
 
@@ -99,6 +100,7 @@ const PhoneNumberScreen = () => {
     try {
       const trimmedPhone = phone.trim();
       await updatePlayer(currentUser.id, { phoneNumber: trimmedPhone });
+      logAppsFlyerEvent('phone_number_added');
 
       const normalized = normalizePhone(trimmedPhone);
       const foundInvites = await findSMSInvitesByPhone(normalized);
@@ -183,6 +185,7 @@ const PhoneNumberScreen = () => {
       ctaOnPress={getCtaOnPress()}
       ctaLoading={screenState === 'saving'}
       ctaDisabled={isCtaDisabled()}
+      scrollableBody={screenState === 'idle'}
       secondaryAction={
         screenState === 'idle'
           ? { title: 'Skip', onPress: goNext }
@@ -204,15 +207,15 @@ const PhoneNumberScreen = () => {
 
               />
             </View>
+            {phone.length > 0 && !phoneValid && (
+              <Text style={styles.validationText}>Enter a valid phone number</Text>
+            )}
             <View style={styles.privacyNote}>
               <Icon name="info" size={14} color={colors.gray400} />
               <Text style={styles.privacyText}>
                 Only used to connect you with friends — we'll never call or text you.
               </Text>
             </View>
-            {phone.length > 0 && !phoneValid && (
-              <Text style={styles.validationText}>Enter a valid phone number</Text>
-            )}
           </View>
         )}
 
@@ -249,7 +252,6 @@ const PhoneNumberScreen = () => {
 
 const styles = StyleSheet.create({
   content: {
-    flex: 1,
     marginTop: spacing.sm,
   },
   inputContainer: {

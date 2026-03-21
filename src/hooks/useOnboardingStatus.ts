@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { updatePlayerDocument, getPlayerDocument } from '../config/firebase';
+import { logAppsFlyerEvent } from '../services/appsflyer';
 
 const ONBOARDING_KEY_PREFIX = '@picklego_onboarding_complete_';
 
@@ -53,6 +54,7 @@ export function useOnboardingStatus(userId: string | undefined) {
       console.error('Error saving onboarding status to Firestore:', error);
     }
 
+    logAppsFlyerEvent('onboarding_complete');
     setHasCompletedOnboarding(true);
   }, [userId]);
 
