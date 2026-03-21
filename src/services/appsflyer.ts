@@ -10,6 +10,8 @@ export function initAppsFlyer() {
     onDeepLinkListener: true,
   });
 
+  appsflyer.setAppInviteOneLinkID('tb9Z');
+
   // Handle deferred deep links (user installs app after clicking link)
   appsflyer.onInstallConversionData((data: any) => {
     if (data?.data?.af_dp) {
