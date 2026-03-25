@@ -16,7 +16,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     backgroundColor: "#55A04D",
   },
   ios: {
-    supportsTablet: true,
+    supportsTablet: false,
     bundleIdentifier: "com.picklego.picklego",
     googleServicesFile: process.env.GOOGLE_SERVICE_INFO_PLIST ?? "./GoogleService-Info.plist",
     usesAppleSignIn: true,
@@ -27,8 +27,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       ITSAppUsesNonExemptEncryption: false,
       NSLocationWhenInUseUsageDescription:
         "PickleGo needs your location to show nearby pickleball courts and set match locations.",
-      NSUserTrackingUsageDescription:
-        "This allows PickleGo to provide personalized recommendations and measure the effectiveness of our campaigns.",
+      NSLocationAlwaysUsageDescription:
+        "PickleGo uses your location to find nearby pickleball courts and set match locations.",
+      NSPhotoLibraryUsageDescription:
+        "PickleGo uses your photo library to let you choose a profile picture. For example, you can select an existing photo to represent yourself to other players.",
     },
   },
   android: {
@@ -70,6 +72,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     "expo-font",
     [
+      "expo-image-picker",
+      {
+        photosPermission:
+          "PickleGo uses your photo library to let you choose a profile picture. For example, you can select an existing photo to represent yourself to other players.",
+        cameraPermission: false,
+        microphonePermission: false,
+      },
+    ],
+    [
       "expo-location",
       {
         locationAlwaysAndWhenInUsePermission:
@@ -93,13 +104,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           "Allow PickleGo to access your contacts to invite friends to play pickleball.",
       },
     ],
-    "expo-tracking-transparency",
     [
       "react-native-appsflyer",
       {
         devKey: process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY,
         appId: "6743630735",
-        timeToWaitForATTUserAuthorization: 10,
       },
     ],
     ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
