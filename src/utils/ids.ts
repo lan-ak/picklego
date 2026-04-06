@@ -18,3 +18,15 @@ export const matchInviteNotifId = (matchId: string, recipientId: string) =>
 /** Match cancelled notification */
 export const matchCancelledNotifId = (matchId: string, recipientId: string, timestamp: number) =>
   `notif_cancelled_${matchId}_${recipientId}_${timestamp}`;
+
+/** Open match join notification — idempotent per match+joiner */
+export const openMatchJoinNotifId = (matchId: string, joinerId: string) =>
+  `open_match_join_${matchId}_${joinerId}`;
+
+/** Open match leave notification */
+export const openMatchLeaveNotifId = (matchId: string, leaverId: string) =>
+  `open_match_leave_${matchId}_${leaverId}_${Crypto.randomUUID()}`;
+
+/** Open match full notification — idempotent per match+recipient */
+export const openMatchFullNotifId = (matchId: string, recipientId: string) =>
+  `open_match_full_${matchId}_${recipientId}`;

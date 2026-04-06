@@ -39,6 +39,9 @@ import {
   callFindSMSInvitesByPhone,
   getPlaceholdersByInviter,
   addPendingConnection,
+  callJoinOpenMatch,
+  callLeaveOpenMatch,
+  callCancelOpenMatch,
 } from '../config/firebase';
 import { hashPhone } from '../utils/phone';
 import { registerPushToken, unregisterPushToken } from '../services/pushNotifications';
@@ -874,9 +877,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Send match_cancelled notifications only for upcoming matches (not completed ones)
     if (matchToDelete && matchToDelete.status === 'scheduled') {
       const now = Date.now();
-      const dateStr = new Date(matchToDelete.scheduledDate).toLocaleDateString('en-US', {
-        weekday: 'short', month: 'short', day: 'numeric',
-      });
       const matchTypeLabel = matchToDelete.matchType === 'doubles' ? 'doubles' : 'singles';
 
       const cancelNotifications: MatchNotification[] = [];
@@ -898,7 +898,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           matchDate: matchToDelete.scheduledDate,
           matchLocation: matchToDelete.location,
           matchType: matchToDelete.matchType,
-          message: `${user.name} cancelled the ${matchTypeLabel} match on ${dateStr}`,
+          message: `${user.name} cancelled the ${matchTypeLabel} match`,
           createdAt: now,
         });
       }
@@ -1573,6 +1573,94 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return callFindSMSInvitesByPhone(normalizedPhone);
   }, []);
 
+  const openMatches = useMemo(() =>
+    matches.filter(m => m.isOpenInvite && m.openInviteStatus === 'open'),
+    [matches]
+  );
+
+  const createOpenMatch = useCallback(async (matchData: Omit<Match, 'id' | 'createdAt' | 'lastModifiedAt' | 'lastModifiedBy'>): Promise<Match> => {
+    const now = Date.now();
+    const creator = currentUserRef.current;
+    const newMatch: Match = {
+      ...matchData,
+      id: newMatchId(),
+      createdAt: now,
+      lastModifiedAt: now,
+      lastModifiedBy: matchData.createdBy,
+      createdByName: creator?.name,
+      createdByProfilePic: creator?.profilePic,
+      isOpenInvite: true,
+      openInviteStatus: 'open',
+    };
+    setMatches(prev => [...prev, newMatch]);
+
+    try {
+      await createMatchDocument(newMatch);
+    } catch (error) {
+      console.error('Error saving open match to Firestore:', error);
+      setMatches(prev => prev.filter(m => m.id !== newMatch.id));
+      throw error;
+    }
+
+    logAppsFlyerEvent('af_add_to_cart', { af_content_id: newMatch.id, af_content_type: 'open_match' });
+    return newMatch;
+  }, []);
+
+  const joinOpenMatch = useCallback(async (matchId: string): Promise<{ joined: boolean; isFull: boolean }> => {
+    const result = await callJoinOpenMatch(matchId);
+    if (result.joined) {
+      await refreshMatches();
+      await refreshNotifications();
+    }
+    return result;
+  }, [refreshMatches, refreshNotifications]);
+
+  const leaveOpenMatch = useCallback(async (matchId: string): Promise<void> => {
+    await callLeaveOpenMatch(matchId);
+    await refreshMatches();
+  }, [refreshMatches]);
+
+  const cancelOpenMatch = useCallback(async (matchId: string): Promise<void> => {
+    // Optimistically remove from local state
+    const matchToCancel = matchesRef.current.find(m => m.id === matchId);
+    setMatches(prev => prev.filter(m => m.id !== matchId));
+
+    try {
+      await callCancelOpenMatch(matchId);
+    } catch (error) {
+      // Restore on failure
+      if (matchToCancel) {
+        setMatches(prev => [...prev, matchToCancel]);
+      }
+      throw error;
+    }
+  }, []);
+
+  const getOpenMatch = useCallback(async (matchId: string): Promise<Match | null> => {
+    // First check local state
+    const local = matchesRef.current.find(m => m.id === matchId);
+    if (local) return local;
+    // Fetch from Firestore
+    try {
+      const doc = await getMatchDocument(matchId);
+      return doc || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const claimPendingOpenMatch = useCallback(async () => {
+    try {
+      const pendingMatchId = await AsyncStorage.getItem('pendingOpenMatchId');
+      if (!pendingMatchId || !currentUserRef.current) return;
+      await AsyncStorage.removeItem('pendingOpenMatchId');
+      // Navigation is handled by the component that calls this
+      return pendingMatchId;
+    } catch (error) {
+      console.error('Error claiming pending open match:', error);
+    }
+  }, []);
+
   const claimPendingSMSInvite = useCallback(async () => {
     try {
       const pendingInviteId = await AsyncStorage.getItem('pendingSMSInviteId');
@@ -1641,6 +1729,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     lookupContactsOnPickleGo,
     claimPendingSMSInvite,
     findSMSInvitesByPhone,
+    createOpenMatch,
+    joinOpenMatch,
+    leaveOpenMatch,
+    cancelOpenMatch,
+    getOpenMatch,
+    claimPendingOpenMatch,
+    openMatches,
   }), [
     players, matches, deletedPlayers, currentUser, authLoading,
     hasCompletedOnboarding, completeOnboarding, notifications, unreadNotificationCount,
@@ -1655,6 +1750,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshConnectedPlayers, invitePlayersBySMS, lookupContactsOnPickleGo,
     claimPendingSMSInvite,
     findSMSInvitesByPhone,
+    createOpenMatch, joinOpenMatch, leaveOpenMatch, cancelOpenMatch,
+    getOpenMatch, claimPendingOpenMatch, openMatches,
   ]);
 
   return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;

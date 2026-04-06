@@ -1,22 +1,22 @@
 import React from 'react';
 import {
-  View,
   Text,
   StyleSheet,
   ScrollView,
-  Switch,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useFadeIn, staggeredEntrance } from '../hooks';
 import Layout from '../components/Layout';
+import { Section } from '../components/Section';
+import { ToggleRow } from '../components/ToggleRow';
 import { useData } from '../context/DataContext';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useToast } from '../context/ToastContext';
-import type { NotificationPreferences, MatchNotification } from '../types';
+import type { NotificationPreferences } from '../types';
 
-type NotificationType = MatchNotification['type'];
+type PreferenceKey = keyof NotificationPreferences;
 
-const PREFERENCE_OPTIONS: { key: NotificationType; label: string; description: string }[] = [
+const PREFERENCE_OPTIONS: { key: PreferenceKey; label: string; description: string }[] = [
   {
     key: 'match_invite',
     label: 'Match Invites',
@@ -42,6 +42,16 @@ const PREFERENCE_OPTIONS: { key: NotificationType; label: string; description: s
     label: 'Invite Accepted',
     description: 'When someone accepts your connection invite',
   },
+  {
+    key: 'open_match_join',
+    label: 'Open Match Activity',
+    description: 'When players join or leave your open matches',
+  },
+  {
+    key: 'open_match_full',
+    label: 'Open Match Ready',
+    description: 'When your open match is full and teams are set',
+  },
 ];
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -50,6 +60,8 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   match_cancelled: true,
   player_invite: true,
   invite_accepted: true,
+  open_match_join: true,
+  open_match_full: true,
 };
 
 const NotificationPreferencesScreen: React.FC = () => {
@@ -59,7 +71,7 @@ const NotificationPreferencesScreen: React.FC = () => {
 
   const preferences: NotificationPreferences = currentUser?.notificationPreferences ?? DEFAULT_PREFERENCES;
 
-  const handleToggle = async (key: NotificationType) => {
+  const handleToggle = async (key: PreferenceKey) => {
     if (!currentUser) return;
 
     const updated: NotificationPreferences = {
@@ -79,32 +91,24 @@ const NotificationPreferencesScreen: React.FC = () => {
       <ScrollView style={styles.container}>
         <Animated.View style={fadeStyle}>
           <Animated.View entering={staggeredEntrance(0)}>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Push Notifications</Text>
+            <Section title="Push Notifications" variant="settings" card={false} style={styles.section}>
               <Text style={styles.sectionDescription}>
                 Choose which notifications you'd like to receive.
               </Text>
               {PREFERENCE_OPTIONS.map((option, index) => (
-                <View
+                <ToggleRow
                   key={option.key}
+                  label={option.label}
+                  description={option.description}
+                  value={preferences[option.key]}
+                  onValueChange={() => handleToggle(option.key)}
                   style={[
                     styles.preferenceItem,
                     index === 0 && styles.firstItem,
                   ]}
-                >
-                  <View style={styles.preferenceTextContainer}>
-                    <Text style={styles.preferenceLabel}>{option.label}</Text>
-                    <Text style={styles.preferenceDescription}>{option.description}</Text>
-                  </View>
-                  <Switch
-                    value={preferences[option.key]}
-                    onValueChange={() => handleToggle(option.key)}
-                    trackColor={{ false: colors.gray300, true: colors.primary }}
-                    thumbColor={colors.white}
-                  />
-                </View>
+                />
               ))}
-            </View>
+            </Section>
           </Animated.View>
         </Animated.View>
       </ScrollView>
@@ -123,12 +127,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...shadows.md,
   },
-  sectionTitle: {
-    ...typography.label,
-    color: colors.gray500,
-    padding: spacing.lg,
-    paddingBottom: spacing.xs,
-  },
   sectionDescription: {
     ...typography.bodySmall,
     color: colors.gray400,
@@ -145,19 +143,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
-  },
-  preferenceTextContainer: {
-    flex: 1,
-    marginRight: spacing.md,
-  },
-  preferenceLabel: {
-    ...typography.bodyLarge,
-    color: colors.neutral,
-  },
-  preferenceDescription: {
-    ...typography.bodySmall,
-    color: colors.gray400,
-    marginTop: 2,
   },
 });
 

@@ -1,5 +1,7 @@
 import appsflyer from 'react-native-appsflyer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { navigateToMatchIfReady } from '../navigation/navigationRef';
+import { handleDeepLinkUrl } from '../utils/deepLink';
 
 export function initAppsFlyer() {
   appsflyer.initSdk({
@@ -16,12 +18,22 @@ export function initAppsFlyer() {
   appsflyer.onInstallConversionData((data: any) => {
     if (data?.data?.af_dp) {
       handleDeepLinkUrl(data.data.af_dp);
+    } else if (data?.data?.openMatchId) {
+      const matchId = data.data.openMatchId;
+      AsyncStorage.setItem('pendingOpenMatchId', matchId);
+      navigateToMatchIfReady(matchId);
     }
   });
 
   // Handle direct deep links (app already installed)
   appsflyer.onDeepLink((res: any) => {
     if (res?.deepLinkStatus === 'FOUND') {
+      const openMatchId = res.data?.openMatchId;
+      if (openMatchId) {
+        AsyncStorage.setItem('pendingOpenMatchId', openMatchId);
+        navigateToMatchIfReady(openMatchId);
+        return;
+      }
       const inviteId = res.data?.inviteId || res.data?.deep_link_value;
       if (inviteId) {
         AsyncStorage.setItem('pendingSMSInviteId', inviteId);
@@ -30,12 +42,7 @@ export function initAppsFlyer() {
   });
 }
 
-function handleDeepLinkUrl(url: string) {
-  const match = url.match(/invite\/([a-zA-Z0-9_-]+)/);
-  if (match?.[1]) {
-    AsyncStorage.setItem('pendingSMSInviteId', match[1]);
-  }
-}
+// handleDeepLinkUrl is now imported from ../utils/deepLink
 
 export function setAppsFlyerUserId(userId: string) {
   appsflyer.setCustomerUserId(userId);
@@ -47,6 +54,24 @@ export function logAppsFlyerEvent(eventName: string, eventValues: Record<string,
 
 export function updateAppsFlyerPushToken(token: string) {
   appsflyer.updateServerUninstallToken(token);
+}
+
+export async function generateOpenMatchLink(matchId: string): Promise<string> {
+  return new Promise((resolve) => {
+    appsflyer.generateInviteLink(
+      {
+        channel: 'match_invite',
+        campaign: 'open_match',
+        customerID: matchId,
+        userParams: {
+          openMatchId: matchId,
+          deep_link_value: matchId,
+        },
+      },
+      (link: string) => resolve(link),
+      () => resolve(`picklego://open-match/${matchId}`),
+    );
+  });
 }
 
 export async function generateOneLink(inviteId: string): Promise<string> {

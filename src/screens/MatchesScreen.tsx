@@ -25,7 +25,7 @@ type MatchesTab = 'all' | 'upcoming' | 'completed' | 'won' | 'lost';
 
 const MatchesScreen = () => {
   const navigation = useNavigation<MatchesScreenNavigationProp>();
-  const { matches, players, currentUser, getPlayerName, refreshMatches } = useData();
+  const { matches, players, currentUser, getPlayerName, refreshMatches, openMatches } = useData();
   const [activeTab, setActiveTab] = useState<MatchesTab>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
@@ -59,6 +59,13 @@ const MatchesScreen = () => {
     return sortOrder === 'newest' ? timeB - timeA : timeA - timeB;
   };
 
+  // Merge matches with open matches, deduplicating by ID
+  const allMatches = useMemo(() => {
+    const seen = new Set(matches.map((m) => m.id));
+    const extra = openMatches.filter((m) => !seen.has(m.id));
+    return [...matches, ...extra];
+  }, [matches, openMatches]);
+
   // Memoized filtered + sorted matches — computed once per dependency change
   const filteredMatches = useMemo(() => {
     const isUserInMatch = (match: Match, userId: string): boolean =>
@@ -72,27 +79,27 @@ const MatchesScreen = () => {
 
     switch (activeTab) {
       case 'all':
-        return [...matches].sort(sortByDate);
+        return [...allMatches].sort(sortByDate);
       case 'upcoming':
-        return matches.filter(match => match.status === 'scheduled').sort(sortByDate);
+        return allMatches.filter(match => match.status === 'scheduled').sort(sortByDate);
       case 'completed':
-        return matches.filter(match => match.status === 'completed').sort(sortByDate);
+        return allMatches.filter(match => match.status === 'completed').sort(sortByDate);
       case 'won':
-        return matches.filter(match => {
+        return allMatches.filter(match => {
           if (!currentUser || match.status !== 'completed' || match.winnerTeam === null) return false;
           if (!isUserInMatch(match, currentUser.id)) return false;
           return isUserWinner(match, currentUser.id);
         }).sort(sortByDate);
       case 'lost':
-        return matches.filter(match => {
+        return allMatches.filter(match => {
           if (!currentUser || match.status !== 'completed' || match.winnerTeam === null) return false;
           if (!isUserInMatch(match, currentUser.id)) return false;
           return !isUserWinner(match, currentUser.id);
         }).sort(sortByDate);
       default:
-        return matches;
+        return allMatches;
     }
-  }, [matches, activeTab, sortOrder, currentUser]);
+  }, [allMatches, activeTab, sortOrder, currentUser]);
 
   const renderTabs = () => (
     <View style={styles.tabsContainer}>

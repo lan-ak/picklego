@@ -12,8 +12,9 @@ export function shuffleTeams(
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
 
-  const team1 = shuffled.slice(0, 2);
-  const team2 = shuffled.slice(2, 4);
+  const half = Math.floor(shuffled.length / 2);
+  const team1 = shuffled.slice(0, half);
+  const team2 = shuffled.slice(half);
 
   if (team2.includes(currentUserId)) {
     return { team1: team2, team2: team1 };

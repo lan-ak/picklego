@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import Constants from 'expo-constants';
 import {
   View,
   Text,
@@ -14,6 +15,7 @@ import Animated from 'react-native-reanimated';
 import { useFadeIn, staggeredEntrance } from '../hooks';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { Icon, IconName } from '../components/Icon';
+import { Section } from '../components/Section';
 import Layout from '../components/Layout';
 import { useData } from '../context/DataContext';
 import { useNavigation } from '@react-navigation/native';
@@ -214,8 +216,7 @@ const SettingsScreen: React.FC = () => {
         {/* Settings Options */}
         {settingSections.map((section, index) => (
           <Animated.View key={index} entering={staggeredEntrance(index + 1)}>
-          <View style={styles.settingSection}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
+          <Section title={section.title} variant="settings" card={false} style={styles.settingSection}>
             {section.items.map((item, itemIndex) => (
               <AnimatedPressable
                 key={itemIndex}
@@ -242,7 +243,7 @@ const SettingsScreen: React.FC = () => {
                 <Icon name="chevron-right" size={20} color={colors.gray300} />
               </AnimatedPressable>
             ))}
-          </View>
+          </Section>
           </Animated.View>
         ))}
 
@@ -269,7 +270,7 @@ const SettingsScreen: React.FC = () => {
           >
             hi@playpicklego.com
           </Text>
-          <Text style={styles.footerVersion}>v1.0.0</Text>
+          <Text style={styles.footerVersion}>v{Constants.expoConfig?.version ?? '1.0.1'}</Text>
         </View>
         </Animated.View>
       </ScrollView>
@@ -368,12 +369,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     overflow: 'hidden',
     ...shadows.md,
-  },
-  sectionTitle: {
-    ...typography.label,
-    color: colors.gray500,
-    padding: spacing.lg,
-    paddingBottom: spacing.sm,
   },
   settingItem: {
     flexDirection: 'row',

@@ -10,12 +10,12 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import * as Linking from 'expo-linking';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Fredoka_400Regular, Fredoka_500Medium, Fredoka_600SemiBold, Fredoka_700Bold } from '@expo-google-fonts/fredoka';
 import Navigation from './src/navigation';
 import { DataProvider } from './src/context/DataContext';
 import { ToastProvider } from './src/context/ToastContext';
 import { navigationRef } from './src/navigation/navigationRef';
+import { handleDeepLinkUrl } from './src/utils/deepLink';
 import { useSuperwallIdentity } from './src/hooks/useSuperwallIdentity';
 import type { PushNotificationData } from './src/types';
 import { initAppsFlyer } from './src/services/appsflyer';
@@ -38,30 +38,30 @@ if (Platform.OS === 'android') {
   });
 }
 
-/**
- * Extract invite ID from a deep link URL and store it for post-signup claiming.
- * Handles both: picklego://invite/{id} and https://picklego.app/invite/{id}
- */
-async function handleDeepLink(url: string | null) {
-  if (!url) return;
-  const match = url.match(/invite\/([a-zA-Z0-9_-]+)/);
-  if (match?.[1]) {
-    await AsyncStorage.setItem('pendingSMSInviteId', match[1]);
-  }
-}
+/** Extract invite/open-match ID from a deep link URL and store for post-auth claiming. */
+const handleDeepLink = (url: string | null) => handleDeepLinkUrl(url);
+
+// Screens that require a matchId param
+const MATCH_SCREENS = new Set<string>(['MatchDetails']);
 
 function handleNotificationResponse(response: Notifications.NotificationResponse) {
   const data = response.notification.request.content.data as PushNotificationData;
-  if (data?.matchId && data?.screen === 'MatchDetails') {
-    setTimeout(() => {
-      if (navigationRef.isReady()) {
-        const currentRoute = navigationRef.getCurrentRoute();
-        if (currentRoute?.name !== 'Auth') {
-          navigationRef.navigate('MatchDetails', { matchId: data.matchId! });
+  if (!data?.screen) return;
+
+  setTimeout(() => {
+    if (navigationRef.isReady()) {
+      const currentRoute = navigationRef.getCurrentRoute();
+      if (currentRoute?.name !== 'Auth') {
+        // Backward compat: old push notifications may reference removed screen
+        const screen = data.screen === 'OpenMatchLobby' ? 'MatchDetails' : data.screen;
+        if (MATCH_SCREENS.has(screen!) && data.matchId) {
+          navigationRef.navigate(screen as any, { matchId: data.matchId });
+        } else if (!MATCH_SCREENS.has(screen!)) {
+          navigationRef.navigate(data.screen as any);
         }
       }
-    }, 500);
-  }
+    }
+  }, 500);
 }
 
 /** Renderless component that syncs Firebase Auth identity + attributes to Superwall */

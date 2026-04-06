@@ -20,6 +20,8 @@ export interface NotificationPreferences {
   match_cancelled: boolean;
   player_invite: boolean;
   invite_accepted: boolean;
+  open_match_join: boolean;
+  open_match_full: boolean;
 }
 
 export interface Player {
@@ -97,6 +99,12 @@ export interface Match {
   createdByProfilePic?: string;
   lastModifiedByName?: string;
   lastModifiedByProfilePic?: string;
+  // Open invite fields (only present when isOpenInvite is true)
+  isOpenInvite?: boolean;
+  openInviteStatus?: 'open' | 'full' | 'cancelled';
+  playerPool?: string[];
+  playerPoolNames?: string[];
+  maxPlayers?: number;
 }
 
 export type InviteResult = {
@@ -128,7 +136,7 @@ export interface ContactInfo {
 
 export interface MatchNotification {
   id: string;
-  type: 'match_invite' | 'match_updated' | 'match_cancelled' | 'player_invite' | 'invite_accepted';
+  type: 'match_invite' | 'match_updated' | 'match_cancelled' | 'player_invite' | 'invite_accepted' | 'open_match_join' | 'open_match_leave' | 'open_match_full';
   status: 'sent' | 'read' | 'accepted' | 'declined';
   recipientId: string;
   senderId: string;
@@ -147,7 +155,7 @@ export interface MatchNotification {
 
 export interface PushNotificationData {
   matchId?: string;
-  screen?: string;
+  screen?: 'MatchDetails' | 'OpenMatchLobby' | 'Notifications';
   notificationId?: string;
 }
 
@@ -217,6 +225,13 @@ export interface DataContextType {
   lookupContactsOnPickleGo: (phoneHashes: string[]) => Promise<Map<string, { playerId: string; playerName: string }>>;
   claimPendingSMSInvite: () => Promise<void>;
   findSMSInvitesByPhone: (normalizedPhone: string) => Promise<SMSInvite[]>;
+  createOpenMatch: (match: Omit<Match, 'id' | 'createdAt' | 'lastModifiedAt' | 'lastModifiedBy'>) => Promise<Match>;
+  joinOpenMatch: (matchId: string) => Promise<{ joined: boolean; isFull: boolean }>;
+  leaveOpenMatch: (matchId: string) => Promise<void>;
+  cancelOpenMatch: (matchId: string) => Promise<void>;
+  getOpenMatch: (matchId: string) => Promise<Match | null>;
+  claimPendingOpenMatch: () => Promise<string | undefined>;
+  openMatches: Match[];
 }
 
 export type MainTabParamList = {

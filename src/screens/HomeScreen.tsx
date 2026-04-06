@@ -8,11 +8,13 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, MainTabParamList, Match } from '../types';
 import { Icon } from '../components/Icon';
+import { Section } from '../components/Section';
 import { NotificationBell } from '../components/NotificationBell';
 import { useData } from '../context/DataContext';
 import Layout from '../components/Layout';
 import MatchCard from '../components/MatchCard';
 import { useFadeIn, useHaptic, staggeredEntrance } from '../hooks';
+import { formatShortDate } from '../utils/dateFormat';
 import { usePlacement } from 'expo-superwall';
 import { PLACEMENTS } from '../services/superwallPlacements';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
@@ -24,7 +26,7 @@ type HomeScreenNavigationProp = CompositeNavigationProp<
 
 const HomeScreen = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
-  const { matches, players, currentUser, getPlayerName, refreshMatches } = useData();
+  const { matches, players, currentUser, getPlayerName, refreshMatches, openMatches, claimPendingOpenMatch } = useData();
   const [refreshing, setRefreshing] = useState(false);
   const triggerHaptic = useHaptic();
 
@@ -41,6 +43,21 @@ const HomeScreen = () => {
     }
   }, []);
 
+  // Check for pending open match deep link and navigate to lobby
+  const openMatchClaimRef = useRef(false);
+  useEffect(() => {
+    if (!openMatchClaimRef.current && currentUser) {
+      openMatchClaimRef.current = true;
+      claimPendingOpenMatch().then((matchId) => {
+        if (matchId) {
+          navigation.navigate('MatchDetails', { matchId: matchId as string });
+        }
+      }).catch(() => {
+        openMatchClaimRef.current = false;
+      });
+    }
+  }, [currentUser?.id]);
+
   const onRefresh = useCallback(async () => {
     triggerHaptic('light');
     setRefreshing(true);
@@ -48,16 +65,6 @@ const HomeScreen = () => {
     setRefreshing(false);
   }, []);
 
-  // Helper function for formatting names with first name and last initial
-  const formatPlayerNameWithInitial = (fullName: string) => {
-    const parts = fullName.trim().split(' ');
-    if (parts.length < 2) return fullName; // Return as is if no space found
-
-    const firstName = parts[0];
-    const lastInitial = parts[parts.length - 1][0]; // First character of last name
-
-    return `${firstName} ${lastInitial}.`;
-  };
 
   // Navigate to match details
   const goToMatchDetails = (matchId: string) => {
@@ -120,29 +127,28 @@ const HomeScreen = () => {
       .slice(0, 3); // Show only the last 3 matches
   }, [currentUser, matches]);
 
-  // Get upcoming matches
-  const nextMatch = useMemo(() => {
-    if (!currentUser || !matches) return null;
+  // Get upcoming matches (scheduled + open, deduplicated, sorted chronologically)
+  const upcomingMatches = useMemo(() => {
+    if (!currentUser || !matches) return [];
 
-    const upcoming = matches
-      .filter(
-        (match) =>
-          match.allPlayerIds.includes(currentUser.id) &&
-          match.status === 'scheduled'
-      )
-      .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
+    const scheduled = matches.filter(
+      (match) =>
+        match.allPlayerIds.includes(currentUser.id) &&
+        match.status === 'scheduled'
+    );
 
-    return upcoming.length > 0 ? upcoming[0] : null;
-  }, [currentUser, matches]);
+    // Merge open matches not already in scheduled list
+    const seen = new Set(scheduled.map((m) => m.id));
+    const extra = openMatches.filter((m) => !seen.has(m.id));
+    const combined = [...scheduled, ...extra];
+
+    return combined
+      .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime())
+      .slice(0, 5);
+  }, [currentUser, matches, openMatches]);
 
   // Format date for display
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    });
-  };
+  const formatDate = (dateString: string) => formatShortDate(dateString);
 
   // Get profile photo for the user
   const profilePhoto = currentUser?.profilePic || 'https://via.placeholder.com/150';
@@ -183,23 +189,21 @@ const HomeScreen = () => {
         }
       >
         <Animated.View style={[styles.container, fadeStyle]}>
-          {/* Next Match Section */}
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeader}>
-              <Icon name="calendar" size={24} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Next Match</Text>
-            </View>
-
-            {nextMatch ? (
-              <>
-                <MatchCard
-                  match={nextMatch}
-                  currentUserId={currentUser?.id || ''}
-                  getPlayerName={getPlayerName}
-                  onPress={() => goToMatchDetails(nextMatch.id)}
-                  formatPlayerNameWithInitial={formatPlayerNameWithInitial}
-                />
-              </>
+          {/* Upcoming Section (scheduled + open matches) */}
+          <Section card={false} title="Upcoming" icon="calendar" style={styles.sectionContainer}>
+            {upcomingMatches.length > 0 ? (
+              <View style={styles.matchesContainer}>
+                {upcomingMatches.map((match, index) => (
+                  <Animated.View key={match.id} entering={staggeredEntrance(index)}>
+                    <MatchCard
+                      match={match}
+                      currentUserId={currentUser?.id || ''}
+                      getPlayerName={getPlayerName}
+                      onPress={() => goToMatchDetails(match.id)}
+                    />
+                  </Animated.View>
+                ))}
+              </View>
             ) : (
               <View style={styles.emptyStateCard}>
                 <Text style={styles.emptyStateText}>No upcoming matches scheduled</Text>
@@ -213,13 +217,15 @@ const HomeScreen = () => {
                 </AnimatedPressable>
               </View>
             )}
-          </View>
+          </Section>
 
           {/* Quick Stats Section */}
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeader}>
-              <Icon name="bar-chart-2" size={24} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Quick Stats</Text>
+          <Section
+            card={false}
+            title="Quick Stats"
+            icon="bar-chart-2"
+            style={styles.sectionContainer}
+            headerRight={
               <AnimatedPressable
                 style={styles.viewAllButton}
                 onPress={viewAllStats}
@@ -229,8 +235,8 @@ const HomeScreen = () => {
                 <Text style={styles.viewAllText}>View All</Text>
                 <Icon name="chevron-right" size={14} color={colors.primary} />
               </AnimatedPressable>
-            </View>
-
+            }
+          >
             <View style={styles.statsContainerCard}>
               <View style={styles.statItem} accessibilityLabel={`${userStats.totalMatches} Matches`}>
                 <Text style={[styles.statValue, { color: colors.primary }]}>{userStats.totalMatches}</Text>
@@ -249,13 +255,15 @@ const HomeScreen = () => {
                 <Text style={styles.statLabel}>Win Rate</Text>
               </View>
             </View>
-          </View>
+          </Section>
 
           {/* Recent Matches Section */}
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeader}>
-              <Icon name="clock" size={24} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Recent Matches</Text>
+          <Section
+            card={false}
+            title="Recent Matches"
+            icon="clock"
+            style={styles.sectionContainer}
+            headerRight={
               <AnimatedPressable
                 style={styles.viewAllButton}
                 onPress={() => navigation.navigate('Matches')}
@@ -265,8 +273,8 @@ const HomeScreen = () => {
                 <Text style={styles.viewAllText}>View All</Text>
                 <Icon name="chevron-right" size={14} color={colors.primary} />
               </AnimatedPressable>
-            </View>
-
+            }
+          >
             {recentMatches.length > 0 ? (
               <View style={styles.matchesContainer}>
                 {recentMatches.map((match, index) => (
@@ -276,7 +284,6 @@ const HomeScreen = () => {
                       currentUserId={currentUser?.id || ''}
                       getPlayerName={getPlayerName}
                       onPress={() => goToMatchDetails(match.id)}
-                      formatPlayerNameWithInitial={formatPlayerNameWithInitial}
                     />
                   </Animated.View>
                 ))}
@@ -294,7 +301,7 @@ const HomeScreen = () => {
                 </AnimatedPressable>
               </View>
             )}
-          </View>
+          </Section>
 
 
         </Animated.View>
@@ -358,17 +365,6 @@ const styles = StyleSheet.create({
   sectionContainer: {
     flex: 1,
     marginBottom: spacing.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    color: colors.primary,
-    marginLeft: spacing.sm,
-    flex: 1,
   },
   statsContainerCard: {
     flexDirection: 'row',

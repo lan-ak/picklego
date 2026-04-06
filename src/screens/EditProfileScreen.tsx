@@ -12,6 +12,7 @@ import {
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { Icon } from '../components/Icon';
 import Layout from '../components/Layout';
+import { Section } from '../components/Section';
 import { useData } from '../context/DataContext';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -147,9 +148,7 @@ const EditProfileScreen: React.FC = () => {
         </View>
 
         <View style={styles.formContainer}>
-          <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Personal Information</Text>
-
+          <Section title="Personal Information" card={false} style={styles.formSection}>
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Name</Text>
               <TextInput
@@ -201,11 +200,9 @@ const EditProfileScreen: React.FC = () => {
                 accessibilityHint="Enter your skill rating between 1.0 and 5.0"
               />
             </View>
-          </View>
+          </Section>
 
-          <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Change Password</Text>
-
+          <Section title="Change Password" card={false} style={styles.formSection}>
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>New Password</Text>
               <View style={styles.passwordInputContainer}>
@@ -249,7 +246,7 @@ const EditProfileScreen: React.FC = () => {
             <Text style={styles.passwordHint}>
               Leave password fields empty if you don't want to change it
             </Text>
-          </View>
+          </Section>
         </View>
 
         <AnimatedPressable
@@ -314,11 +311,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: spacing.lg,
     ...shadows.md,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    color: colors.primary,
-    marginBottom: spacing.lg,
   },
   inputContainer: {
     marginBottom: spacing.lg,

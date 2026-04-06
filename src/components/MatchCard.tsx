@@ -1,39 +1,33 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { format } from 'date-fns';
 import { Icon } from './Icon';
 import { AnimatedPressable } from './AnimatedPressable';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { formatMatchCardDate } from '../utils/dateFormat';
+import { formatPlayerNameWithInitial } from '../utils/formatPlayerName';
 import { Match, Game } from '../types';
 
 type MatchCardProps = {
   match: Match;
-  currentUserId: string;
-  getPlayerName: (id: string) => string;
+  currentUserId?: string;
+  getPlayerName?: (id: string) => string;
   onPress: () => void;
-  formatPlayerNameWithInitial?: (name: string) => string;
-};
-
-const defaultFormatName = (fullName: string) => {
-  const parts = fullName.trim().split(' ');
-  if (parts.length < 2) return fullName;
-  return `${parts[0]} ${parts[parts.length - 1][0]}.`;
 };
 
 const MatchCard = ({
   match,
-  currentUserId,
-  getPlayerName,
+  currentUserId = '',
+  getPlayerName = () => '',
   onPress,
-  formatPlayerNameWithInitial = defaultFormatName,
 }: MatchCardProps) => {
+  const isOpen = match.isOpenInvite && match.openInviteStatus === 'open';
   const userTeam = match.team1PlayerIds.includes(currentUserId) ? 1
     : match.team2PlayerIds.includes(currentUserId) ? 2
     : null;
   const isCompleted = match.status === 'completed';
   const isWinner = isCompleted && match.winnerTeam === userTeam;
   const isLoser = isCompleted && userTeam !== null && match.winnerTeam !== userTeam;
-  const isScheduled = match.status === 'scheduled';
+  const isScheduled = match.status === 'scheduled' && !isOpen;
 
   const getTeamLabel = (teamIds: string[]) =>
     teamIds
@@ -47,24 +41,38 @@ const MatchCard = ({
     ? match.games.map((g: Game) => `${g.team1Score}-${g.team2Score}`).join(', ')
     : null;
 
+  // Open match player count
+  const currentCount = (match.allPlayerIds || []).length;
+  const maxPlayers = match.maxPlayers || (match.matchType === 'doubles' ? 4 : 2);
+
   return (
     <AnimatedPressable
       style={[
         styles.card,
+        isOpen && styles.openBorder,
         isWinner && styles.winBorder,
         isLoser && styles.lossBorder,
         isScheduled && styles.scheduledBorder,
       ]}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${team1Label} vs ${team2Label}${isWinner ? ', Won' : isLoser ? ', Lost' : ''}`}
+      accessibilityLabel={
+        isOpen
+          ? `Open ${match.matchType} match, ${currentCount} of ${maxPlayers} players joined`
+          : `${team1Label} vs ${team2Label}${isWinner ? ', Won' : isLoser ? ', Lost' : ''}`
+      }
       accessibilityHint="View match details"
     >
       {/* Top row: date + status badge */}
       <View style={styles.topRow}>
         <Text style={styles.date}>
-          {format(new Date(match.scheduledDate), 'MMM d, yyyy - h:mm a')}
+          {formatMatchCardDate(match.scheduledDate)}
         </Text>
+        {isOpen && (
+          <View style={[styles.badge, styles.openBadge]}>
+            <Text style={[styles.badgeText, { color: colors.action, marginLeft: 0 }]}>Open</Text>
+          </View>
+        )}
         {isWinner && (
           <View style={[styles.badge, styles.winBadge]}>
             <Icon name="trophy" size={14} color={colors.win} />
@@ -94,12 +102,32 @@ const MatchCard = ({
         {match.matchType === 'doubles' ? 'Doubles' : 'Singles'} {'\u00B7'} {match.pointsToWin} pts {'\u00B7'} Best of {match.numberOfGames}
       </Text>
 
-      {/* Teams in gray surface container */}
-      <View style={styles.teamsContainer}>
-        <Text style={styles.teamName}>{team1Label}</Text>
-        <Text style={styles.vs}>vs</Text>
-        <Text style={styles.teamName}>{team2Label}</Text>
-      </View>
+      {/* Open match: player count with dots */}
+      {isOpen ? (
+        <View style={styles.playerCountContainer}>
+          <View style={styles.playerCountRow}>
+            <Icon name="users" size={14} color={colors.primary} />
+            <Text style={styles.playerCountText}>
+              {currentCount}/{maxPlayers} players
+            </Text>
+            <View style={styles.dots}>
+              {Array.from({ length: maxPlayers }).map((_, i) => (
+                <View
+                  key={i}
+                  style={[styles.dot, i < currentCount ? styles.dotFilled : styles.dotEmpty]}
+                />
+              ))}
+            </View>
+          </View>
+        </View>
+      ) : (
+        /* Teams in gray surface container */
+        <View style={styles.teamsContainer}>
+          <Text style={styles.teamName}>{team1Label}</Text>
+          <Text style={styles.vs}>vs</Text>
+          <Text style={styles.teamName}>{team2Label}</Text>
+        </View>
+      )}
 
       {/* Score with green overlay background */}
       {isCompleted && scoreText && (
@@ -143,6 +171,10 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: colors.secondary,
   },
+  openBorder: {
+    borderLeftWidth: 4,
+    borderLeftColor: colors.action,
+  },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -171,6 +203,9 @@ const styles = StyleSheet.create({
   },
   completedBadge: {
     backgroundColor: colors.winOverlay,
+  },
+  openBadge: {
+    backgroundColor: colors.actionOverlay,
   },
   badgeText: {
     ...typography.caption,
@@ -229,6 +264,37 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.gray400,
     marginLeft: spacing.xs,
+  },
+  playerCountContainer: {
+    marginVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
+  },
+  playerCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  playerCountText: {
+    ...typography.label,
+    color: colors.primary,
+  },
+  dots: {
+    flexDirection: 'row',
+    gap: 4,
+    marginLeft: 'auto',
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  dotFilled: {
+    backgroundColor: colors.primary,
+  },
+  dotEmpty: {
+    backgroundColor: colors.gray200,
   },
 });
 

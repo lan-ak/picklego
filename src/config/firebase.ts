@@ -609,3 +609,18 @@ export const callResendMatchNotifications = (matchId: string) =>
     'resendMatchNotifications', { matchId },
   );
 
+export const callJoinOpenMatch = (matchId: string) =>
+  authenticatedCallable<{ matchId: string }, { joined: boolean; isFull: boolean; reason?: string }>(
+    'joinOpenMatch', { matchId },
+  );
+
+export const callLeaveOpenMatch = (matchId: string) =>
+  authenticatedCallable<{ matchId: string }, { left: boolean }>(
+    'leaveOpenMatch', { matchId },
+  );
+
+export const callCancelOpenMatch = (matchId: string) =>
+  authenticatedCallable<{ matchId: string }, { cancelled: boolean }>(
+    'cancelOpenMatch', { matchId },
+  );
+

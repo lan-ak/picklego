@@ -8,10 +8,13 @@ import Layout from '../components/Layout';
 import { Match, Game } from '../types';
 import { colors, typography, fontFamily, spacing, borderRadius, shadows, layout } from '../theme';
 import Card from '../components/Card';
+import { Section } from '../components/Section';
 import PicklePete from '../components/PicklePete';
 import { useFadeIn, useContentTransition } from '../hooks';
 import { usePlacement } from 'expo-superwall';
 import { PLACEMENTS } from '../services/superwallPlacements';
+import { formatMediumDate } from '../utils/dateFormat';
+import { formatPlayerNameWithInitial } from '../utils/formatPlayerName';
 
 type PlayerStats = {
   totalMatches: number;
@@ -573,13 +576,6 @@ const MyStatsScreen = () => {
       .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime()); // Sort by date, newest first
   };
 
-  // Helper to format names with first name and last initial
-  const formatPlayerNameWithInitial = (fullName: string) => {
-    const parts = fullName.trim().split(' ');
-    if (parts.length < 2) return fullName;
-    return `${parts[0]} ${parts[parts.length - 1][0]}.`;
-  };
-
   // Get formatted team label for a match
   const getMatchTeamLabel = (match: Match, teamNumber: 1 | 2) => {
     if (!currentUser) return 'Unknown';
@@ -603,14 +599,7 @@ const MyStatsScreen = () => {
   };
 
   // Add a function to format the match date
-  const formatMatchDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
+  const formatMatchDate = (dateString: string) => formatMediumDate(dateString);
 
   // Add a function to render time filters
   const renderTimeFilters = () => (
@@ -646,12 +635,7 @@ const MyStatsScreen = () => {
 
   // Render the opponent analytics section
   const renderOpponentAnalytics = () => (
-    <Card style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Icon name="users" size={24} color={colors.primary} />
-        <Text style={styles.sectionTitle}>Opponent Analysis</Text>
-      </View>
-
+    <Section title="Opponent Analysis" icon="users" headerBorder style={styles.section}>
       {opponentStats.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateText}>
@@ -688,7 +672,7 @@ const MyStatsScreen = () => {
           )}
         </View>
       )}
-    </Card>
+    </Section>
   );
 
   // Render partner stats section
@@ -697,12 +681,7 @@ const MyStatsScreen = () => {
     if (statsMode === 'singles') return null;
 
     return (
-      <Card style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Icon name="users" size={24} color={colors.primary} />
-          <Text style={styles.sectionTitle}>Doubles Partners</Text>
-        </View>
-
+      <Section title="Doubles Partners" icon="users" headerBorder style={styles.section}>
         {partnerStats.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>
@@ -741,7 +720,7 @@ const MyStatsScreen = () => {
             )}
           </View>
         )}
-      </Card>
+      </Section>
     );
   };
 
@@ -764,27 +743,20 @@ const MyStatsScreen = () => {
           </View>
         )}
 
-        <Card style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Icon name="bar-chart" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>
-              {statsMode === 'overall' ? 'Overall Performance' :
-               statsMode === 'singles' ? 'Singles Performance' : 'Doubles Performance'}
-            </Text>
-          </View>
-
+        <Section
+          title={statsMode === 'overall' ? 'Overall Performance' :
+                 statsMode === 'singles' ? 'Singles Performance' : 'Doubles Performance'}
+          icon="bar-chart"
+          headerBorder
+          style={styles.section}
+        >
           {renderStatsCard()}
-        </Card>
+        </Section>
 
         {renderOpponentAnalytics()}
         {renderPartnerStats()}
 
-        <Card style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Icon name="trending-up" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Performance Summary</Text>
-          </View>
-
+        <Section title="Performance Summary" icon="trending-up" headerBorder style={styles.section}>
           {(!currentUser || !extendedStats[currentUser.id]) ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>
@@ -827,14 +799,9 @@ const MyStatsScreen = () => {
               </View>
             </View>
           )}
-        </Card>
+        </Section>
 
-        <Card style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Icon name="list" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Match History</Text>
-          </View>
-
+        <Section title="Match History" icon="list" headerBorder style={styles.section}>
           {getFilteredMatches().length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>
@@ -881,7 +848,7 @@ const MyStatsScreen = () => {
               ))}
             </View>
           )}
-        </Card>
+        </Section>
         </Animated.View>
       </ScrollView>
       </Animated.View>

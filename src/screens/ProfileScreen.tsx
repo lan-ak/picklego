@@ -17,6 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Player } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { Section } from '../components/Section';
 import { useToast } from '../context/ToastContext';
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import Animated from 'react-native-reanimated';
@@ -507,11 +508,9 @@ const ProfileScreen = () => {
           )}
         </View>
 
-        <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Player Statistics</Text>
-
+        <Section title="Player Statistics" card={false} style={styles.statsSection}>
           {renderStats()}
-        </View>
+        </Section>
       </ScrollView>
       </Animated.View>
     </Layout>
@@ -667,11 +666,6 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     borderRadius: borderRadius.md,
     ...shadows.md,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    color: colors.primary,
-    marginBottom: spacing.lg,
   },
   statsContainer: {
     flexDirection: 'row',

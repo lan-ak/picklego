@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.matchRemovedNotifId = exports.matchUpdatedNotifId = exports.inviteAcceptedNotifId = exports.matchCancelledNotifId = exports.matchInviteNotifId = exports.playerInviteNotifId = exports.newPlaceholderPlayerId = exports.newMatchId = void 0;
+exports.openMatchFullNotifId = exports.openMatchLeaveNotifId = exports.openMatchJoinNotifId = exports.matchRemovedNotifId = exports.matchUpdatedNotifId = exports.inviteAcceptedNotifId = exports.matchCancelledNotifId = exports.matchInviteNotifId = exports.playerInviteNotifId = exports.newPlaceholderPlayerId = exports.newMatchId = void 0;
 // SYNC: keep deterministic ID formats in sync with src/utils/ids.ts
 const crypto_1 = require("crypto");
 /** New match document ID */
@@ -27,4 +27,13 @@ exports.matchUpdatedNotifId = matchUpdatedNotifId;
 /** Match removed notification (roster change) */
 const matchRemovedNotifId = (matchId, recipientId) => `notif_removed_${matchId}_${recipientId}_${(0, crypto_1.randomUUID)()}`;
 exports.matchRemovedNotifId = matchRemovedNotifId;
+/** Open match join notification — idempotent per match+joiner */
+const openMatchJoinNotifId = (matchId, joinerId) => `open_match_join_${matchId}_${joinerId}`;
+exports.openMatchJoinNotifId = openMatchJoinNotifId;
+/** Open match leave notification */
+const openMatchLeaveNotifId = (matchId, leaverId) => `open_match_leave_${matchId}_${leaverId}_${(0, crypto_1.randomUUID)()}`;
+exports.openMatchLeaveNotifId = openMatchLeaveNotifId;
+/** Open match full notification — idempotent per match+recipient */
+const openMatchFullNotifId = (matchId, recipientId) => `open_match_full_${matchId}_${recipientId}`;
+exports.openMatchFullNotifId = openMatchFullNotifId;
 //# sourceMappingURL=ids.js.map

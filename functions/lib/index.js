@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resendMatchNotifications = exports.createNotificationsOnMatchUpdate = exports.createNotificationsOnMatchCreate = exports.deleteAccount = exports.recalculateStatsOnMatchUpdate = exports.lookupPhoneNumbers = exports.claimSMSInvite = exports.createSMSInvite = exports.sendPushOnNotificationWrite = exports.claimPlaceholderProfile = exports.acceptPlayerInvite = void 0;
+exports.resendMatchNotifications = exports.createNotificationsOnMatchUpdate = exports.createNotificationsOnMatchCreate = exports.deleteAccount = exports.expireOpenMatches = exports.cancelOpenMatch = exports.leaveOpenMatch = exports.joinOpenMatch = exports.recalculateStatsOnMatchUpdate = exports.lookupPhoneNumbers = exports.claimSMSInvite = exports.createSMSInvite = exports.sendPushOnNotificationWrite = exports.claimPlaceholderProfile = exports.acceptPlayerInvite = void 0;
 const firestore_1 = require("firebase-functions/v2/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const v1_1 = require("firebase-functions/v1");
@@ -9,6 +9,7 @@ const firestore_2 = require("firebase-admin/firestore");
 const auth_1 = require("firebase-admin/auth");
 const storage_1 = require("firebase-admin/storage");
 const expo_server_sdk_1 = require("expo-server-sdk");
+const scheduler_1 = require("firebase-functions/v2/scheduler");
 const ids_1 = require("./ids");
 const app = (0, app_1.initializeApp)();
 /** Normalize a phone number to digits-only with US country code. */
@@ -264,7 +265,7 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
         return;
     }
     // Only send push for types that warrant a push
-    if (!['match_invite', 'match_updated', 'match_cancelled', 'player_invite', 'invite_accepted'].includes(notification.type)) {
+    if (!['match_invite', 'match_updated', 'match_cancelled', 'player_invite', 'invite_accepted', 'open_match_join', 'open_match_leave', 'open_match_full'].includes(notification.type)) {
         console.log(`[Push] skipping: unsupported type=${notification.type}, id=${notifId}`);
         return;
     }
@@ -304,14 +305,8 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
     let body;
     if (notification.type === 'match_invite') {
         const matchTypeLabel = notification.matchType === 'doubles' ? 'doubles' : 'singles';
-        const dateStr = notification.matchDate
-            ? new Date(notification.matchDate).toLocaleDateString('en-US', {
-                weekday: 'short', month: 'short', day: 'numeric',
-                hour: 'numeric', minute: '2-digit',
-            })
-            : 'TBD';
         title = 'New Match Invite';
-        body = `${notification.senderName} invited you to a ${matchTypeLabel} match on ${dateStr}`;
+        body = `${notification.senderName} invited you to a ${matchTypeLabel} match`;
     }
     else if (notification.type === 'match_updated') {
         title = 'Match Updated';
@@ -325,6 +320,18 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
         title = 'Invite Accepted';
         body = notification.message || `${notification.senderName} accepted your invite!`;
     }
+    else if (notification.type === 'open_match_join') {
+        title = 'Player Joined';
+        body = notification.message || `${notification.senderName} joined your open match`;
+    }
+    else if (notification.type === 'open_match_leave') {
+        title = 'Player Left';
+        body = notification.message || `${notification.senderName} left your open match`;
+    }
+    else if (notification.type === 'open_match_full') {
+        title = 'Match Ready!';
+        body = notification.message || `Your match is full! Teams have been randomized — game on!`;
+    }
     else {
         title = 'New Player Invite';
         body = notification.message || `${notification.senderName} wants to add you as a player!`;
@@ -335,7 +342,8 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
         channelId: 'match-invites',
         data: {
             ...(notification.matchId ? { matchId: notification.matchId } : {}),
-            screen: ['match_invite', 'match_updated'].includes(notification.type) ? 'MatchDetails' : 'Notifications',
+            screen: ['open_match_full', 'open_match_join', 'open_match_leave', 'match_invite', 'match_updated'].includes(notification.type) ? 'MatchDetails'
+                : 'Notifications',
             notificationId: notification.id,
         },
     }));
@@ -764,6 +772,314 @@ exports.recalculateStatsOnMatchUpdate = (0, firestore_1.onDocumentUpdated)('matc
     }
 });
 /**
+ * Callable function to join an open match invite.
+ * Atomically adds the caller to the player pool. If the match becomes full,
+ * randomizes teams and transitions the match to a normal scheduled match.
+ */
+exports.joinOpenMatch = (0, https_1.onCall)(async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError('unauthenticated', 'Must be authenticated');
+    }
+    const callerUid = request.auth.uid;
+    const matchId = request.data?.matchId;
+    if (!matchId || typeof matchId !== 'string') {
+        throw new https_1.HttpsError('invalid-argument', 'matchId is required');
+    }
+    const matchRef = db.collection('matches').doc(matchId);
+    const result = await db.runTransaction(async (transaction) => {
+        const matchDoc = await transaction.get(matchRef);
+        if (!matchDoc.exists) {
+            throw new https_1.HttpsError('not-found', 'Match not found');
+        }
+        const match = matchDoc.data();
+        if (!match.isOpenInvite) {
+            throw new https_1.HttpsError('failed-precondition', 'Not an open invite match');
+        }
+        if (match.openInviteStatus !== 'open') {
+            throw new https_1.HttpsError('failed-precondition', `Match invite is ${match.openInviteStatus}`);
+        }
+        if ((match.allPlayerIds || []).includes(callerUid)) {
+            return { joined: false, reason: 'already_joined', isFull: false };
+        }
+        // Look up caller info
+        const callerDoc = await transaction.get(db.collection('players').doc(callerUid));
+        const callerName = callerDoc.exists ? (callerDoc.data().name || 'A player') : 'A player';
+        const callerProfilePic = callerDoc.exists ? callerDoc.data().profilePic : undefined;
+        const newAllPlayerIds = [...(match.allPlayerIds || []), callerUid];
+        const newPlayerPool = [...(match.playerPool || []), callerUid];
+        const newPlayerPoolNames = [...(match.playerPoolNames || []), callerName];
+        const maxPlayers = match.maxPlayers || (match.matchType === 'doubles' ? 4 : 2);
+        const now = Date.now();
+        if (newAllPlayerIds.length >= maxPlayers) {
+            // Match is full — randomize teams
+            const allPlayerIds = newAllPlayerIds;
+            const halfSize = Math.floor(maxPlayers / 2);
+            // Fisher-Yates shuffle
+            const shuffled = [...allPlayerIds];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            const team1PlayerIds = shuffled.slice(0, halfSize);
+            const team2PlayerIds = shuffled.slice(halfSize);
+            // Look up all player names for team arrays
+            const playerDocs = await Promise.all(allPlayerIds.map(id => transaction.get(db.collection('players').doc(id))));
+            const nameMap = {};
+            for (const doc of playerDocs) {
+                if (doc.exists)
+                    nameMap[doc.id] = doc.data().name || 'A player';
+            }
+            const team1PlayerNames = team1PlayerIds.map(id => nameMap[id] || 'A player');
+            const team2PlayerNames = team2PlayerIds.map(id => nameMap[id] || 'A player');
+            transaction.update(matchRef, {
+                allPlayerIds,
+                playerPool: [],
+                playerPoolNames: [],
+                team1PlayerIds,
+                team2PlayerIds,
+                team1PlayerNames,
+                team2PlayerNames,
+                openInviteStatus: 'full',
+                lastModifiedAt: now,
+                lastModifiedBy: callerUid,
+                lastModifiedByName: callerName,
+            });
+            // Create open_match_full notification for all players
+            const creatorDoc = await transaction.get(db.collection('players').doc(match.createdBy));
+            const creatorName = creatorDoc.exists ? (creatorDoc.data().name || 'A player') : 'A player';
+            const creatorProfilePic = creatorDoc.exists ? creatorDoc.data().profilePic : undefined;
+            for (const recipientId of allPlayerIds) {
+                const notifId = (0, ids_1.openMatchFullNotifId)(matchId, recipientId);
+                const notifData = {
+                    id: notifId,
+                    type: 'open_match_full',
+                    status: 'sent',
+                    recipientId,
+                    senderId: match.createdBy,
+                    senderName: creatorName,
+                    matchId,
+                    matchDate: match.scheduledDate,
+                    matchLocation: match.location || null,
+                    matchType: match.matchType,
+                    message: `Your match is full! Teams have been randomized — game on!`,
+                    createdAt: now,
+                };
+                if (creatorProfilePic)
+                    notifData.senderProfilePic = creatorProfilePic;
+                transaction.set(db.collection('notifications').doc(notifId), notifData);
+            }
+            return { joined: true, isFull: true };
+        }
+        else {
+            // Not full yet — add to pool
+            transaction.update(matchRef, {
+                allPlayerIds: firestore_2.FieldValue.arrayUnion(callerUid),
+                playerPool: newPlayerPool,
+                playerPoolNames: newPlayerPoolNames,
+                lastModifiedAt: now,
+                lastModifiedBy: callerUid,
+                lastModifiedByName: callerName,
+            });
+            // Notify the creator
+            const creatorId = match.createdBy;
+            if (creatorId !== callerUid) {
+                const creatorDoc = await transaction.get(db.collection('players').doc(creatorId));
+                const creatorPrefs = creatorDoc.exists ? creatorDoc.data().notificationPreferences : undefined;
+                if (!creatorPrefs || creatorPrefs.open_match_join !== false) {
+                    const notifId = (0, ids_1.openMatchJoinNotifId)(matchId, callerUid);
+                    const notifData = {
+                        id: notifId,
+                        type: 'open_match_join',
+                        status: 'sent',
+                        recipientId: creatorId,
+                        senderId: callerUid,
+                        senderName: callerName,
+                        matchId,
+                        matchDate: match.scheduledDate,
+                        matchLocation: match.location || null,
+                        matchType: match.matchType,
+                        message: `${callerName} joined your open match`,
+                        createdAt: now,
+                    };
+                    if (callerProfilePic)
+                        notifData.senderProfilePic = callerProfilePic;
+                    transaction.set(db.collection('notifications').doc(notifId), notifData);
+                }
+            }
+            return { joined: true, isFull: false };
+        }
+    });
+    console.log(`joinOpenMatch: match=${matchId}, user=${callerUid}, joined=${result.joined}, isFull=${result.isFull}`);
+    return result;
+});
+/**
+ * Callable function to leave an open match invite.
+ * Removes the caller from the player pool and notifies the creator.
+ */
+exports.leaveOpenMatch = (0, https_1.onCall)(async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError('unauthenticated', 'Must be authenticated');
+    }
+    const callerUid = request.auth.uid;
+    const matchId = request.data?.matchId;
+    if (!matchId || typeof matchId !== 'string') {
+        throw new https_1.HttpsError('invalid-argument', 'matchId is required');
+    }
+    const matchRef = db.collection('matches').doc(matchId);
+    await db.runTransaction(async (transaction) => {
+        const matchDoc = await transaction.get(matchRef);
+        if (!matchDoc.exists) {
+            throw new https_1.HttpsError('not-found', 'Match not found');
+        }
+        const match = matchDoc.data();
+        if (!match.isOpenInvite || match.openInviteStatus !== 'open') {
+            throw new https_1.HttpsError('failed-precondition', 'Match is not open for changes');
+        }
+        if (match.createdBy === callerUid) {
+            throw new https_1.HttpsError('failed-precondition', 'Creator cannot leave — cancel the match instead');
+        }
+        if (!(match.playerPool || []).includes(callerUid)) {
+            throw new https_1.HttpsError('failed-precondition', 'You are not in the player pool');
+        }
+        const callerDoc = await transaction.get(db.collection('players').doc(callerUid));
+        const callerName = callerDoc.exists ? (callerDoc.data().name || 'A player') : 'A player';
+        const callerProfilePic = callerDoc.exists ? callerDoc.data().profilePic : undefined;
+        const poolIndex = (match.playerPool || []).indexOf(callerUid);
+        const newPlayerPool = [...(match.playerPool || [])];
+        const newPlayerPoolNames = [...(match.playerPoolNames || [])];
+        newPlayerPool.splice(poolIndex, 1);
+        newPlayerPoolNames.splice(poolIndex, 1);
+        const now = Date.now();
+        transaction.update(matchRef, {
+            allPlayerIds: firestore_2.FieldValue.arrayRemove(callerUid),
+            playerPool: newPlayerPool,
+            playerPoolNames: newPlayerPoolNames,
+            lastModifiedAt: now,
+            lastModifiedBy: callerUid,
+            lastModifiedByName: callerName,
+        });
+        // Notify creator
+        const creatorId = match.createdBy;
+        const creatorDoc = await transaction.get(db.collection('players').doc(creatorId));
+        const creatorPrefs = creatorDoc.exists ? creatorDoc.data().notificationPreferences : undefined;
+        if (!creatorPrefs || creatorPrefs.open_match_join !== false) {
+            const notifId = (0, ids_1.openMatchLeaveNotifId)(matchId, callerUid);
+            const notifData = {
+                id: notifId,
+                type: 'open_match_leave',
+                status: 'sent',
+                recipientId: creatorId,
+                senderId: callerUid,
+                senderName: callerName,
+                matchId,
+                matchDate: match.scheduledDate,
+                matchLocation: match.location || null,
+                matchType: match.matchType,
+                message: `${callerName} left your open match`,
+                createdAt: now,
+            };
+            if (callerProfilePic)
+                notifData.senderProfilePic = callerProfilePic;
+            transaction.set(db.collection('notifications').doc(notifId), notifData);
+        }
+    });
+    console.log(`leaveOpenMatch: match=${matchId}, user=${callerUid}`);
+    return { left: true };
+});
+/**
+ * Callable function to cancel an open match invite.
+ * Only the creator can cancel. Notifies all joined players.
+ */
+exports.cancelOpenMatch = (0, https_1.onCall)(async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError('unauthenticated', 'Must be authenticated');
+    }
+    const callerUid = request.auth.uid;
+    const matchId = request.data?.matchId;
+    if (!matchId || typeof matchId !== 'string') {
+        throw new https_1.HttpsError('invalid-argument', 'matchId is required');
+    }
+    const matchRef = db.collection('matches').doc(matchId);
+    await db.runTransaction(async (transaction) => {
+        const matchDoc = await transaction.get(matchRef);
+        if (!matchDoc.exists) {
+            throw new https_1.HttpsError('not-found', 'Match not found');
+        }
+        const match = matchDoc.data();
+        if (match.createdBy !== callerUid) {
+            throw new https_1.HttpsError('permission-denied', 'Only the creator can cancel');
+        }
+        if (!match.isOpenInvite || match.openInviteStatus !== 'open') {
+            throw new https_1.HttpsError('failed-precondition', 'Match is not open');
+        }
+        const callerDoc = await transaction.get(db.collection('players').doc(callerUid));
+        const callerName = callerDoc.exists ? (callerDoc.data().name || 'A player') : 'A player';
+        const callerProfilePic = callerDoc.exists ? callerDoc.data().profilePic : undefined;
+        const now = Date.now();
+        transaction.update(matchRef, {
+            openInviteStatus: 'cancelled',
+            status: 'expired',
+            lastModifiedAt: now,
+            lastModifiedBy: callerUid,
+            lastModifiedByName: callerName,
+        });
+        // Notify all joined players (except creator)
+        const allPlayerIds = match.allPlayerIds || [];
+        for (const recipientId of allPlayerIds) {
+            if (recipientId === callerUid)
+                continue;
+            const notifId = `notif_cancelled_${matchId}_${recipientId}_${now}`;
+            const notifData = {
+                id: notifId,
+                type: 'match_cancelled',
+                status: 'sent',
+                recipientId,
+                senderId: callerUid,
+                senderName: callerName,
+                matchId,
+                matchDate: match.scheduledDate,
+                matchLocation: match.location || null,
+                matchType: match.matchType,
+                message: `${callerName} cancelled the open match`,
+                createdAt: now,
+            };
+            if (callerProfilePic)
+                notifData.senderProfilePic = callerProfilePic;
+            transaction.set(db.collection('notifications').doc(notifId), notifData);
+        }
+    });
+    console.log(`cancelOpenMatch: match=${matchId}, user=${callerUid}`);
+    return { cancelled: true };
+});
+/**
+ * Scheduled function to expire open match invites that have passed their scheduled date.
+ * Runs every hour.
+ */
+exports.expireOpenMatches = (0, scheduler_1.onSchedule)('every 1 hours', async () => {
+    const now = new Date().toISOString();
+    const snapshot = await db.collection('matches')
+        .where('isOpenInvite', '==', true)
+        .where('openInviteStatus', '==', 'open')
+        .get();
+    const batch = db.batch();
+    let count = 0;
+    for (const doc of snapshot.docs) {
+        const match = doc.data();
+        if (match.scheduledDate && match.scheduledDate < now) {
+            batch.update(doc.ref, {
+                openInviteStatus: 'cancelled',
+                status: 'expired',
+                lastModifiedAt: Date.now(),
+            });
+            count++;
+        }
+    }
+    if (count > 0) {
+        await batch.commit();
+        console.log(`expireOpenMatches: expired ${count} open match invites`);
+    }
+});
+/**
  * Callable function to permanently delete a user's account.
  * 1. Deletes the caller's player document from Firestore
  * 2. Deletes any unclaimed placeholder profiles created by the caller
@@ -816,6 +1132,9 @@ exports.deleteAccount = (0, https_1.onCall)(async (request) => {
 exports.createNotificationsOnMatchCreate = (0, firestore_1.onDocumentCreated)('matches/{matchId}', async (event) => {
     const match = event.data?.data();
     if (!match)
+        return;
+    // Skip open invite matches — notifications are handled by joinOpenMatch Cloud Function
+    if (match.isOpenInvite)
         return;
     const matchId = event.params.matchId;
     const senderId = match.createdBy;
@@ -898,6 +1217,9 @@ exports.createNotificationsOnMatchUpdate = (0, firestore_1.onDocumentUpdated)('m
         JSON.stringify(before.team2PlayerIds) !== JSON.stringify(after.team2PlayerIds));
     if (!meaningfulFieldsChanged)
         return;
+    // Skip open invite matches — notifications handled by joinOpenMatch/leaveOpenMatch/cancelOpenMatch
+    if (after.isOpenInvite && after.openInviteStatus !== 'full')
+        return;
     // Skip completion-related status changes (handled by stats trigger)
     if (before.status === 'completed' || after.status === 'completed')
         return;
@@ -924,9 +1246,6 @@ exports.createNotificationsOnMatchUpdate = (0, firestore_1.onDocumentUpdated)('m
         .map(d => d.id));
     const batch = db.batch();
     const now = Date.now();
-    const dateStr = new Date(after.scheduledDate).toLocaleDateString('en-US', {
-        weekday: 'short', month: 'short', day: 'numeric',
-    });
     const matchTypeLabel = after.matchType === 'doubles' ? 'doubles' : 'singles';
     let count = 0;
     // Added players get match_invite (deterministic ID)
@@ -958,7 +1277,7 @@ exports.createNotificationsOnMatchUpdate = (0, firestore_1.onDocumentUpdated)('m
             matchId, matchDate: after.scheduledDate,
             matchLocation: after.location || null,
             matchType: after.matchType,
-            message: `${senderName} updated the ${matchTypeLabel} match on ${dateStr}`,
+            message: `${senderName} updated the ${matchTypeLabel} match`,
             createdAt: now,
         };
         if (senderProfilePic)
@@ -977,7 +1296,7 @@ exports.createNotificationsOnMatchUpdate = (0, firestore_1.onDocumentUpdated)('m
             matchId, matchDate: after.scheduledDate || before.scheduledDate,
             matchLocation: after.location || before.location || null,
             matchType: after.matchType || before.matchType,
-            message: `${senderName} removed you from the ${matchTypeLabel} match on ${dateStr}`,
+            message: `${senderName} removed you from the ${matchTypeLabel} match`,
             createdAt: now,
         };
         if (senderProfilePic)

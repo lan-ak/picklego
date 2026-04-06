@@ -8,13 +8,14 @@ import {
   Platform,
   Alert,
   Modal,
-  Switch,
   Keyboard,
+  Share,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect, CommonActions } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { formatSmartDate as formatSmartDateUtil, formatAccessibleDate, formatTime } from '../utils/dateFormat';
 import { Icon } from '../components/Icon';
-import { Chip } from '../components/Chip';
+
 import { useData } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import { colors, typography, spacing, borderRadius, shadows, layout } from '../theme';
@@ -26,14 +27,21 @@ import Layout from '../components/Layout';
 import { DismissableModal } from '../components/DismissableModal';
 import LocationPicker from '../components/LocationPicker';
 import { useVenues } from '../hooks/useVenues';
-import { shuffleTeams } from '../utils/shuffleTeams';
 import { InvitePlayersModal } from '../components/InvitePlayersModal';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { PrimaryButton } from '../components/Button';
+import { PlayerSlots } from '../components/PlayerSlots';
+import { Section } from '../components/Section';
+import { SegmentedControl } from '../components/SegmentedControl';
+import { FormRow } from '../components/FormRow';
+import { ToggleRow } from '../components/ToggleRow';
 import Animated from 'react-native-reanimated';
 import { useFadeIn } from '../hooks';
 import { usePlacement } from 'expo-superwall';
+import { generateOpenMatchLink } from '../services/appsflyer';
+import { buildMatchShareMessage } from '../utils/shareMatch';
 import { PLACEMENTS } from '../services/superwallPlacements';
+import { shuffleTeams } from '../utils/shuffleTeams';
 
 type AddMatchScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'AddMatch'>,
@@ -41,21 +49,14 @@ type AddMatchScreenNavigationProp = CompositeNavigationProp<
 >;
 
 function formatSmartDate(d: Date): string {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000);
-
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Tomorrow';
-  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return formatSmartDateUtil(d);
 }
 
 const AddMatchScreen = () => {
   const fadeStyle = useFadeIn();
   const navigation = useNavigation<AddMatchScreenNavigationProp>();
   const route = useRoute();
-  const { players, addMatch, currentUser, matches, updateMatch, refreshConnectedPlayers, getPlayerName } = useData();
+  const { players, addMatch, createOpenMatch, currentUser, matches, updateMatch, refreshConnectedPlayers, getPlayerName } = useData();
   const { showToast } = useToast();
   const { registerPlacement } = usePlacement();
 
@@ -106,10 +107,13 @@ const AddMatchScreen = () => {
     '3'
   );
   const [selectedTeam, setSelectedTeam] = useState<1 | 2 | null>(null);
-  const [autoRandomize, setAutoRandomize] = useState(false);
+  type TeamMode = 'manual' | 'open';
+  const [teamMode, setTeamMode] = useState<TeamMode>('manual');
+  const isOpenMatch = teamMode === 'open';
   const [shufflePerGame, setShufflePerGame] = useState(
     rematchData?.randomizeTeamsPerGame ?? existingMatch?.randomizeTeamsPerGame ?? false
   );
+  const [openMatchPool, setOpenMatchPool] = useState<string[]>(currentUser ? [currentUser.id] : []);
 
   const scrollRef = useRef<ScrollView>(null);
   const pointsToWinInput = useRef<TextInput>(null);
@@ -158,7 +162,7 @@ const AddMatchScreen = () => {
         setPointsToWin(rematch.pointsToWin.toString());
         setNumberOfGames(rematch.numberOfGames.toString());
         setShufflePerGame(rematch.randomizeTeamsPerGame ?? false);
-        setAutoRandomize(false);
+        setTeamMode('manual');
       } else if (editing && editMatch) {
         setDate(new Date(editMatch.scheduledDate));
         setLocation(editMatch.location || '');
@@ -169,7 +173,7 @@ const AddMatchScreen = () => {
         setPointsToWin(editMatch.pointsToWin.toString());
         setNumberOfGames(editMatch.numberOfGames.toString());
         setShufflePerGame(editMatch.randomizeTeamsPerGame ?? false);
-        setAutoRandomize(false);
+        setTeamMode('manual');
       } else {
         // Superwall: fire placement when user taps "New Match"
         registerPlacement({ placement: PLACEMENTS.ADD_MATCH_TAPPED });
@@ -184,7 +188,7 @@ const AddMatchScreen = () => {
         setPointsToWin('11');
         setNumberOfGames('3');
         setShufflePerGame(false);
-        setAutoRandomize(false);
+        setTeamMode('manual');
       }
 
       // Reset transient UI state
@@ -193,6 +197,7 @@ const AddMatchScreen = () => {
       setShowDatePicker(false);
       setShowTimePicker(false);
       setShowLocationPicker(false);
+      setOpenMatchPool(currentUserRef.current ? [currentUserRef.current.id] : []);
 
       // Clear params so returning to this tab later doesn't re-apply
       navigation.setParams(undefined as any);
@@ -238,100 +243,14 @@ const AddMatchScreen = () => {
     setShowTimePicker(false);
   };
 
-  const togglePlayerTeamSelection = (playerId: string) => {
-    if (currentUser && playerId === currentUser.id) return; // Prevent deselecting current user
+  const handleTeamModeChange = (newMode: TeamMode) => {
+    if (newMode === teamMode) return;
 
-    // REMOVAL
-    if (team1Players.includes(playerId)) {
-      if (autoRandomize && isDoubles && team2Players.length > 0) {
-        // Post-shuffle removal: merge remaining back into pool
-        const remaining = [...team1Players, ...team2Players].filter(id => id !== playerId);
-        setTeam1Players(remaining);
-        setTeam2Players([]);
-      } else {
-        setTeam1Players(prev => prev.filter(id => id !== playerId));
-      }
-      return;
+    if (newMode === 'open') {
+      setOpenMatchPool(currentUser ? [currentUser.id] : []);
     }
 
-    if (team2Players.includes(playerId)) {
-      if (autoRandomize && isDoubles) {
-        // Post-shuffle removal: merge remaining back into pool
-        const remaining = [...team1Players, ...team2Players].filter(id => id !== playerId);
-        setTeam1Players(remaining);
-        setTeam2Players([]);
-      } else {
-        setTeam2Players(prev => prev.filter(id => id !== playerId));
-      }
-      return;
-    }
-
-    // ADDITION
-    if (autoRandomize && isDoubles) {
-      const totalSelected = team1Players.length + team2Players.length;
-      if (totalSelected < 4) {
-        const newPool = [...team1Players, ...team2Players, playerId];
-        if (newPool.length === 4 && currentUser) {
-          const { team1, team2 } = shuffleTeams(newPool, currentUser.id);
-          setTeam1Players(team1);
-          setTeam2Players(team2);
-        } else {
-          setTeam1Players(newPool);
-          setTeam2Players([]);
-        }
-      } else {
-        Alert.alert('Full', 'You can only add 4 players for doubles.');
-      }
-    } else if (selectedTeam === 1) {
-      const maxPlayersPerTeam = isDoubles ? 2 : 1;
-      if (team1Players.length < maxPlayersPerTeam) {
-        setTeam1Players(prev => [...prev, playerId]);
-      } else {
-        Alert.alert('Team Full', `You can only add ${maxPlayersPerTeam} player${maxPlayersPerTeam > 1 ? 's' : ''} to each team in ${isDoubles ? 'doubles' : 'singles'} mode.`);
-      }
-    } else if (selectedTeam === 2) {
-      const maxPlayersPerTeam = isDoubles ? 2 : 1;
-      if (team2Players.length < maxPlayersPerTeam) {
-        setTeam2Players(prev => [...prev, playerId]);
-      } else {
-        Alert.alert('Team Full', `You can only add ${maxPlayersPerTeam} player${maxPlayersPerTeam > 1 ? 's' : ''} to each team in ${isDoubles ? 'doubles' : 'singles'} mode.`);
-      }
-    }
-
-    setSelectedTeam(null);
-  };
-
-  const isShuffled = autoRandomize && isDoubles && team1Players.length === 2 && team2Players.length === 2;
-
-  const handleShuffleTeams = () => {
-    const allPlayers = [...team1Players, ...team2Players];
-    if (allPlayers.length !== 4 || !currentUser) return;
-    const { team1, team2 } = shuffleTeams(allPlayers, currentUser.id);
-    setTeam1Players(team1);
-    setTeam2Players(team2);
-  };
-
-  const handleToggleAutoRandomize = (value: boolean) => {
-    if (value) {
-      // ON: merge all players into pool (team1Players), clear team2
-      const allPlayers = [...team1Players, ...team2Players];
-      if (allPlayers.length === 4 && currentUser) {
-        const { team1, team2 } = shuffleTeams(allPlayers, currentUser.id);
-        setTeam1Players(team1);
-        setTeam2Players(team2);
-      } else {
-        setTeam1Players(allPlayers);
-        setTeam2Players([]);
-      }
-    } else {
-      // OFF: if pool mode (all in team1), split into teams
-      if (team2Players.length === 0 && team1Players.length > 2) {
-        setTeam1Players(team1Players.slice(0, 2));
-        setTeam2Players(team1Players.slice(2));
-      }
-      // If already shuffled (2+2), keep as-is
-    }
-    setAutoRandomize(value);
+    setTeamMode(newMode);
   };
 
   const openInviteModal = (teamNumber: 1 | 2) => {
@@ -339,42 +258,136 @@ const AddMatchScreen = () => {
     setShowInviteModal(true);
   };
 
-  const openInviteModalForPool = () => {
+  const openInviteModalForOpenMatch = () => {
     setSelectedTeam(null);
     setShowInviteModal(true);
   };
 
+  const addPlayerToOpenMatchPool = (playerId: string) => {
+    if (openMatchPool.includes(playerId)) return;
+    const maxPlayers = isDoubles ? 4 : 2;
+    if (openMatchPool.length >= maxPlayers) {
+      Alert.alert('Full', `You can only add ${maxPlayers} players.`);
+      return;
+    }
+    setOpenMatchPool(prev => [...prev, playerId]);
+  };
+
+  const removePlayerFromOpenMatchPool = (playerId: string) => {
+    if (currentUser && playerId === currentUser.id) return;
+    setOpenMatchPool(prev => prev.filter(id => id !== playerId));
+  };
+
+  const handleCreateOpenMatch = async () => {
+    const errors: string[] = [];
+
+    if (date < new Date()) {
+      errors.push('Please select a future date and time');
+    }
+    if (!pointsToWin || isNaN(parseInt(pointsToWin)) || parseInt(pointsToWin) < 1) {
+      errors.push('Please enter a valid number of points to win');
+    }
+    if (!numberOfGames || isNaN(parseInt(numberOfGames)) || parseInt(numberOfGames) < 1) {
+      errors.push('Please enter a valid number of games');
+    }
+    if (numberOfGames && !isNaN(parseInt(numberOfGames)) && parseInt(numberOfGames) % 2 === 0) {
+      errors.push('Number of games should be odd to prevent draws');
+    }
+
+    if (errors.length > 0) {
+      Alert.alert('Invalid Match Details', errors.join('\n'), [{ text: 'OK' }]);
+      return;
+    }
+
+    const maxPlayers = isDoubles ? 4 : 2;
+    const poolIsFull = openMatchPool.length >= maxPlayers;
+
+    try {
+      let team1PlayerIds: string[] = [];
+      let team2PlayerIds: string[] = [];
+      let team1PlayerNames: string[] = [];
+      let team2PlayerNames: string[] = [];
+
+      if (poolIsFull && currentUser) {
+        const { team1, team2 } = shuffleTeams(openMatchPool, currentUser.id);
+        team1PlayerIds = team1;
+        team2PlayerIds = team2;
+        team1PlayerNames = team1.map(id => getPlayerName(id));
+        team2PlayerNames = team2.map(id => getPlayerName(id));
+      }
+
+      const newMatch = await createOpenMatch({
+        scheduledDate: date.toISOString(),
+        matchType: isDoubles ? 'doubles' : 'singles',
+        createdBy: currentUser?.id || '',
+        team1PlayerIds,
+        team2PlayerIds,
+        team1PlayerNames,
+        team2PlayerNames,
+        allPlayerIds: openMatchPool,
+        games: [],
+        winnerTeam: null,
+        location: location.trim() || undefined,
+        locationCoords: locationCoords || undefined,
+        status: 'scheduled',
+        pointsToWin: parseInt(pointsToWin),
+        numberOfGames: parseInt(numberOfGames),
+        randomizeTeamsPerGame: shufflePerGame,
+        isOpenInvite: true,
+        openInviteStatus: poolIsFull ? 'full' : 'open',
+        playerPool: poolIsFull ? [] : openMatchPool,
+        playerPoolNames: poolIsFull ? [] : openMatchPool.map(id => getPlayerName(id)),
+        maxPlayers,
+      });
+
+      if (!poolIsFull) {
+        // Generate deep link and share
+        const link = await generateOpenMatchLink(newMatch.id);
+        const message = buildMatchShareMessage({
+          link,
+          scheduledDate: date,
+          location: location.trim() || undefined,
+          matchType: isDoubles ? 'doubles' : 'singles',
+          numberOfGames: parseInt(numberOfGames),
+          pointsToWin: parseInt(pointsToWin),
+          currentPlayers: openMatchPool.length,
+          maxPlayers,
+        });
+
+        await Share.share({ message });
+      }
+
+      navigation.navigate('MatchDetails', { matchId: newMatch.id });
+    } catch (error) {
+      Alert.alert('Error', 'Failed to create open match. Please try again.', [{ text: 'OK' }]);
+    }
+  };
+
   // Called from InvitePlayersModal when a contact already on PickleGo is selected
   const handleInviteExistingPlayer = (player: Player) => {
-    addPlayerToTeam(player.id);
+    if (isOpenMatch) {
+      addPlayerToOpenMatchPool(player.id);
+    } else {
+      addPlayerToTeam(player.id);
+    }
     setShowInviteModal(false);
   };
 
   // Called from InvitePlayersModal when a placeholder is created for a contact
   const handleInvitePlaceholderCreated = (player: Player) => {
-    addPlayerToTeam(player.id);
+    if (isOpenMatch) {
+      addPlayerToOpenMatchPool(player.id);
+    } else {
+      addPlayerToTeam(player.id);
+    }
     setShowInviteModal(false);
   };
 
   // Shared logic to add a player ID to the appropriate team
   const addPlayerToTeam = (playerId: string) => {
-    // Don't add duplicates
     if (team1Players.includes(playerId) || team2Players.includes(playerId)) return;
 
-    if (autoRandomize && isDoubles) {
-      const totalSelected = team1Players.length + team2Players.length;
-      if (totalSelected < 4) {
-        const newPool = [...team1Players, ...team2Players, playerId];
-        if (newPool.length === 4 && currentUser) {
-          const { team1, team2 } = shuffleTeams(newPool, currentUser.id);
-          setTeam1Players(team1);
-          setTeam2Players(team2);
-        } else {
-          setTeam1Players(newPool);
-          setTeam2Players([]);
-        }
-      }
-    } else if (selectedTeam) {
+    if (selectedTeam) {
       const maxPlayersPerTeam = isDoubles ? 2 : 1;
       if (selectedTeam === 1 && team1Players.length < maxPlayersPerTeam) {
         setTeam1Players(prev => [...prev, playerId]);
@@ -613,193 +626,95 @@ const AddMatchScreen = () => {
             Create a profile to get started.
           </Text>
 
-          <AnimatedPressable
-            style={styles.onboardingButton}
+          <PrimaryButton
+            title="Create Profile"
+            icon="arrow-right"
             onPress={onCreateProfile}
-          >
-            <Text style={styles.onboardingButtonText}>Create Profile</Text>
-            <Icon name="arrow-right" size={20} color={colors.white} />
-          </AnimatedPressable>
+            style={styles.onboardingButton}
+          />
         </View>
       </View>
     );
   };
 
+  const toSlots = (ids: string[]) =>
+    ids.map(id => {
+      const player = players.find(p => p.id === id);
+      return { id, name: player?.name || getPlayerName(id), profilePic: player?.profilePic };
+    });
+
+  const maxPerTeam = isDoubles ? 2 : 1;
+
   const renderManualMode = () => (
     <>
       <View style={styles.teamContainer}>
         <Text style={styles.teamLabel}>{getTeamLabel(1)}</Text>
-        <View style={styles.selectedPlayersContainer}>
-          {team1Players.map(playerId => (
-            <Chip
-              key={playerId}
-              variant="primary"
-              label={displayName(playerId)}
-              onRemove={() => togglePlayerTeamSelection(playerId)}
-              accessibilityLabel={`${displayName(playerId)}, Team 1 player`}
-            />
-          ))}
-
-          {team1Players.length < (isDoubles ? 2 : 1) && (
-            <AnimatedPressable
-              style={styles.addPlayerButton}
-              onPress={() => openInviteModal(1)}
-              accessibilityLabel="Add player to Team 1"
-              accessibilityRole="button"
-              accessibilityHint="Opens player selection for Team 1"
-            >
-              <Icon name="plus-circle" size={24} color={colors.primary} />
-              <Text style={styles.addPlayerButtonText}>Add</Text>
-            </AnimatedPressable>
-          )}
-        </View>
+        <PlayerSlots
+          players={toSlots(team1Players)}
+          maxSlots={maxPerTeam}
+          currentUserId={currentUser?.id}
+          onAddPlayer={team1Players.length < maxPerTeam ? () => openInviteModal(1) : undefined}
+        />
       </View>
 
       <View style={styles.teamSeparator} />
 
       <View style={styles.teamContainer}>
         <Text style={styles.teamLabel}>{getTeamLabel(2)}</Text>
-        <View style={styles.selectedPlayersContainer}>
-          {team2Players.map(playerId => (
-            <Chip
-              key={playerId}
-              variant="primary"
-              label={displayName(playerId)}
-              onRemove={() => togglePlayerTeamSelection(playerId)}
-              accessibilityLabel={`${displayName(playerId)}, Team 2 player`}
-            />
-          ))}
-
-          {team2Players.length < (isDoubles ? 2 : 1) && (
-            <AnimatedPressable
-              style={styles.addPlayerButton}
-              onPress={() => openInviteModal(2)}
-              accessibilityLabel="Add player to Team 2"
-              accessibilityRole="button"
-              accessibilityHint="Opens player selection for Team 2"
-            >
-              <Icon name="plus-circle" size={24} color={colors.primary} />
-              <Text style={styles.addPlayerButtonText}>Add</Text>
-            </AnimatedPressable>
-          )}
-        </View>
+        <PlayerSlots
+          players={toSlots(team2Players)}
+          maxSlots={maxPerTeam}
+          currentUserId={currentUser?.id}
+          onAddPlayer={team2Players.length < maxPerTeam ? () => openInviteModal(2) : undefined}
+        />
       </View>
     </>
   );
 
-  const renderRandomizeMode = () => {
-    const allPlayers = [...team1Players, ...team2Players];
+  const renderOpenMatchMode = () => {
+    const maxPlayers = isDoubles ? 4 : 2;
+    const poolSlots = openMatchPool.map(id => {
+      const player = players.find(p => p.id === id);
+      return {
+        id,
+        name: player?.name || getPlayerName(id),
+        profilePic: player?.profilePic,
+      };
+    });
 
-    if (!isShuffled) {
-      // Pool mode: show unified player list
-      return (
-        <View style={styles.teamContainer}>
-          <Text style={styles.teamLabel}>Players ({allPlayers.length}/4)</Text>
-          <View style={styles.selectedPlayersContainer}>
-            {team1Players.map(playerId => (
-              <Chip
-                key={playerId}
-                variant="primary"
-                label={displayName(playerId)}
-                onRemove={!(currentUser && playerId === currentUser.id) ? () => togglePlayerTeamSelection(playerId) : undefined}
-                accessibilityLabel={`${displayName(playerId)}, selected player`}
-              />
-            ))}
-
-            {allPlayers.length < 4 && (
-              <AnimatedPressable
-                style={styles.addPlayerButton}
-                onPress={openInviteModalForPool}
-                accessibilityLabel="Add player"
-                accessibilityRole="button"
-                accessibilityHint="Opens player selection"
-              >
-                <Icon name="plus-circle" size={24} color={colors.primary} />
-                <Text style={styles.addPlayerButtonText}>Add</Text>
-              </AnimatedPressable>
-            )}
-          </View>
-        </View>
-      );
-    }
-
-    // Post-shuffle: show team assignments with re-shuffle button
     return (
-      <>
-        <AnimatedPressable
-          style={styles.shuffleButton}
-          onPress={handleShuffleTeams}
-
-          accessibilityLabel="Re-shuffle Teams"
-          accessibilityRole="button"
-          accessibilityHint="Randomly reassign the 4 players into new teams"
-        >
-          <Icon name="shuffle" size={18} color={colors.secondary} />
-          <Text style={styles.shuffleButtonText}>Re-shuffle</Text>
-        </AnimatedPressable>
-
-        <View style={styles.teamContainer}>
-          <Text style={styles.teamLabel}>{getTeamLabel(1)}</Text>
-          <View style={styles.selectedPlayersContainer}>
-            {team1Players.map(playerId => (
-              <Chip
-                key={playerId}
-                variant="primary"
-                label={displayName(playerId)}
-                onRemove={() => togglePlayerTeamSelection(playerId)}
-                accessibilityLabel={`${displayName(playerId)}, Team 1 player`}
-              />
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.teamSeparator} />
-
-        <View style={styles.teamContainer}>
-          <Text style={styles.teamLabel}>{getTeamLabel(2)}</Text>
-          <View style={styles.selectedPlayersContainer}>
-            {team2Players.map(playerId => (
-              <Chip
-                key={playerId}
-                variant="primary"
-                label={displayName(playerId)}
-                onRemove={() => togglePlayerTeamSelection(playerId)}
-                accessibilityLabel={`${displayName(playerId)}, Team 2 player`}
-              />
-            ))}
-          </View>
-        </View>
-      </>
+      <View style={styles.openMatchContainer}>
+        <Text style={styles.openMatchHint}>
+          Pick {maxPlayers} players and teams are assigned randomly, or create an open game and teams are assigned once the match is full.
+        </Text>
+        <PlayerSlots
+          players={poolSlots}
+          maxSlots={maxPlayers}
+          currentUserId={currentUser?.id}
+          onAddPlayer={openMatchPool.length < maxPlayers ? openInviteModalForOpenMatch : undefined}
+          onRemovePlayer={removePlayerFromOpenMatchPool}
+        />
+      </View>
     );
   };
 
   // Update the team selection UI in the render method
   const renderTeamSelection = () => (
-    <View style={styles.section}>
-      <View style={styles.sectionTitleRow}>
-        <Icon name="users" size={24} color={colors.primary} />
-        <Text style={styles.sectionTitle}>Select Players</Text>
-      </View>
-
-      {isDoubles && (
-        <View style={styles.randomizeToggleRow}>
-          <View style={styles.randomizeToggleLabelRow}>
-            <Icon name="shuffle" size={18} color={colors.secondary} />
-            <Text style={styles.randomizeToggleLabel}>Randomize Teams</Text>
-          </View>
-          <Switch
-            value={autoRandomize}
-            onValueChange={handleToggleAutoRandomize}
-            trackColor={{ false: "#767577", true: colors.secondary }}
-            thumbColor="#f4f3f4"
-            accessibilityLabel="Randomize teams"
-            accessibilityHint="When enabled, players are randomly assigned to teams"
-          />
-        </View>
+    <Section title="Select Players" icon="users">
+      {!isEditing && (
+        <SegmentedControl
+          options={[
+            { label: 'Pick Teams', value: 'manual' },
+            { label: 'Open Match', value: 'open' },
+          ]}
+          selected={teamMode}
+          onChange={handleTeamModeChange}
+          accessibilityLabel="Team selection mode"
+        />
       )}
 
-      {autoRandomize && isDoubles ? renderRandomizeMode() : renderManualMode()}
-    </View>
+      {isOpenMatch ? renderOpenMatchMode() : renderManualMode()}
+    </Section>
   );
 
   return (
@@ -812,46 +727,29 @@ const AddMatchScreen = () => {
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
       >
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Icon name="settings" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Game Settings</Text>
-          </View>
-
+        <Section title="Game Settings" icon="settings">
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>Match Type:</Text>
-            <View style={styles.typeSelector}>
-              <AnimatedPressable
-                style={[styles.typeButton, !isDoubles && styles.typeButtonSelected]}
-                onPress={() => {
+            <SegmentedControl
+              options={[
+                { label: 'Singles', value: 'singles' },
+                { label: 'Doubles', value: 'doubles' },
+              ]}
+              selected={isDoubles ? 'doubles' : 'singles'}
+              size="small"
+              onChange={(v) => {
+                if (v === 'singles') {
                   setIsDoubles(false);
-                  setAutoRandomize(false);
                   setShufflePerGame(false);
                   setTeam1Players(prev => prev.slice(0, 1));
                   setTeam2Players([]);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Singles"
-                accessibilityState={{ selected: !isDoubles }}
-                accessibilityHint="Select singles match type"
-              >
-                <Text style={[styles.typeButtonText, !isDoubles && styles.typeButtonTextSelected]}>
-                  Singles
-                </Text>
-              </AnimatedPressable>
-              <AnimatedPressable
-                style={[styles.typeButton, isDoubles && styles.typeButtonSelected]}
-                onPress={() => setIsDoubles(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Doubles"
-                accessibilityState={{ selected: isDoubles }}
-                accessibilityHint="Select doubles match type"
-              >
-                <Text style={[styles.typeButtonText, isDoubles && styles.typeButtonTextSelected]}>
-                  Doubles
-                </Text>
-              </AnimatedPressable>
-            </View>
+                  setOpenMatchPool(prev => prev.slice(0, 2));
+                } else {
+                  setIsDoubles(true);
+                }
+              }}
+              accessibilityLabel="Match type"
+            />
           </View>
 
           <View style={styles.settingRow}>
@@ -892,85 +790,48 @@ const AddMatchScreen = () => {
             />
           </View>
 
-          {isDoubles && parseInt(numberOfGames) > 1 && (
-            <View style={styles.randomizeToggleRow}>
-              <View style={styles.randomizeToggleLabelRow}>
-                <Icon name="shuffle" size={18} color={colors.secondary} />
-                <Text style={styles.randomizeToggleLabel}>Shuffle teams each game</Text>
-              </View>
-              <Switch
-                value={shufflePerGame}
-                onValueChange={setShufflePerGame}
-                trackColor={{ false: "#767577", true: colors.secondary }}
-                thumbColor="#f4f3f4"
-                accessibilityLabel="Shuffle teams each game"
-                accessibilityHint="When enabled, teams are randomly reshuffled before each game after the first"
-              />
-            </View>
+          {isDoubles && parseInt(numberOfGames) > 1 && teamMode === 'open' && (
+            <ToggleRow
+              label="Re-shuffle players between games"
+              icon="shuffle"
+              value={shufflePerGame}
+              onValueChange={setShufflePerGame}
+              tintColor={colors.secondary}
+              tinted
+              accessibilityHint="When enabled, teams are randomly reshuffled before each game after the first"
+            />
           )}
-        </View>
+        </Section>
 
         {renderTeamSelection()}
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Icon name="calendar" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Date & Time</Text>
-          </View>
-
+        <Section title="Date & Time" icon="calendar">
           <View style={styles.dateTimeContainer}>
-            <Chip
-              label={`${formatSmartDate(date)} ▾`}
+            <FormRow
               icon="calendar"
-              variant="primary"
-              onPress={() => {
-                setShowTimePicker(false);
-                setShowDatePicker(true);
-              }}
-              accessibilityLabel={`Match date: ${date.toLocaleDateString()}`}
+              text={formatSmartDate(date)}
+              onPress={() => { setShowTimePicker(false); setShowDatePicker(true); }}
+              accessibilityLabel={`Match date: ${formatAccessibleDate(date)}`}
             />
-            <Chip
-              label={`${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ▾`}
+            <FormRow
               icon="clock"
-              variant="primary"
-              onPress={() => {
-                setShowDatePicker(false);
-                setShowTimePicker(true);
-              }}
-              accessibilityLabel={`Match time: ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+              text={formatTime(date)}
+              onPress={() => { setShowDatePicker(false); setShowTimePicker(true); }}
+              accessibilityLabel={`Match time: ${formatTime(date)}`}
             />
           </View>
-        </View>
+        </Section>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Icon name="map-pin" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Location</Text>
-          </View>
-          <AnimatedPressable
-            style={styles.locationRow}
+        <Section title="Location" icon="map-pin">
+          <FormRow
+            icon="map-pin"
+            iconColor={location ? colors.primary : colors.gray400}
+            text={location || 'Tap to set location (optional)'}
+            placeholder={!location}
             onPress={() => setShowLocationPicker(true)}
-  
             accessibilityLabel="Set match location"
             accessibilityHint="Opens a map to select the match location"
-            accessibilityRole="button"
-          >
-            <Icon
-              name="map-pin"
-              size={18}
-              color={location ? colors.primary : colors.gray400}
-            />
-            <Text
-              style={[
-                styles.locationRowText,
-                !location && styles.locationRowPlaceholder,
-              ]}
-              numberOfLines={1}
-            >
-              {location || 'Tap to set location (optional)'}
-            </Text>
-            <Icon name="chevron-right" size={18} color={colors.gray400} />
-          </AnimatedPressable>
+          />
           {location ? (
             <AnimatedPressable
               style={styles.locationClear}
@@ -978,7 +839,6 @@ const AddMatchScreen = () => {
                 setLocation('');
                 setLocationCoords(undefined);
               }}
-    
               accessibilityLabel="Clear location"
               accessibilityRole="button"
             >
@@ -986,7 +846,7 @@ const AddMatchScreen = () => {
               <Text style={styles.locationClearText}>Clear location</Text>
             </AnimatedPressable>
           ) : null}
-        </View>
+        </Section>
 
         <Modal
           visible={showLocationPicker}
@@ -1019,19 +879,19 @@ const AddMatchScreen = () => {
         </Modal>
 
         <View style={styles.buttonsContainer}>
-          <PrimaryButton
-            title={isEditing ? "Save Changes" : "Schedule Game"}
-            icon={isEditing ? "save" : "calendar"}
-            onPress={() => handleScheduleMatch(false)}
-            accessibilityHint={isEditing ? "Save the edited match details" : "Schedule the match for the selected date and time"}
-          />
-          {!isEditing && (
+          {isOpenMatch ? (
             <PrimaryButton
-              title="Play Game Now"
-              icon="play"
-              onPress={() => handleScheduleMatch(true)}
-              style={{ backgroundColor: colors.action }}
-              accessibilityHint="Create an instant match and start playing immediately"
+              title={openMatchPool.length >= (isDoubles ? 4 : 2) ? "Shuffle & Create" : "Create & Share"}
+              icon={openMatchPool.length >= (isDoubles ? 4 : 2) ? "shuffle" : "share-2"}
+              onPress={handleCreateOpenMatch}
+              accessibilityHint={openMatchPool.length >= (isDoubles ? 4 : 2) ? "Randomize teams and create the match" : "Create an open match and share a link for others to join"}
+            />
+          ) : (
+            <PrimaryButton
+              title={isEditing ? "Save Changes" : "Create"}
+              icon={isEditing ? "save" : "plus"}
+              onPress={() => handleScheduleMatch(false)}
+              accessibilityHint={isEditing ? "Save the edited match details" : "Create the match"}
             />
           )}
         </View>
@@ -1042,8 +902,8 @@ const AddMatchScreen = () => {
         visible={showInviteModal}
         onClose={() => { setShowInviteModal(false); setSelectedTeam(null); }}
         context="addMatch"
-        teamLabel={selectedTeam ? `Select Player for Team ${selectedTeam}` : 'Add Player'}
-        excludePlayerIds={[...team1Players, ...team2Players]}
+        teamLabel={isOpenMatch ? 'Add Player' : selectedTeam ? `Select Player for Team ${selectedTeam}` : 'Add Player'}
+        excludePlayerIds={isOpenMatch ? openMatchPool : [...team1Players, ...team2Players]}
         onSelectExistingPlayer={handleInviteExistingPlayer}
         onPlaceholderCreated={handleInvitePlaceholderCreated}
       />
@@ -1058,55 +918,17 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: layout.TAB_BAR_HEIGHT + spacing.xxxl,
   },
-  section: {
-    backgroundColor: colors.white,
-    margin: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: borderRadius.md,
-    ...shadows.md,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    color: colors.primary,
-    marginLeft: spacing.sm,
-    textAlign: 'center',
-  },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: spacing.md,
+    gap: spacing.md,
   },
   settingLabel: {
     ...typography.bodyLarge,
     color: colors.neutral,
-  },
-  typeSelector: {
-    flexDirection: 'row',
-    borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    overflow: 'hidden',
-  },
-  typeButton: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.white,
-  },
-  typeButtonSelected: {
-    backgroundColor: colors.primary,
-  },
-  typeButtonText: {
-    ...typography.button,
-    color: colors.primary,
-  },
-  typeButtonTextSelected: {
-    color: colors.white,
+    flexShrink: 0,
   },
   numberInput: {
     borderWidth: 1,
@@ -1119,26 +941,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   dateTimeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
     gap: spacing.sm,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    borderRadius: borderRadius.sm,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  locationRowText: {
-    ...typography.bodySmall,
-    color: colors.neutral,
-    flex: 1,
-  },
-  locationRowPlaceholder: {
-    color: colors.gray400,
   },
   locationClear: {
     flexDirection: 'row',
@@ -1265,20 +1068,8 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   onboardingButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.md,
     borderRadius: borderRadius.pill,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     marginTop: spacing.sm,
-  },
-  onboardingButtonText: {
-    ...typography.button,
-    color: colors.white,
-    fontSize: 18,
-    marginRight: spacing.sm,
   },
   selectedPlayersContainer: {
     flexDirection: 'row',
@@ -1297,12 +1088,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.cardBorder,
     marginVertical: spacing.xl,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.xxl,
-    justifyContent: 'center',
   },
   teamContainer: {
     marginVertical: spacing.lg,
@@ -1366,27 +1151,14 @@ const styles = StyleSheet.create({
     color: colors.secondary,
     fontSize: 14,
   },
-  randomizeToggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.secondaryOverlay,
-    borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.secondary,
+  openMatchContainer: {
+    marginTop: spacing.md,
   },
-  randomizeToggleLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  randomizeToggleLabel: {
+  openMatchHint: {
     ...typography.bodySmall,
-    color: colors.secondary,
-    fontWeight: '600',
+    color: colors.gray500,
+    marginBottom: spacing.md,
+    textAlign: 'center',
   },
 });
 

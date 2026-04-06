@@ -1,24 +1,31 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert, ScrollView, Linking, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Alert, ScrollView, Linking, Platform, ActivityIndicator, Share } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useFadeIn } from '../hooks';
+import { useFadeIn, useHaptic } from '../hooks';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
+import { doc, onSnapshot } from 'firebase/firestore';
 import MapView, { Marker } from 'react-native-maps';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { PrimaryButton, DangerButton } from '../components/Button';
 import { Icon } from '../components/Icon';
 import { Chip } from '../components/Chip';
+import { Section } from '../components/Section';
+import { PlayerSlots } from '../components/PlayerSlots';
+import { TeamAssignModal } from '../components/TeamAssignModal';
 import { useData } from '../context/DataContext';
 import { useToast } from '../context/ToastContext';
 import Layout from '../components/Layout';
+import { formatPlayerNameWithInitial } from '../utils/formatPlayerName';
 import type { Match, Game, MatchNotification } from '../types';
 import { RootStackParamList } from '../types';
-import { format } from 'date-fns';
+import { formatFullDate, formatTime } from '../utils/dateFormat';
+import { buildMatchShareMessage } from '../utils/shareMatch';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import PicklePete from '../components/PicklePete';
 import { shuffleTeams } from '../utils/shuffleTeams';
-import { getMatchDocument, callResendMatchNotifications } from '../config/firebase';
+import { db, getMatchDocument, callResendMatchNotifications } from '../config/firebase';
+import { generateOpenMatchLink } from '../services/appsflyer';
 import { usePlacement } from 'expo-superwall';
 import { PLACEMENTS } from '../services/superwallPlacements';
 
@@ -29,13 +36,33 @@ const MatchDetailsScreen = () => {
   const fadeStyle = useFadeIn();
   const route = useRoute<MatchDetailsRouteProp>();
   const navigation = useNavigation<MatchDetailsNavigationProp>();
-  const { matches, players, deleteMatch, currentUser, getPlayerName, getNotificationsForMatch } = useData();
+  const { matches, players, deleteMatch, currentUser, getPlayerName, getNotificationsForMatch, joinOpenMatch, leaveOpenMatch, cancelOpenMatch, updateMatch } = useData();
   const { showToast } = useToast();
+  const triggerHaptic = useHaptic();
   const { registerPlacement } = usePlacement();
   const [directMatch, setDirectMatch] = useState<Match | null>(null);
+  const [liveMatch, setLiveMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [matchNotifications, setMatchNotifications] = useState<MatchNotification[]>([]);
-  const match = matches.find(m => m.id === route.params.matchId) || directMatch;
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const contextMatch = matches.find(m => m.id === route.params.matchId);
+  const match = liveMatch || contextMatch || directMatch;
+
+  // Open invite derived state
+  const isOpenInvite = match?.isOpenInvite === true;
+  const isCreator = currentUser?.id === match?.createdBy;
+  const isJoined = match?.allPlayerIds?.includes(currentUser?.id || '') || false;
+  const isInPool = match?.playerPool?.includes(currentUser?.id || '') || false;
+  const currentCount = (match?.allPlayerIds || []).length;
+  const maxPlayers = match?.maxPlayers || (match?.matchType === 'doubles' ? 4 : 2);
+  const isFull = match?.openInviteStatus === 'full' || (isOpenInvite && currentCount >= maxPlayers);
+  const isOpen = isOpenInvite && match?.openInviteStatus === 'open' && !isFull;
+  const isOpenCancelled = isOpenInvite && (match?.openInviteStatus === 'cancelled' || match?.status === 'expired');
+  const isOpenFilling = isOpen && !isFull;
+  const isOpenFull = isOpenInvite && isFull;
+  const teamsEmpty = isOpenFull && match && (match.team1PlayerIds || []).length === 0;
+  const teamsAssigned = match ? (match.team1PlayerIds || []).length > 0 && (match.team2PlayerIds || []).length > 0 : false;
 
   const getUserTeamNumber = useCallback((userId: string, match: Match): number | null => {
     if (match.team1PlayerIds.includes(userId)) return 1;
@@ -55,19 +82,189 @@ const MatchDetailsScreen = () => {
     return match.winnerTeam === 1;
   }, []);
 
+  // Real-time listener for open invite matches
   useEffect(() => {
-    if (!matches.find(m => m.id === route.params.matchId) && !directMatch) {
-      setLoading(true);
-      getMatchDocument(route.params.matchId)
-        .then(m => { if (m) setDirectMatch(m); })
-        .finally(() => setLoading(false));
+    const matchId = route.params.matchId;
+    const existing = matches.find(m => m.id === matchId);
+    const isOpenInviteMatch = existing?.isOpenInvite || directMatch?.isOpenInvite || liveMatch?.isOpenInvite;
+
+    // For open invite matches, use real-time listener
+    if (isOpenInviteMatch || (!existing && !directMatch)) {
+      // If we don't know if it's open invite yet, try one-time fetch first
+      if (!existing && !directMatch && !liveMatch) {
+        setLoading(true);
+        getMatchDocument(matchId)
+          .then(m => {
+            if (m) {
+              if (m.isOpenInvite) {
+                setLiveMatch(m); // Will be replaced by onSnapshot
+              } else {
+                setDirectMatch(m);
+              }
+            }
+          })
+          .finally(() => setLoading(false));
+      }
     }
-  }, [route.params.matchId, matches.length]);
+
+    // Subscribe to real-time updates for open invite matches
+    if (isOpenInviteMatch) {
+      const unsubscribe = onSnapshot(
+        doc(db, 'matches', matchId),
+        (snapshot) => {
+          if (snapshot.exists()) {
+            setLiveMatch({ id: snapshot.id, ...snapshot.data() } as Match);
+          } else {
+            setLiveMatch(null);
+          }
+          setLoading(false);
+        },
+        (error) => {
+          console.error('MatchDetails: onSnapshot error', error);
+          setLoading(false);
+        }
+      );
+      return unsubscribe;
+    }
+  }, [route.params.matchId, matches.length, directMatch?.isOpenInvite, liveMatch?.isOpenInvite]);
+
+  // Auto-shuffle teams when open match is full but teams haven't been assigned yet
+  useEffect(() => {
+    if (teamsEmpty && isCreator && currentUser && match) {
+      const { team1, team2 } = shuffleTeams(match.allPlayerIds, currentUser.id);
+      updateMatch(match.id, {
+        team1PlayerIds: team1,
+        team2PlayerIds: team2,
+        team1PlayerNames: team1.map(id => getPlayerName(id)),
+        team2PlayerNames: team2.map(id => getPlayerName(id)),
+        openInviteStatus: 'full',
+      });
+    }
+  }, [teamsEmpty]);
 
   useEffect(() => {
     if (!match) return;
     getNotificationsForMatch(match.id).then(setMatchNotifications);
   }, [match?.id]);
+
+  // --- Open invite handlers (must be before early returns to satisfy Rules of Hooks) ---
+
+  const handleShare = useCallback(async () => {
+    if (!match) return;
+    try {
+      const link = await generateOpenMatchLink(match.id);
+      const message = buildMatchShareMessage({
+        link,
+        scheduledDate: match.scheduledDate,
+        location: match.location,
+        matchType: match.matchType,
+        numberOfGames: match.numberOfGames,
+        pointsToWin: match.pointsToWin,
+        currentPlayers: currentCount,
+        maxPlayers,
+      });
+
+      await Share.share({ message });
+    } catch (error) {
+      console.error('Share error:', error);
+    }
+  }, [match, currentCount, maxPlayers]);
+
+  const handleJoin = useCallback(async () => {
+    if (!match) return;
+    setActionLoading(true);
+    try {
+      const result = await joinOpenMatch(match.id);
+      if (result.joined) {
+        triggerHaptic('success');
+        showToast(result.isFull ? 'Match is full! Teams randomized.' : 'Joined the match!', 'success');
+      }
+    } catch (error: any) {
+      showToast(error?.message || 'Failed to join match', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [match, joinOpenMatch, triggerHaptic, showToast]);
+
+  const handleLeave = useCallback(async () => {
+    if (!match) return;
+    Alert.alert('Leave Match', 'Are you sure you want to leave this open match?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave',
+        style: 'destructive',
+        onPress: async () => {
+          setActionLoading(true);
+          try {
+            await leaveOpenMatch(match.id);
+            showToast('Left the match', 'success');
+            navigation.goBack();
+          } catch (error: any) {
+            showToast(error?.message || 'Failed to leave match', 'error');
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
+  }, [match, leaveOpenMatch, showToast, navigation]);
+
+  const handleCancelInvite = useCallback(async () => {
+    if (!match) return;
+    Alert.alert('Cancel Match', 'Are you sure you want to cancel this open match? All joined players will be notified.', [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Cancel Match',
+        style: 'destructive',
+        onPress: async () => {
+          setActionLoading(true);
+          try {
+            await cancelOpenMatch(match.id);
+            showToast('Match cancelled', 'success');
+            navigation.goBack();
+          } catch (error: any) {
+            showToast(error?.message || 'Failed to cancel match', 'error');
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
+  }, [match, cancelOpenMatch, showToast, navigation]);
+
+  const handleShuffle = useCallback(async () => {
+    if (!match || !currentUser) return;
+    const { team1, team2 } = shuffleTeams(match.allPlayerIds, currentUser.id);
+    try {
+      await updateMatch(match.id, {
+        team1PlayerIds: team1,
+        team2PlayerIds: team2,
+        team1PlayerNames: team1.map(id => getPlayerName(id)),
+        team2PlayerNames: team2.map(id => getPlayerName(id)),
+      });
+      triggerHaptic('success');
+      showToast('Teams reshuffled!', 'success');
+    } catch (error) {
+      showToast('Failed to shuffle teams', 'error');
+    }
+  }, [match, currentUser, updateMatch, getPlayerName, triggerHaptic, showToast]);
+
+  const handleOpenAssignConfirm = useCallback(async (team1: string[], team2: string[]) => {
+    if (!match) return;
+    try {
+      await updateMatch(match.id, {
+        team1PlayerIds: team1,
+        team2PlayerIds: team2,
+        team1PlayerNames: team1.map(id => getPlayerName(id)),
+        team2PlayerNames: team2.map(id => getPlayerName(id)),
+      });
+      setShowAssignModal(false);
+      triggerHaptic('success');
+      showToast('Teams updated!', 'success');
+    } catch (error) {
+      showToast('Failed to update teams', 'error');
+    }
+  }, [match, updateMatch, getPlayerName, triggerHaptic, showToast]);
 
   if (loading) {
     return (
@@ -81,7 +278,7 @@ const MatchDetailsScreen = () => {
 
   if (!match) {
     return (
-      <Layout title="Match Details" showBackButton={true}>
+      <Layout title={"Match Details"} showBackButton={true}>
         <View style={styles.errorContainer}>
           <PicklePete pose="error" size="sm" message="Match not found" />
         </View>
@@ -110,8 +307,8 @@ const MatchDetailsScreen = () => {
         {
           text: isScheduled ? 'Cancel Match' : 'Remove',
           style: 'destructive',
-          onPress: async () => {
-            await deleteMatch(match.id);
+          onPress: () => {
+            deleteMatch(match.id);
             navigation.goBack();
           }
         }
@@ -165,15 +362,42 @@ const MatchDetailsScreen = () => {
             });
           },
         },
+        {
+          text: 'Pick Teams',
+          onPress: () => setShowAssignModal(true),
+        },
       ]
     );
   };
 
-  const formatPlayerNameWithInitial = (fullName: string) => {
-    const parts = fullName.trim().split(' ');
-    if (parts.length < 2) return fullName;
-    return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+  const handlePickTeamsConfirm = (team1: string[], team2: string[]) => {
+    setShowAssignModal(false);
+    navigation.navigate('AddMatch', {
+      rematch: {
+        team1PlayerIds: team1,
+        team2PlayerIds: team2,
+        pointsToWin: match.pointsToWin,
+        numberOfGames: match.numberOfGames,
+        location: match.location,
+        locationCoords: match.locationCoords,
+        isDoubles: true,
+        randomizeTeamsPerGame: match.randomizeTeamsPerGame,
+      },
+    });
   };
+
+  // Player slot data for open invite filling state
+  const playerSlots = (match?.allPlayerIds || []).map(id => {
+    const player = players.find(p => p.id === id);
+    const poolIndex = (match?.playerPool || []).indexOf(id);
+    const name = player?.name || (poolIndex >= 0 ? (match?.playerPoolNames?.[poolIndex] || 'Player') : getPlayerName(id));
+    return { id, name, profilePic: player?.profilePic };
+  });
+
+  const teamPlayerInfos = (match?.allPlayerIds || []).map(id => {
+    const player = players.find(p => p.id === id);
+    return { id, name: player?.name || getPlayerName(id), profilePic: player?.profilePic };
+  });
 
   const getTeamNames = (teamNumber: 1 | 2) => {
     try {
@@ -204,15 +428,9 @@ const MatchDetailsScreen = () => {
     return null;
   };
 
-  const formatMatchDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return format(date, 'MMMM d, yyyy');
-  };
+  const formatMatchDate = (dateString: string) => formatFullDate(dateString);
 
-  const formatMatchTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return format(date, 'h:mm a');
-  };
+  const formatMatchTime = (dateString: string) => formatTime(dateString);
 
   const getWinnerText = () => {
     if (!currentUser || match.status !== 'completed') return null;
@@ -328,16 +546,11 @@ const MatchDetailsScreen = () => {
   };
 
   return (
-    <Layout title="Match Details" showBackButton={true}>
+    <Layout title={"Match Details"} showBackButton={true}>
       <Animated.View style={[{ flex: 1 }, fadeStyle]}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Match Header Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Icon name="calendar" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Match Details</Text>
-          </View>
-
+        <Section title="Match Details" icon="calendar" headerBorder style={{ marginBottom: spacing.sm }}>
           <View style={styles.detailsRow}>
             <View style={styles.detailItem}>
               <Icon name="calendar" size={20} color={colors.primary} />
@@ -401,40 +614,65 @@ const MatchDetailsScreen = () => {
             <Chip label={`${match.pointsToWin} pts`} />
             <Chip label={`Best of ${match.numberOfGames}`} />
             <Chip
-              variant={match.status === 'completed' ? 'success' : match.status === 'expired' ? 'warning' : 'info'}
-              label={match.status === 'completed' ? 'Completed' : match.status === 'expired' ? 'Expired' : 'Scheduled'}
+              variant={isOpenCancelled ? 'warning' : isOpenInvite ? 'info' : match.status === 'completed' ? 'success' : match.status === 'expired' ? 'warning' : 'info'}
+              label={isOpenCancelled ? 'Cancelled' : isOpenFilling ? 'Open' : isOpenFull ? 'Full' : match.status === 'completed' ? 'Completed' : match.status === 'expired' ? 'Expired' : 'Scheduled'}
             />
           </View>
-        </View>
+        </Section>
 
-        {/* Teams Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Icon name="users" size={24} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Teams</Text>
+        {/* Open Invite: Player Slots (filling state) */}
+        {isOpenFilling && (
+          <Section title={`Players (${currentCount}/${maxPlayers})`} card={false} style={{ marginTop: spacing.xxl }}>
+            <PlayerSlots
+              players={playerSlots}
+              maxSlots={maxPlayers}
+              currentUserId={currentUser?.id}
+            />
+          </Section>
+        )}
+
+        {/* Open Invite: Cancelled banner */}
+        {isOpenCancelled && (
+          <View style={[styles.statusCard, styles.cancelledCard]}>
+            <Text style={styles.statusTitle}>
+              {match.status === 'expired' ? 'Match expired' : 'Match cancelled'}
+            </Text>
+            <Text style={styles.statusSubtitle}>This open match is no longer active.</Text>
           </View>
+        )}
 
-          <View style={styles.teamsContainer}>
-            {renderTeamCard(1, currentUser?.id === match.createdBy)}
+        {/* Teams Section - show when teams are actually assigned */}
+        {teamsAssigned && !isOpenFilling && !isOpenCancelled && (
+          <Section title="Teams" icon="users" headerBorder style={{ marginBottom: spacing.sm }}>
+            <View style={styles.teamsContainer}>
+              {renderTeamCard(1, currentUser?.id === match.createdBy)}
 
-            <View style={styles.vsSeparator}>
-              <View style={styles.vsSeparatorLine} />
-              <Text style={styles.vsSeparatorText}>vs</Text>
-              <View style={styles.vsSeparatorLine} />
+              <View style={styles.vsSeparator}>
+                <View style={styles.vsSeparatorLine} />
+                <Text style={styles.vsSeparatorText}>vs</Text>
+                <View style={styles.vsSeparatorLine} />
+              </View>
+
+              {renderTeamCard(2, currentUser?.id === match.createdBy)}
             </View>
-
-            {renderTeamCard(2, currentUser?.id === match.createdBy)}
-          </View>
-        </View>
+            {isCreator && match.matchType === 'doubles' && isOpenFull && (
+              <View style={styles.textActions}>
+                <AnimatedPressable onPress={handleShuffle} style={styles.textAction}>
+                  <Icon name="shuffle" size={16} color={colors.secondary} />
+                  <Text style={styles.textActionLabel}>Shuffle Teams</Text>
+                </AnimatedPressable>
+                <AnimatedPressable onPress={() => setShowAssignModal(true)} style={styles.textAction}>
+                  <Icon name="pencil" size={16} color={colors.secondary} />
+                  <Text style={styles.textActionLabel}>Assign Teams</Text>
+                </AnimatedPressable>
+              </View>
+            )}
+          </Section>
+        )}
 
         {/* Results Section - Only for completed matches */}
         {match.status === 'completed' && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Icon name="trophy" size={24} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Match Results</Text>
-            </View>
-
+          <Section title="Match Results" icon="trophy" headerBorder style={{ marginBottom: spacing.sm }}>
             <View style={styles.resultContent}>
               <Text style={styles.resultLabel}>Final Score</Text>
               {match.games.length > 0 ? (
@@ -472,41 +710,123 @@ const MatchDetailsScreen = () => {
                 <PicklePete pose="loss" size="sm" message="Tough match! Next time!" />
               )}
             </View>
-          </View>
+          </Section>
         )}
 
-        {/* Action Buttons - Different buttons for scheduled vs completed */}
-        {match.status === 'scheduled' && isUserInMatch() && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Icon name="wrench" size={24} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Actions</Text>
-            </View>
-
-            <View style={styles.actionButtons}>
-              {currentUser?.id === match.createdBy && (
-                <PrimaryButton
-                  title="Edit Match"
-                  icon="pencil"
-                  onPress={handleEditMatch}
-                  style={{ flex: 1 }}
+        {/* Actions Section */}
+        {match.status !== 'completed' && !isOpenCancelled && (
+          <Section title="Actions" icon="wrench" headerBorder style={{ marginBottom: spacing.sm }}>
+            {/* Open Invite Full: same Edit/Complete actions + shuffle/assign text CTAs */}
+            {isOpenFull && teamsAssigned && (
+              <>
+                <View style={styles.actionButtons}>
+                  {isCreator && (
+                    <PrimaryButton
+                      title="Edit Match"
+                      icon="pencil"
+                      onPress={handleEditMatch}
+                      style={{ flex: 1 }}
+                    />
+                  )}
+                  <PrimaryButton
+                    title="Complete Match"
+                    icon="check-circle"
+                    onPress={handleCompleteMatch}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+                <DangerButton
+                  title="Remove Match"
+                  icon="trash"
+                  onPress={handleDeleteMatch}
                 />
-              )}
-              <PrimaryButton
-                title="Complete Match"
-                icon="check-circle"
-                onPress={handleCompleteMatch}
-                style={{ flex: 1 }}
-              />
-            </View>
-
-            {isUserInMatch() && (
-              <DangerButton
-                title="Remove Match"
-                icon="trash"
-                onPress={handleDeleteMatch}
-              />
+              </>
             )}
+
+            {/* Open Invite Filling: Share/Cancel (creator) or Join/Leave */}
+            {isOpenFilling && (
+              <>
+                {isCreator && (
+                  <View style={styles.actionButtons}>
+                    <PrimaryButton
+                      title="Share Link"
+                      icon="share-2"
+                      onPress={handleShare}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                )}
+
+                {!isJoined && !isCreator && (
+                  <View style={styles.actionButtons}>
+                    <PrimaryButton
+                      title="Join Match"
+                      icon="user-plus"
+                      onPress={handleJoin}
+                      loading={actionLoading}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                )}
+
+                {isInPool && !isCreator && (
+                  <DangerButton
+                    title="Leave Match"
+                    icon="log-out"
+                    onPress={handleLeave}
+                    loading={actionLoading}
+                  />
+                )}
+
+                {isCreator && (
+                  <DangerButton
+                    title="Cancel Invite"
+                    icon="x"
+                    onPress={handleCancelInvite}
+                    loading={actionLoading}
+                  />
+                )}
+              </>
+            )}
+
+            {/* Scheduled (non-open): Edit/Complete/Remove */}
+            {!isOpenInvite && match.status === 'scheduled' && isUserInMatch() && (
+              <>
+                <View style={styles.actionButtons}>
+                  {currentUser?.id === match.createdBy && (
+                    <PrimaryButton
+                      title="Edit Match"
+                      icon="pencil"
+                      onPress={handleEditMatch}
+                      style={{ flex: 1 }}
+                    />
+                  )}
+                  <PrimaryButton
+                    title="Complete Match"
+                    icon="check-circle"
+                    onPress={handleCompleteMatch}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+                <DangerButton
+                  title="Remove Match"
+                  icon="trash"
+                  onPress={handleDeleteMatch}
+                />
+              </>
+            )}
+          </Section>
+        )}
+
+        {/* Remove button for expired matches */}
+        {match.status === 'expired' && isUserInMatch() && (
+          <View style={styles.footer}>
+            <DangerButton
+              title="Remove Match"
+              icon="trash"
+              onPress={handleDeleteMatch}
+              style={{ flex: 1 }}
+            />
           </View>
         )}
 
@@ -532,6 +852,17 @@ const MatchDetailsScreen = () => {
         )}
       </ScrollView>
       </Animated.View>
+      {match.matchType === 'doubles' && (
+        <TeamAssignModal
+          visible={showAssignModal}
+          onClose={() => setShowAssignModal(false)}
+          onConfirm={isOpenFull ? handleOpenAssignConfirm : handlePickTeamsConfirm}
+          initialTeam1={match.team1PlayerIds || []}
+          initialTeam2={match.team2PlayerIds || []}
+          players={teamPlayerInfos}
+          currentUserId={currentUser?.id}
+        />
+      )}
     </Layout>
   );
 };
@@ -543,27 +874,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: spacing.xxl,
-  },
-  section: {
-    backgroundColor: colors.white,
-    margin: spacing.lg,
-    marginBottom: spacing.sm,
-    padding: spacing.lg,
-    borderRadius: borderRadius.md,
-    ...shadows.md,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surface,
-    paddingBottom: spacing.sm,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    color: colors.primary,
-    marginLeft: spacing.sm,
   },
   errorContainer: {
     flex: 1,
@@ -789,6 +1099,44 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.secondary,
     fontWeight: '600',
+  },
+  // Open invite styles
+  textActions: {
+    flexDirection: 'row' as const,
+    justifyContent: 'center' as const,
+    gap: spacing.xl,
+    marginTop: spacing.md,
+  },
+  textAction: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  textActionLabel: {
+    ...typography.bodySmall,
+    color: colors.secondary,
+    fontWeight: '600' as const,
+  },
+  statusCard: {
+    backgroundColor: colors.winOverlay,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    alignItems: 'center' as const,
+    marginTop: spacing.xxl,
+    marginHorizontal: spacing.lg,
+  },
+  cancelledCard: {
+    backgroundColor: colors.lossOverlay,
+  },
+  statusTitle: {
+    ...typography.h3,
+    color: colors.neutral,
+  },
+  statusSubtitle: {
+    ...typography.bodySmall,
+    color: colors.gray500,
+    marginTop: spacing.xs,
   },
 });
 

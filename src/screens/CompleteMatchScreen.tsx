@@ -7,7 +7,6 @@ import {
   ScrollView,
   TextInput,
   Alert,
-  Switch,
   Linking,
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +15,8 @@ import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../types';
 import { useData } from '../context/DataContext';
 import { Icon } from '../components/Icon';
+import { Section } from '../components/Section';
+import { ToggleRow } from '../components/ToggleRow';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { PrimaryButton, SecondaryButton } from '../components/Button';
 import { DismissableModal } from '../components/DismissableModal';
@@ -452,15 +453,12 @@ const CompleteMatchScreen = () => {
 
             {inviteMethod === 'email' ? (
               <>
-                <View style={styles.switchContainer}>
-                  <Text style={styles.switchLabel}>Send email invitation</Text>
-                  <Switch
-                    value={sendInvite}
-                    onValueChange={setSendInvite}
-                    trackColor={{ false: "#767577", true: colors.primary }}
-                    thumbColor={sendInvite ? "#f4f3f4" : "#f4f3f4"}
-                  />
-                </View>
+                <ToggleRow
+                  label="Send email invitation"
+                  value={sendInvite}
+                  onValueChange={setSendInvite}
+                  icon="mail"
+                />
 
                 {sendInvite && (
                   <View style={styles.inputContainer}>
@@ -515,12 +513,7 @@ const CompleteMatchScreen = () => {
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
         >
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Icon name="trophy" size={24} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Game Scores</Text>
-            </View>
-
+          <Section title="Game Scores" icon="trophy" style={{ margin: spacing.lg }}>
             {gameScores.map((game, index) => (
               <View key={index} style={styles.gameScoreContainer}>
                 <Text style={styles.gameNumber}>Game {index + 1}</Text>
@@ -605,7 +598,7 @@ const CompleteMatchScreen = () => {
             <Text style={styles.pointsToWinText}>
               First to {match.pointsToWin} points wins each game
             </Text>
-          </View>
+          </Section>
         </ScrollView>
 
         <View style={styles.footer}>
@@ -640,23 +633,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: spacing.xxl,
-  },
-  section: {
-    backgroundColor: colors.white,
-    margin: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: borderRadius.md,
-    ...shadows.md,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    color: colors.primary,
-    marginLeft: spacing.sm,
   },
   gameScoreContainer: {
     marginBottom: spacing.lg,
@@ -835,16 +811,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm,
     padding: spacing.md,
     ...typography.bodyLarge,
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
-  switchLabel: {
-    ...typography.bodyLarge,
-    color: colors.neutral,
   },
   modalFooter: {
     flexDirection: 'row',

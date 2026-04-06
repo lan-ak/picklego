@@ -58,6 +58,9 @@ import {
   BookUser,
   Send,
   Activity,
+  Link,
+  Share2,
+  Target,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -119,6 +122,9 @@ const ICON_MAP = {
   'book-user': BookUser,
   'send': Send,
   'activity': Activity,
+  'link': Link,
+  'share-2': Share2,
+  'target': Target,
 } as const;
 
 export type IconName = keyof typeof ICON_MAP;

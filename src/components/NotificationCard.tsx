@@ -4,6 +4,7 @@ import { Icon } from './Icon';
 import { AnimatedPressable } from './AnimatedPressable';
 import { MatchNotification } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { formatDateWithTime, formatTimeAgo } from '../utils/dateFormat';
 
 type NotificationCardProps = {
   notification: MatchNotification;
@@ -13,31 +14,9 @@ type NotificationCardProps = {
   onDelete?: () => void;
 };
 
-const formatTimeAgo = (timestamp: number): string => {
-  const now = Date.now();
-  const diffMs = now - timestamp;
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-};
-
 const formatMatchDate = (dateString?: string): string => {
   if (!dateString) return '';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }) + ' · ' + date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return formatDateWithTime(dateString);
 };
 
 const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete }: NotificationCardProps) => {
@@ -179,6 +158,47 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete
               <View style={styles.detailRow}>
                 <Icon name="map-pin" size={14} color={colors.gray400} />
                 <Text style={styles.detailText}>{notification.matchLocation}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </AnimatedPressable>
+    );
+  }
+
+  // Open match notifications
+  if (notification.type === 'open_match_join' || notification.type === 'open_match_leave' || notification.type === 'open_match_full') {
+    const isOpenMatchUnread = notification.status === 'sent';
+    const title = notification.type === 'open_match_full' ? 'Match Ready!'
+      : notification.type === 'open_match_join' ? 'Player Joined'
+      : 'Player Left';
+
+    return (
+      <AnimatedPressable
+        style={[styles.card, isOpenMatchUnread && styles.unreadCard]}
+        onPress={onPress}
+        accessibilityLabel={`${title}: ${notification.message || ''}`}
+        accessibilityRole="button"
+      >
+        <View style={styles.row}>
+          {isOpenMatchUnread && <View style={styles.unreadDot} />}
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Text style={[styles.title, isOpenMatchUnread && styles.unreadTitle]}>
+                {title}
+              </Text>
+              <View style={styles.headerRight}>
+                <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+                {deleteButton}
+              </View>
+            </View>
+            <Text style={styles.body}>
+              {notification.message}
+            </Text>
+            {notification.matchDate && (
+              <View style={styles.detailRow}>
+                <Icon name="calendar" size={14} color={colors.gray400} />
+                <Text style={styles.detailText}>{formatMatchDate(notification.matchDate)}</Text>
               </View>
             )}
           </View>
