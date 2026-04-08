@@ -589,7 +589,7 @@ a {
   transition: transform 0.2s, opacity 0.2s;
 }
 
-.store-badge img {
+.store-badge svg {
   height: 54px;
   width: auto;
 }
