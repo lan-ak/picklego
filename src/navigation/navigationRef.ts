@@ -7,11 +7,12 @@ export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 export function navigateToMatchIfReady(matchId: string) {
   setTimeout(() => {
     if (navigationRef.isReady()) {
-      const currentRoute = navigationRef.getCurrentRoute();
-      if (currentRoute?.name !== 'Auth') {
+      const state = navigationRef.getRootState();
+      if (state?.routeNames?.includes('MatchDetails')) {
         navigationRef.navigate('MatchDetails', { matchId });
         AsyncStorage.removeItem('pendingOpenMatchId');
       }
+      // Otherwise pendingOpenMatchId stays in AsyncStorage — HomeScreen handles it after auth
     }
   }, 500);
 }

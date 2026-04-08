@@ -50,16 +50,15 @@ function handleNotificationResponse(response: Notifications.NotificationResponse
 
   setTimeout(() => {
     if (navigationRef.isReady()) {
-      const currentRoute = navigationRef.getCurrentRoute();
-      if (currentRoute?.name !== 'Auth') {
-        // Backward compat: old push notifications may reference removed screen
-        const screen = data.screen === 'OpenMatchLobby' ? 'MatchDetails' : data.screen;
-        if (MATCH_SCREENS.has(screen!) && data.matchId) {
-          navigationRef.navigate(screen as any, { matchId: data.matchId });
-        } else if (!MATCH_SCREENS.has(screen!)) {
-          navigationRef.navigate(data.screen as any);
-        }
+      const state = navigationRef.getRootState();
+      // Backward compat: old push notifications may reference removed screen
+      const screen = data.screen === 'OpenMatchLobby' ? 'MatchDetails' : data.screen;
+      if (MATCH_SCREENS.has(screen!) && data.matchId && state?.routeNames?.includes(screen!)) {
+        navigationRef.navigate(screen as any, { matchId: data.matchId });
+      } else if (!MATCH_SCREENS.has(screen!) && state?.routeNames?.includes(data.screen!)) {
+        navigationRef.navigate(data.screen as any);
       }
+      // If screen not available (auth/onboarding), notification stays in in-app list
     }
   }, 500);
 }

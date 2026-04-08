@@ -357,7 +357,13 @@ const AddMatchScreen = () => {
         await Share.share({ message });
       }
 
-      navigation.navigate('MatchDetails', { matchId: newMatch.id });
+      if (onboardingMode) {
+        navigation.dispatch(
+          CommonActions.navigate({ name: 'Celebration', params: { matchCreated: true } })
+        );
+      } else {
+        navigation.navigate('MatchDetails', { matchId: newMatch.id });
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to create open match. Please try again.', [{ text: 'OK' }]);
     }
