@@ -4,6 +4,12 @@ import { navigateToMatchIfReady } from '../navigation/navigationRef';
 import { handleDeepLinkUrl } from '../utils/deepLink';
 
 export function initAppsFlyer() {
+  appsflyer.setOneLinkCustomDomains(
+    ['picklego.onelink.me'],
+    () => {},
+    () => {},
+  );
+
   appsflyer.initSdk({
     devKey: process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY ?? '',
     isDebug: __DEV__,
@@ -22,6 +28,10 @@ export function initAppsFlyer() {
       const matchId = data.data.openMatchId;
       AsyncStorage.setItem('pendingOpenMatchId', matchId);
       navigateToMatchIfReady(matchId);
+    } else if (data?.data?.deep_link_value?.startsWith('open-match_')) {
+      const matchId = data.data.deep_link_value.replace('open-match_', '');
+      AsyncStorage.setItem('pendingOpenMatchId', matchId);
+      navigateToMatchIfReady(matchId);
     }
   });
 
@@ -34,7 +44,19 @@ export function initAppsFlyer() {
         navigateToMatchIfReady(openMatchId);
         return;
       }
-      const inviteId = res.data?.inviteId || res.data?.deep_link_value;
+
+      const deepLinkValue = res.data?.deep_link_value;
+
+      // Check if deep_link_value carries an open match ID
+      if (deepLinkValue && deepLinkValue.startsWith('open-match_')) {
+        const matchId = deepLinkValue.replace('open-match_', '');
+        AsyncStorage.setItem('pendingOpenMatchId', matchId);
+        navigateToMatchIfReady(matchId);
+        return;
+      }
+
+      // Otherwise treat as SMS invite
+      const inviteId = res.data?.inviteId || deepLinkValue;
       if (inviteId) {
         AsyncStorage.setItem('pendingSMSInviteId', inviteId);
       }
@@ -63,9 +85,10 @@ export async function generateOpenMatchLink(matchId: string): Promise<string> {
         channel: 'match_invite',
         campaign: 'open_match',
         customerID: matchId,
+        af_dp: `picklego://open-match/${matchId}`,
         userParams: {
           openMatchId: matchId,
-          deep_link_value: matchId,
+          deep_link_value: `open-match_${matchId}`,
         },
       },
       (link: string) => resolve(link),

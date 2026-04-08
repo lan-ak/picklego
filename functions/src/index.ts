@@ -1015,6 +1015,27 @@ export const joinOpenMatch = onCall(async (request) => {
     const maxPlayers = match.maxPlayers || (match.matchType === 'doubles' ? 4 : 2);
     const now = Date.now();
 
+    // --- All reads BEFORE any writes (Firestore transaction requirement) ---
+    const creatorId = match.createdBy;
+    const creatorDoc = creatorId !== callerUid
+      ? await transaction.get(db.collection('players').doc(creatorId))
+      : null;
+    const creatorName = creatorDoc?.exists ? (creatorDoc.data()!.name || 'A player') : 'A player';
+    const creatorProfilePic = creatorDoc?.exists ? creatorDoc.data()!.profilePic : undefined;
+    const creatorPrefs = creatorDoc?.exists ? creatorDoc.data()!.notificationPreferences : undefined;
+
+    // For the "full" branch, look up all player names
+    let nameMap: Record<string, string> = {};
+    if (newAllPlayerIds.length >= maxPlayers) {
+      const playerDocs = await Promise.all(
+        newAllPlayerIds.map(id => transaction.get(db.collection('players').doc(id)))
+      );
+      for (const doc of playerDocs) {
+        if (doc.exists) nameMap[doc.id] = doc.data()!.name || 'A player';
+      }
+    }
+
+    // --- All writes below ---
     if (newAllPlayerIds.length >= maxPlayers) {
       // Match is full — randomize teams
       const allPlayerIds = newAllPlayerIds;
@@ -1029,15 +1050,6 @@ export const joinOpenMatch = onCall(async (request) => {
 
       const team1PlayerIds = shuffled.slice(0, halfSize);
       const team2PlayerIds = shuffled.slice(halfSize);
-
-      // Look up all player names for team arrays
-      const playerDocs = await Promise.all(
-        allPlayerIds.map(id => transaction.get(db.collection('players').doc(id)))
-      );
-      const nameMap: Record<string, string> = {};
-      for (const doc of playerDocs) {
-        if (doc.exists) nameMap[doc.id] = doc.data()!.name || 'A player';
-      }
 
       const team1PlayerNames = team1PlayerIds.map(id => nameMap[id] || 'A player');
       const team2PlayerNames = team2PlayerIds.map(id => nameMap[id] || 'A player');
@@ -1057,22 +1069,18 @@ export const joinOpenMatch = onCall(async (request) => {
       });
 
       // Connect joiner with the match creator
-      if (match.createdBy !== callerUid) {
+      if (creatorId !== callerUid) {
         transaction.update(db.collection('players').doc(callerUid), {
-          connections: FieldValue.arrayUnion(match.createdBy),
+          connections: FieldValue.arrayUnion(creatorId),
           updatedAt: now,
         });
-        transaction.update(db.collection('players').doc(match.createdBy), {
+        transaction.update(db.collection('players').doc(creatorId), {
           connections: FieldValue.arrayUnion(callerUid),
           updatedAt: now,
         });
       }
 
       // Create open_match_full notification for all players
-      const creatorDoc = await transaction.get(db.collection('players').doc(match.createdBy));
-      const creatorName = creatorDoc.exists ? (creatorDoc.data()!.name || 'A player') : 'A player';
-      const creatorProfilePic = creatorDoc.exists ? creatorDoc.data()!.profilePic : undefined;
-
       for (const recipientId of allPlayerIds) {
         const notifId = openMatchFullNotifId(matchId, recipientId);
         const notifData: Record<string, any> = {
@@ -1080,7 +1088,7 @@ export const joinOpenMatch = onCall(async (request) => {
           type: 'open_match_full',
           status: 'sent',
           recipientId,
-          senderId: match.createdBy,
+          senderId: creatorId,
           senderName: creatorName,
           matchId,
           matchDate: match.scheduledDate,
@@ -1106,7 +1114,6 @@ export const joinOpenMatch = onCall(async (request) => {
       });
 
       // Connect joiner with the match creator
-      const creatorId = match.createdBy;
       if (creatorId !== callerUid) {
         transaction.update(db.collection('players').doc(callerUid), {
           connections: FieldValue.arrayUnion(creatorId),
@@ -1118,9 +1125,6 @@ export const joinOpenMatch = onCall(async (request) => {
         });
 
         // Notify the creator
-        const creatorDoc = await transaction.get(db.collection('players').doc(creatorId));
-        const creatorPrefs = creatorDoc.exists ? creatorDoc.data()!.notificationPreferences : undefined;
-
         if (!creatorPrefs || creatorPrefs.open_match_join !== false) {
           const notifId = openMatchJoinNotifId(matchId, callerUid);
           const notifData: Record<string, any> = {
@@ -1187,10 +1191,16 @@ export const leaveOpenMatch = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'You are not in the player pool');
     }
 
+    // --- All reads before writes ---
     const callerDoc = await transaction.get(db.collection('players').doc(callerUid));
     const callerName = callerDoc.exists ? (callerDoc.data()!.name || 'A player') : 'A player';
     const callerProfilePic = callerDoc.exists ? callerDoc.data()!.profilePic : undefined;
 
+    const creatorId = match.createdBy;
+    const creatorDoc = await transaction.get(db.collection('players').doc(creatorId));
+    const creatorPrefs = creatorDoc.exists ? creatorDoc.data()!.notificationPreferences : undefined;
+
+    // --- Writes below ---
     const poolIndex = (match.playerPool || []).indexOf(callerUid);
     const newPlayerPool = [...(match.playerPool || [])];
     const newPlayerPoolNames = [...(match.playerPoolNames || [])];
@@ -1207,11 +1217,6 @@ export const leaveOpenMatch = onCall(async (request) => {
       lastModifiedBy: callerUid,
       lastModifiedByName: callerName,
     });
-
-    // Notify creator
-    const creatorId = match.createdBy;
-    const creatorDoc = await transaction.get(db.collection('players').doc(creatorId));
-    const creatorPrefs = creatorDoc.exists ? creatorDoc.data()!.notificationPreferences : undefined;
 
     if (!creatorPrefs || creatorPrefs.open_match_join !== false) {
       const notifId = openMatchLeaveNotifId(matchId, callerUid);

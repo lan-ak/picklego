@@ -810,6 +810,24 @@ exports.joinOpenMatch = (0, https_1.onCall)(async (request) => {
         const newPlayerPoolNames = [...(match.playerPoolNames || []), callerName];
         const maxPlayers = match.maxPlayers || (match.matchType === 'doubles' ? 4 : 2);
         const now = Date.now();
+        // --- All reads BEFORE any writes (Firestore transaction requirement) ---
+        const creatorId = match.createdBy;
+        const creatorDoc = creatorId !== callerUid
+            ? await transaction.get(db.collection('players').doc(creatorId))
+            : null;
+        const creatorName = creatorDoc?.exists ? (creatorDoc.data().name || 'A player') : 'A player';
+        const creatorProfilePic = creatorDoc?.exists ? creatorDoc.data().profilePic : undefined;
+        const creatorPrefs = creatorDoc?.exists ? creatorDoc.data().notificationPreferences : undefined;
+        // For the "full" branch, look up all player names
+        let nameMap = {};
+        if (newAllPlayerIds.length >= maxPlayers) {
+            const playerDocs = await Promise.all(newAllPlayerIds.map(id => transaction.get(db.collection('players').doc(id))));
+            for (const doc of playerDocs) {
+                if (doc.exists)
+                    nameMap[doc.id] = doc.data().name || 'A player';
+            }
+        }
+        // --- All writes below ---
         if (newAllPlayerIds.length >= maxPlayers) {
             // Match is full — randomize teams
             const allPlayerIds = newAllPlayerIds;
@@ -822,13 +840,6 @@ exports.joinOpenMatch = (0, https_1.onCall)(async (request) => {
             }
             const team1PlayerIds = shuffled.slice(0, halfSize);
             const team2PlayerIds = shuffled.slice(halfSize);
-            // Look up all player names for team arrays
-            const playerDocs = await Promise.all(allPlayerIds.map(id => transaction.get(db.collection('players').doc(id))));
-            const nameMap = {};
-            for (const doc of playerDocs) {
-                if (doc.exists)
-                    nameMap[doc.id] = doc.data().name || 'A player';
-            }
             const team1PlayerNames = team1PlayerIds.map(id => nameMap[id] || 'A player');
             const team2PlayerNames = team2PlayerIds.map(id => nameMap[id] || 'A player');
             transaction.update(matchRef, {
@@ -844,10 +855,18 @@ exports.joinOpenMatch = (0, https_1.onCall)(async (request) => {
                 lastModifiedBy: callerUid,
                 lastModifiedByName: callerName,
             });
+            // Connect joiner with the match creator
+            if (creatorId !== callerUid) {
+                transaction.update(db.collection('players').doc(callerUid), {
+                    connections: firestore_2.FieldValue.arrayUnion(creatorId),
+                    updatedAt: now,
+                });
+                transaction.update(db.collection('players').doc(creatorId), {
+                    connections: firestore_2.FieldValue.arrayUnion(callerUid),
+                    updatedAt: now,
+                });
+            }
             // Create open_match_full notification for all players
-            const creatorDoc = await transaction.get(db.collection('players').doc(match.createdBy));
-            const creatorName = creatorDoc.exists ? (creatorDoc.data().name || 'A player') : 'A player';
-            const creatorProfilePic = creatorDoc.exists ? creatorDoc.data().profilePic : undefined;
             for (const recipientId of allPlayerIds) {
                 const notifId = (0, ids_1.openMatchFullNotifId)(matchId, recipientId);
                 const notifData = {
@@ -855,7 +874,7 @@ exports.joinOpenMatch = (0, https_1.onCall)(async (request) => {
                     type: 'open_match_full',
                     status: 'sent',
                     recipientId,
-                    senderId: match.createdBy,
+                    senderId: creatorId,
                     senderName: creatorName,
                     matchId,
                     matchDate: match.scheduledDate,
@@ -880,11 +899,17 @@ exports.joinOpenMatch = (0, https_1.onCall)(async (request) => {
                 lastModifiedBy: callerUid,
                 lastModifiedByName: callerName,
             });
-            // Notify the creator
-            const creatorId = match.createdBy;
+            // Connect joiner with the match creator
             if (creatorId !== callerUid) {
-                const creatorDoc = await transaction.get(db.collection('players').doc(creatorId));
-                const creatorPrefs = creatorDoc.exists ? creatorDoc.data().notificationPreferences : undefined;
+                transaction.update(db.collection('players').doc(callerUid), {
+                    connections: firestore_2.FieldValue.arrayUnion(creatorId),
+                    updatedAt: now,
+                });
+                transaction.update(db.collection('players').doc(creatorId), {
+                    connections: firestore_2.FieldValue.arrayUnion(callerUid),
+                    updatedAt: now,
+                });
+                // Notify the creator
                 if (!creatorPrefs || creatorPrefs.open_match_join !== false) {
                     const notifId = (0, ids_1.openMatchJoinNotifId)(matchId, callerUid);
                     const notifData = {
@@ -941,9 +966,14 @@ exports.leaveOpenMatch = (0, https_1.onCall)(async (request) => {
         if (!(match.playerPool || []).includes(callerUid)) {
             throw new https_1.HttpsError('failed-precondition', 'You are not in the player pool');
         }
+        // --- All reads before writes ---
         const callerDoc = await transaction.get(db.collection('players').doc(callerUid));
         const callerName = callerDoc.exists ? (callerDoc.data().name || 'A player') : 'A player';
         const callerProfilePic = callerDoc.exists ? callerDoc.data().profilePic : undefined;
+        const creatorId = match.createdBy;
+        const creatorDoc = await transaction.get(db.collection('players').doc(creatorId));
+        const creatorPrefs = creatorDoc.exists ? creatorDoc.data().notificationPreferences : undefined;
+        // --- Writes below ---
         const poolIndex = (match.playerPool || []).indexOf(callerUid);
         const newPlayerPool = [...(match.playerPool || [])];
         const newPlayerPoolNames = [...(match.playerPoolNames || [])];
@@ -958,10 +988,6 @@ exports.leaveOpenMatch = (0, https_1.onCall)(async (request) => {
             lastModifiedBy: callerUid,
             lastModifiedByName: callerName,
         });
-        // Notify creator
-        const creatorId = match.createdBy;
-        const creatorDoc = await transaction.get(db.collection('players').doc(creatorId));
-        const creatorPrefs = creatorDoc.exists ? creatorDoc.data().notificationPreferences : undefined;
         if (!creatorPrefs || creatorPrefs.open_match_join !== false) {
             const notifId = (0, ids_1.openMatchLeaveNotifId)(matchId, callerUid);
             const notifData = {
@@ -1061,21 +1087,33 @@ exports.expireOpenMatches = (0, scheduler_1.onSchedule)('every 1 hours', async (
         .where('isOpenInvite', '==', true)
         .where('openInviteStatus', '==', 'open')
         .get();
-    const batch = db.batch();
     let count = 0;
-    for (const doc of snapshot.docs) {
-        const match = doc.data();
+    for (const matchDoc of snapshot.docs) {
+        const match = matchDoc.data();
         if (match.scheduledDate && match.scheduledDate < now) {
-            batch.update(doc.ref, {
-                openInviteStatus: 'cancelled',
-                status: 'expired',
-                lastModifiedAt: Date.now(),
-            });
-            count++;
+            try {
+                await db.runTransaction(async (transaction) => {
+                    const freshDoc = await transaction.get(matchDoc.ref);
+                    if (!freshDoc.exists)
+                        return;
+                    const freshData = freshDoc.data();
+                    // Only expire if still open (guards against concurrent joinOpenMatch filling the match)
+                    if (freshData.openInviteStatus !== 'open')
+                        return;
+                    transaction.update(matchDoc.ref, {
+                        openInviteStatus: 'cancelled',
+                        status: 'expired',
+                        lastModifiedAt: Date.now(),
+                    });
+                    count++;
+                });
+            }
+            catch (error) {
+                console.error(`expireOpenMatches: failed to expire match=${matchDoc.id}`, error);
+            }
         }
     }
     if (count > 0) {
-        await batch.commit();
         console.log(`expireOpenMatches: expired ${count} open match invites`);
     }
 });

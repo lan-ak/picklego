@@ -18,6 +18,7 @@ exports.matchInviteNotifId = matchInviteNotifId;
 /** Match cancelled notification */
 const matchCancelledNotifId = (matchId, recipientId, timestamp) => `notif_cancelled_${matchId}_${recipientId}_${timestamp}`;
 exports.matchCancelledNotifId = matchCancelledNotifId;
+// --- Server-only IDs (not needed on client) ---
 /** Invite accepted notification */
 const inviteAcceptedNotifId = (callerId, senderId) => `invite_accepted_${callerId}_${senderId}_${(0, crypto_1.randomUUID)()}`;
 exports.inviteAcceptedNotifId = inviteAcceptedNotifId;
@@ -27,6 +28,7 @@ exports.matchUpdatedNotifId = matchUpdatedNotifId;
 /** Match removed notification (roster change) */
 const matchRemovedNotifId = (matchId, recipientId) => `notif_removed_${matchId}_${recipientId}_${(0, crypto_1.randomUUID)()}`;
 exports.matchRemovedNotifId = matchRemovedNotifId;
+// --- Shared IDs (keep in sync with src/utils/ids.ts) ---
 /** Open match join notification — idempotent per match+joiner */
 const openMatchJoinNotifId = (matchId, joinerId) => `open_match_join_${matchId}_${joinerId}`;
 exports.openMatchJoinNotifId = openMatchJoinNotifId;
