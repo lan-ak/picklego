@@ -1,8 +1,11 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { addPushToken, removePushToken } from '../config/firebase';
 import { updateAppsFlyerPushToken } from './appsflyer';
+
+const PUSH_TOKEN_OWNER_KEY = '@picklego_push_token_owner';
 
 // Configure how notifications appear when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -53,7 +56,18 @@ export async function registerPushToken(playerId: string): Promise<string | null
   if (!token) return null;
 
   try {
+    // Remove token from previous owner if a different user signed in on this device
+    const previousOwner = await AsyncStorage.getItem(PUSH_TOKEN_OWNER_KEY);
+    if (previousOwner && previousOwner !== playerId) {
+      try {
+        await removePushToken(previousOwner, token);
+      } catch {
+        // Best effort — previous player doc may not exist
+      }
+    }
+
     await addPushToken(playerId, token);
+    await AsyncStorage.setItem(PUSH_TOKEN_OWNER_KEY, playerId);
     updateAppsFlyerPushToken(token);
     return token;
   } catch (error) {
