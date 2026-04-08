@@ -1,0 +1,28 @@
+# PickleGo: Pickleball Tracker
+
+> PickleGo is a mobile app for organizing pickleball matches, tracking performance stats, and connecting with players. Available on iOS with Android coming soon.
+
+PickleGo helps pickleball players schedule singles and doubles matches, share open play invites via link, track detailed performance statistics, and manage their player network. The app supports game-by-game scoring, team randomization, customizable notifications, and a pro tier with advanced analytics.
+
+## Key Features
+
+- **Match Organization**: Create singles or doubles matches with customizable settings including game count, point targets, date, time, and location.
+- **Open Match Invites**: Share a link to let anyone join a match. Teams auto-assign when full and all players are notified.
+- **Performance Tracking**: View wins, losses, win rates, winning streaks, head-to-head records, and partner-specific doubles stats.
+- **Game Scoring**: Track scores game by game with configurable points-to-win and best-of series.
+- **Player Network**: Connect with players via text message, email, or shareable links.
+- **Team Randomizer**: Shuffle teams between games for fair and balanced matchups.
+- **Notifications**: Customizable notification types for match invites, score updates, schedule changes, and more.
+- **Courts Discovery**: Find nearby pickleball courts on an interactive map and save your favorites.
+
+## PickleGo Pro
+
+PickleGo Pro unlocks unlimited match creation, comprehensive analytics, opponent and partner analysis, and complete match history.
+
+## Links
+
+- [Website](https://playpicklego.com)
+- [App Store](https://apps.apple.com/us/app/picklego-pickleball-tracker/id6743630735)
+- [Privacy Policy](https://playpicklego.com/privacy.html)
+- [Terms of Service](https://playpicklego.com/terms.html)
+- [Support](https://playpicklego.com/support.html)
