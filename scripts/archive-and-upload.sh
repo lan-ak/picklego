@@ -35,6 +35,7 @@ ruby scripts/fix-watch-target.rb
 # Step 3: Archive
 echo ""
 echo "[3/5] Archiving (iOS + watchOS)..."
+TEAM_ID="2Q87Z7RM4V"
 rm -rf "$ARCHIVE_PATH"
 xcodebuild archive \
   -workspace ios/PickleGo.xcworkspace \
@@ -42,6 +43,8 @@ xcodebuild archive \
   -configuration Release \
   -archivePath "$ARCHIVE_PATH" \
   -allowProvisioningUpdates \
+  DEVELOPMENT_TEAM="$TEAM_ID" \
+  CODE_SIGN_STYLE="Automatic" \
   | tail -5
 
 if [ ! -d "$ARCHIVE_PATH" ]; then
