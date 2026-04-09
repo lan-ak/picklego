@@ -99,7 +99,59 @@ npm run typecheck       # tsc --noEmit
 # Cloud Functions
 cd functions && npm run build    # Compile TypeScript
 cd functions && npm run deploy   # Deploy to Firebase
+
+# Ship to TestFlight (iOS + watchOS)
+./scripts/archive-and-upload.sh
 ```
+
+## Apple Watch App
+
+### Architecture
+The watch app lives in `watch/` (source of truth) and gets copied to `ios/PickleGoWatch/` during prebuild. It's a SwiftUI app with SwiftData persistence, built for watchOS 10+.
+
+- **Scoring**: `watch/Engine/ScoreEngine.swift` — side-out scoring with serve tracking, win-by-2, undo
+- **Sync**: `watch/Sync/WatchSessionManager.swift` — WatchConnectivity (applicationContext, sendMessage, transferUserInfo, App Group file fallback)
+- **Phone bridge**: `modules/watch-sync/` — Expo native module bridging WatchConnectivity to React Native
+- **Config plugin**: `plugins/withWatchTarget.js` — auto-creates watchOS target during `expo prebuild`
+- **Build fixup**: `scripts/fix-watch-target.rb` — fixes Xcode file references, adds embed phase, configures scheme
+
+### Build Pipeline (IMPORTANT)
+EAS Build **cannot** handle watchOS targets — it forces `-destination generic/platform=iOS` which compiles watch sources with the wrong SDK. All TestFlight/production builds must be done locally.
+
+**To ship to TestFlight:**
+```bash
+./scripts/archive-and-upload.sh
+```
+
+This runs: `expo prebuild --clean` → `ruby scripts/fix-watch-target.rb` → `xcodebuild archive` → `xcodebuild -exportArchive` → upload instructions.
+
+**After `expo prebuild --clean`, you MUST run:**
+```bash
+ruby scripts/fix-watch-target.rb
+```
+This fixes Xcode file references, adds the "Embed Watch Content" script phase, and adds the watch target to the scheme (archive-only). Without it, the watch app won't compile or embed.
+
+**For simulator testing only (no watch):**
+```bash
+npx expo prebuild --platform ios --clean
+ruby scripts/fix-watch-target.rb
+# Then build via Xcode or xcodebuild — simulator builds skip the watch target
+```
+
+**For simulator testing with watch:**
+```bash
+# Build watch separately
+xcodebuild -project ios/PickleGo.xcodeproj -target PickleGoWatch -sdk watchsimulator ONLY_ACTIVE_ARCH=NO build
+# Symlink App Group containers (phone + watch sims have separate filesystems)
+./scripts/link-sim-appgroup.sh
+```
+
+### Key Constraints
+- `watch/` is the source of truth — never edit files in `ios/PickleGoWatch/` (they get overwritten on prebuild)
+- The watch target uses `productType = application` (not `watchapp2`) because `watchapp2` breaks simulator builds
+- `SDKROOT = watchos` in build settings + scheme entry handles the correct SDK during archive
+- The embed phase is a shell script (not CopyFiles with product reference) to avoid implicit dependency that breaks simulator builds
+- Watch app version is synced from `app.config.ts` by the config plugin
 
 ## Theme System
 
