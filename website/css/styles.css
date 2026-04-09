@@ -406,6 +406,67 @@ a {
 }
 
 /* =============================================
+   Apple Watch
+   ============================================= */
+
+.watch-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xxxl);
+}
+
+.watch-image {
+  max-width: 240px;
+}
+
+.watch-details {
+  flex: 1;
+}
+
+.watch-features {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.watch-features li {
+  font-size: 16px;
+  color: var(--deep-asphalt);
+  padding-left: 28px;
+  position: relative;
+  line-height: 1.6;
+}
+
+.watch-features li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 14px;
+  height: 14px;
+  background: var(--pickle-green);
+  border-radius: 50%;
+}
+
+@media (min-width: 768px) {
+  .watch-inner {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .watch-image {
+    max-width: 300px;
+    flex-shrink: 0;
+  }
+
+  .watch-features li {
+    font-size: 18px;
+  }
+}
+
+/* =============================================
    How It Works
    ============================================= */
 
@@ -476,6 +537,40 @@ a {
   gap: var(--space-xxxl);
 }
 
+.stats-multi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  width: 100%;
+}
+
+.stats-mini-card {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xxl);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+
+.stats-mini-card h4 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--deep-asphalt);
+  margin-bottom: var(--space-sm);
+}
+
+.mini-matchup {
+  margin-bottom: var(--space-md);
+}
+
+.matchup-label {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--pickle-green);
+  font-weight: 500;
+}
+
 .stats-card {
   background: var(--white);
   border-radius: var(--radius-lg);
@@ -540,12 +635,28 @@ a {
     justify-content: center;
   }
 
+  .stats-multi {
+    flex-direction: row;
+  }
+
+  .stats-mini-card {
+    flex: 1;
+  }
+
   .stats-image {
     max-width: 360px;
   }
 
   .stat-value {
     font-size: 42px;
+  }
+
+  .stats-mini-card .stat-value {
+    font-size: 32px;
+  }
+
+  .stats-mini-card .stats-winrate .stat-value {
+    font-size: 36px;
   }
 }
 

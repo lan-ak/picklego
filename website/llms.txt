@@ -1,23 +1,47 @@
 # PickleGo: Pickleball Tracker
 
-> PickleGo is a mobile app for organizing pickleball matches, tracking performance stats, and connecting with players. Available on iOS with Android coming soon.
+> PickleGo is a mobile app for organizing pickleball matches, scoring rallies in real time, tracking performance stats, and connecting with players. Available on iOS and Apple Watch, with Android coming soon.
 
-PickleGo helps pickleball players schedule singles and doubles matches, share open play invites via link, track detailed performance statistics, and manage their player network. The app supports game-by-game scoring, team randomization, customizable notifications, and a pro tier with advanced analytics.
+PickleGo helps pickleball players schedule singles and doubles matches, share open play invites via link, score rallies live on iPhone or Apple Watch, and track detailed performance statistics. The app supports rally-by-rally scoring, team randomization, customizable notifications, and a pro tier with advanced analytics.
 
 ## Key Features
 
 - **Match Organization**: Create singles or doubles matches with customizable settings including game count, point targets, date, time, and location.
-- **Open Match Invites**: Share a link to let anyone join a match. Teams auto-assign when full and all players are notified.
-- **Performance Tracking**: View wins, losses, win rates, winning streaks, head-to-head records, and partner-specific doubles stats.
-- **Game Scoring**: Track scores game by game with configurable points-to-win and best-of series.
-- **Player Network**: Connect with players via text message, email, or shareable links.
+- **Open Match Invites**: Share a link to let anyone join a match. When spots fill, a waitlist keeps players queued — they auto-promote when a spot opens.
+- **Live Scoring**: Score rally by rally on your iPhone or Apple Watch. Track points-to-win and best-of series with real-time sync between devices.
+- **Apple Watch Scoring**: Score rallies directly from your wrist with the native companion Watch app. See live game scores and series progress — syncs automatically with your iPhone.
+- **Rally-by-Rally Scoring**: Log each rally in real time, not just final game scores. Available on both iPhone and Apple Watch.
+- **Performance Tracking**: Wins, losses, win rates, streaks, head-to-head rivalries, and partner-specific doubles stats — all tracked automatically.
+- **Player Network**: Connect with players via text message, email, or shareable links. Build your crew and track partnership stats.
 - **Team Randomizer**: Shuffle teams between games for fair and balanced matchups.
 - **Notifications**: Customizable notification types for match invites, score updates, schedule changes, and more.
 - **Courts Discovery**: Find nearby pickleball courts on an interactive map and save your favorites.
+- **Waitlist for Open Matches**: When an open match fills up, additional players join a waitlist and are automatically promoted when a spot opens.
 
 ## PickleGo Pro
 
-PickleGo Pro unlocks unlimited match creation, comprehensive analytics, opponent and partner analysis, and complete match history.
+PickleGo Pro unlocks the full experience:
+
+- **Unlimited Matches**: Create as many matches as you want with no restrictions.
+- **Opponent Analysis**: Dive into head-to-head records and rival breakdowns.
+- **Partner Analysis**: See win rates and performance with specific doubles partners.
+- **Complete Match History**: Access your full history with time-filtered stats and trends.
+- **Courts Discovery**: Find and save pickleball courts near you on an interactive map.
+- **Time-Filtered Stats**: Filter your stats by time period to track improvement over any window.
+
+## Platform Availability
+
+- **iOS**: Available on the [App Store](https://apps.apple.com/us/app/picklego-pickleball-tracker/id6743630735)
+- **Apple Watch**: Native companion app for rally-by-rally scoring from your wrist
+- **Android**: Coming soon
+
+## Use Cases
+
+- **Match Organizer**: Schedule and manage singles or doubles matches with friends or open invites.
+- **Live Scorekeeper**: Track rallies in real time during games, from your phone or watch.
+- **Stat Tracker**: Monitor win rates, streaks, head-to-head records, and doubles partner performance.
+- **Court Finder**: Discover nearby pickleball courts and save your favorites.
+- **Social Pickleball Network**: Connect with players, send invites, and build your pickleball crew.
 
 ## Links
 
