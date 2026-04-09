@@ -61,6 +61,9 @@ const MatchDetailsScreen = () => {
   const isOpenCancelled = isOpenInvite && (match?.openInviteStatus === 'cancelled' || match?.status === 'expired');
   const isOpenFilling = isOpen && !isFull;
   const isOpenFull = isOpenInvite && isFull;
+  const isOnWaitlist = match?.waitlist?.includes(currentUser?.id || '') || false;
+  const waitlistPosition = isOnWaitlist ? (match?.waitlist?.indexOf(currentUser?.id || '') ?? -1) + 1 : 0;
+  const waitlistCount = (match?.waitlist || []).length;
   const teamsEmpty = isOpenFull && match && (match.team1PlayerIds || []).length === 0;
   const teamsAssigned = match ? (match.team1PlayerIds || []).length > 0 && (match.team2PlayerIds || []).length > 0 : false;
 
@@ -177,7 +180,11 @@ const MatchDetailsScreen = () => {
       const result = await joinOpenMatch(match.id);
       if (result.joined) {
         triggerHaptic('success');
-        showToast(result.isFull ? 'Match is full! Teams randomized.' : 'Joined the match!', 'success');
+        if (result.waitlisted) {
+          showToast(`You're #${result.waitlistPosition} on the waitlist!`, 'success');
+        } else {
+          showToast(result.isFull ? 'Match is full! Teams randomized.' : 'Joined the match!', 'success');
+        }
       }
     } catch (error: any) {
       showToast(error?.message || 'Failed to join match', 'error');
@@ -208,6 +215,28 @@ const MatchDetailsScreen = () => {
       },
     ]);
   }, [match, leaveOpenMatch, showToast, navigation]);
+
+  const handleLeaveWaitlist = useCallback(async () => {
+    if (!match) return;
+    Alert.alert('Leave Waitlist', 'Are you sure you want to leave the waitlist?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave',
+        style: 'destructive',
+        onPress: async () => {
+          setActionLoading(true);
+          try {
+            await leaveOpenMatch(match.id);
+            showToast('Left the waitlist', 'success');
+          } catch (error: any) {
+            showToast(error?.message || 'Failed to leave waitlist', 'error');
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
+  }, [match, leaveOpenMatch, showToast]);
 
   const handleCancelInvite = useCallback(async () => {
     if (!match) return;
@@ -676,28 +705,9 @@ const MatchDetailsScreen = () => {
             <View style={styles.resultContent}>
               <Text style={styles.resultLabel}>Final Score</Text>
               {match.games.length > 0 ? (
-                match.randomizeTeamsPerGame && match.matchType === 'doubles' ? (
-                  <View>
-                    {match.games.map((g, i) => {
-                      const t1Ids = g.team1PlayerIds || match.team1PlayerIds;
-                      const t2Ids = g.team2PlayerIds || match.team2PlayerIds;
-                      const t1Names = t1Ids.map(id => formatPlayerNameWithInitial(getPlayerName(id))).join(' & ');
-                      const t2Names = t2Ids.map(id => formatPlayerNameWithInitial(getPlayerName(id))).join(' & ');
-                      return (
-                        <View key={i} style={styles.perGameResult}>
-                          <Text style={styles.perGameLabel}>Game {i + 1}{i > 0 ? ' (shuffled)' : ''}</Text>
-                          <Text style={styles.perGameScore}>
-                            {t1Names}  {g.team1Score} - {g.team2Score}  {t2Names}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : (
                   <Text style={styles.scoreText}>
                     {match.games.map(g => `${g.team1Score}-${g.team2Score}`).join(', ')}
                   </Text>
-                )
               ) : (
                 <Text style={styles.scoreText}>No score recorded</Text>
               )}
@@ -741,6 +751,63 @@ const MatchDetailsScreen = () => {
                   onPress={handleDeleteMatch}
                 />
               </>
+            )}
+
+            {/* Open Invite Full: Waitlist actions */}
+            {isOpenFull && !isJoined && !isCreator && !isOnWaitlist && (
+              <View style={styles.actionButtons}>
+                <PrimaryButton
+                  title="Join Waitlist"
+                  icon="user-plus"
+                  onPress={handleJoin}
+                  loading={actionLoading}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            )}
+
+            {isOnWaitlist && (
+              <>
+                <View style={styles.waitlistInfo}>
+                  <Icon name="clock" size={16} color={colors.secondary} />
+                  <Text style={styles.waitlistInfoText}>You're #{waitlistPosition} on the waitlist</Text>
+                </View>
+                <DangerButton
+                  title="Leave Waitlist"
+                  icon="log-out"
+                  onPress={handleLeaveWaitlist}
+                  loading={actionLoading}
+                />
+              </>
+            )}
+
+            {isOpenFull && isJoined && !isCreator && (
+              <DangerButton
+                title="Leave Match"
+                icon="log-out"
+                onPress={handleLeave}
+                loading={actionLoading}
+              />
+            )}
+
+            {(isCreator || isOnWaitlist) && waitlistCount > 0 && (
+              <View style={styles.waitlistSection}>
+                <View style={styles.waitlistInfo}>
+                  <Icon name="users" size={16} color={colors.secondary} />
+                  <Text style={styles.waitlistInfoText}>Waitlist ({waitlistCount})</Text>
+                </View>
+                {(match?.waitlistNames || []).map((name, index) => {
+                  const isCurrentUser = match?.waitlist?.[index] === currentUser?.id;
+                  return (
+                    <View key={match?.waitlist?.[index] || index} style={styles.waitlistPlayerRow}>
+                      <Text style={styles.waitlistPosition}>#{index + 1}</Text>
+                      <Text style={[styles.waitlistPlayerName, isCurrentUser && styles.waitlistCurrentUser]}>
+                        {isCurrentUser ? `${name} (you)` : name}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
             )}
 
             {/* Open Invite Filling: Share/Cancel (creator) or Join/Leave */}
@@ -1001,20 +1068,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginBottom: spacing.lg,
   },
-  perGameResult: {
-    marginBottom: spacing.sm,
-  },
-  perGameLabel: {
-    ...typography.caption,
-    color: colors.secondary,
-    fontStyle: 'italic',
-    marginBottom: 2,
-  },
-  perGameScore: {
-    ...typography.bodySmall,
-    color: colors.primary,
-    fontWeight: '600',
-  },
   winnerText: {
     ...typography.h3,
     fontSize: 18,
@@ -1026,6 +1079,40 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.lg,
     gap: spacing.md,
+  },
+  waitlistInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  waitlistInfoText: {
+    ...typography.bodySmall,
+    color: colors.secondary,
+  },
+  waitlistSection: {
+    marginBottom: spacing.md,
+  },
+  waitlistPlayerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    paddingLeft: spacing.md,
+    gap: spacing.sm,
+  },
+  waitlistPosition: {
+    ...typography.caption,
+    color: colors.gray400,
+    width: 24,
+  },
+  waitlistPlayerName: {
+    ...typography.bodySmall,
+    color: colors.gray500,
+  },
+  waitlistCurrentUser: {
+    color: colors.secondary,
+    fontWeight: '600',
   },
   footer: {
     padding: spacing.lg,

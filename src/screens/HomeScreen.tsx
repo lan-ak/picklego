@@ -137,15 +137,10 @@ const HomeScreen = () => {
         match.status === 'scheduled'
     );
 
-    // Merge open matches not already in scheduled list
-    const seen = new Set(scheduled.map((m) => m.id));
-    const extra = openMatches.filter((m) => !seen.has(m.id));
-    const combined = [...scheduled, ...extra];
-
-    return combined
+    return scheduled
       .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime())
       .slice(0, 5);
-  }, [currentUser, matches, openMatches]);
+  }, [currentUser, matches]);
 
   // Format date for display
   const formatDate = (dateString: string) => formatShortDate(dateString);

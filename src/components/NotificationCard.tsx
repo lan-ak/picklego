@@ -167,10 +167,12 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete
   }
 
   // Open match notifications
-  if (notification.type === 'open_match_join' || notification.type === 'open_match_leave' || notification.type === 'open_match_full') {
+  if (['open_match_join', 'open_match_leave', 'open_match_full', 'open_match_waitlist_join', 'open_match_waitlist_promoted'].includes(notification.type)) {
     const isOpenMatchUnread = notification.status === 'sent';
     const title = notification.type === 'open_match_full' ? 'Match Ready!'
       : notification.type === 'open_match_join' ? 'Player Joined'
+      : notification.type === 'open_match_waitlist_join' ? 'Waitlist Joined'
+      : notification.type === 'open_match_waitlist_promoted' ? "You're In!"
       : 'Player Left';
 
     return (

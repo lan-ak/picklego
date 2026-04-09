@@ -64,12 +64,24 @@ export interface Venue {
   notes?: string;
 }
 
+export interface RallyEvent {
+  rallyNumber: number;
+  rallyWinner: 1 | 2;
+  type: 'point' | 'sideout';
+  team1Score: number;
+  team2Score: number;
+  servingTeam: 1 | 2;
+  serverNumber: 1 | 2;
+  timestamp: number;
+}
+
 export interface Game {
   team1Score: number;
   team2Score: number;
   winnerTeam: 1 | 2;
   team1PlayerIds?: string[];
   team2PlayerIds?: string[];
+  rallyLog?: RallyEvent[];
 }
 
 export interface Match {
@@ -105,6 +117,8 @@ export interface Match {
   playerPool?: string[];
   playerPoolNames?: string[];
   maxPlayers?: number;
+  waitlist?: string[];
+  waitlistNames?: string[];
 }
 
 export type InviteResult = {
@@ -136,7 +150,7 @@ export interface ContactInfo {
 
 export interface MatchNotification {
   id: string;
-  type: 'match_invite' | 'match_updated' | 'match_cancelled' | 'player_invite' | 'invite_accepted' | 'open_match_join' | 'open_match_leave' | 'open_match_full';
+  type: 'match_invite' | 'match_updated' | 'match_cancelled' | 'player_invite' | 'invite_accepted' | 'open_match_join' | 'open_match_leave' | 'open_match_full' | 'open_match_waitlist_join' | 'open_match_waitlist_promoted';
   status: 'sent' | 'read' | 'accepted' | 'declined';
   recipientId: string;
   senderId: string;
@@ -226,7 +240,7 @@ export interface DataContextType {
   claimPendingSMSInvite: () => Promise<void>;
   findSMSInvitesByPhone: (normalizedPhone: string) => Promise<SMSInvite[]>;
   createOpenMatch: (match: Omit<Match, 'id' | 'createdAt' | 'lastModifiedAt' | 'lastModifiedBy'>) => Promise<Match>;
-  joinOpenMatch: (matchId: string) => Promise<{ joined: boolean; isFull: boolean }>;
+  joinOpenMatch: (matchId: string) => Promise<{ joined: boolean; isFull: boolean; waitlisted?: boolean; waitlistPosition?: number }>;
   leaveOpenMatch: (matchId: string) => Promise<void>;
   cancelOpenMatch: (matchId: string) => Promise<void>;
   getOpenMatch: (matchId: string) => Promise<Match | null>;

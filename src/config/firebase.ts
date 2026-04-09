@@ -610,7 +610,7 @@ export const callResendMatchNotifications = (matchId: string) =>
   );
 
 export const callJoinOpenMatch = (matchId: string) =>
-  authenticatedCallable<{ matchId: string }, { joined: boolean; isFull: boolean; reason?: string }>(
+  authenticatedCallable<{ matchId: string }, { joined: boolean; isFull: boolean; reason?: string; waitlisted?: boolean; waitlistPosition?: number }>(
     'joinOpenMatch', { matchId },
   );
 

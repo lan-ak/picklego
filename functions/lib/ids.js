@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.openMatchFullNotifId = exports.openMatchLeaveNotifId = exports.openMatchJoinNotifId = exports.matchRemovedNotifId = exports.matchUpdatedNotifId = exports.inviteAcceptedNotifId = exports.matchCancelledNotifId = exports.matchInviteNotifId = exports.playerInviteNotifId = exports.newPlaceholderPlayerId = exports.newMatchId = void 0;
+exports.openMatchWaitlistPromotedNotifId = exports.openMatchWaitlistJoinNotifId = exports.openMatchFullNotifId = exports.openMatchLeaveNotifId = exports.openMatchJoinNotifId = exports.matchRemovedNotifId = exports.matchUpdatedNotifId = exports.inviteAcceptedNotifId = exports.matchCancelledNotifId = exports.matchInviteNotifId = exports.playerInviteNotifId = exports.newPlaceholderPlayerId = exports.newMatchId = void 0;
 // SYNC: keep deterministic ID formats in sync with src/utils/ids.ts
 const crypto_1 = require("crypto");
 /** New match document ID */
@@ -38,4 +38,10 @@ exports.openMatchLeaveNotifId = openMatchLeaveNotifId;
 /** Open match full notification — idempotent per match+recipient */
 const openMatchFullNotifId = (matchId, recipientId) => `open_match_full_${matchId}_${recipientId}`;
 exports.openMatchFullNotifId = openMatchFullNotifId;
+/** Open match waitlist join notification — idempotent per match+joiner */
+const openMatchWaitlistJoinNotifId = (matchId, joinerId) => `open_match_waitlist_join_${matchId}_${joinerId}`;
+exports.openMatchWaitlistJoinNotifId = openMatchWaitlistJoinNotifId;
+/** Open match waitlist promoted notification */
+const openMatchWaitlistPromotedNotifId = (matchId, promotedId) => `open_match_waitlist_promoted_${matchId}_${promotedId}_${(0, crypto_1.randomUUID)()}`;
+exports.openMatchWaitlistPromotedNotifId = openMatchWaitlistPromotedNotifId;
 //# sourceMappingURL=ids.js.map
