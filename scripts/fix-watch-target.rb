@@ -185,6 +185,11 @@ watch_target.build_configurations.each do |config|
   config.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
 end
 
+# Note: productType stays as com.apple.product-type.application (not watchapp2).
+# watchapp2 causes "unable to resolve product type" for simulator builds because
+# Xcode validates all targets in the project. SDKROOT=watchos + scheme entry
+# handles the archive correctly, and the script phase handles embedding.
+
 # Save
 project.save
 puts "\nDone! PickleGoWatch file references fixed."
