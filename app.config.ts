@@ -111,6 +111,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         appId: "6743630735",
       },
     ],
+    "./plugins/withWatchTarget",
     ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
       ? [
           [

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { unstable_batchedUpdates } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { Match, Game, LegacyMatch, Player, PlayerStats, DataContextType, MatchNotification, InviteResult, NotificationPreferences } from '../types';
 import { calculatePlayerStats } from '../utils/statsCalculator';
 import {
@@ -1606,7 +1607,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return newMatch;
   }, []);
 
-  const joinOpenMatch = useCallback(async (matchId: string): Promise<{ joined: boolean; isFull: boolean }> => {
+  const joinOpenMatch = useCallback(async (matchId: string): Promise<{ joined: boolean; isFull: boolean; waitlisted?: boolean; waitlistPosition?: number }> => {
     const result = await callJoinOpenMatch(matchId);
     if (result.joined) {
       await refreshMatches();
@@ -1680,6 +1681,103 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error claiming SMS invite:', error);
     }
   }, [refreshConnectedPlayers, refreshNotifications]);
+
+  // Apple Watch sync (Effect 1): Send scheduled matches to watch when scheduled count changes.
+  // Uses matches.length (not full matches array) to avoid firing on every score update.
+  // Follows same pattern as stale match expiration effect.
+  const scheduledMatchCount = useMemo(
+    () => matches.filter(m => m.status === 'scheduled').length,
+    [matches]
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    if (!currentUser?.id) return;
+    const userId = currentUser.id;
+
+    (async () => {
+      try {
+        const watchSync = await import('../../modules/watch-sync/src');
+        const available = watchSync.isWatchAvailable();
+        const scheduled = matchesRef.current
+          .filter(m => m.status === 'scheduled' && !(m.isOpenInvite && m.openInviteStatus !== 'full'))
+          .map(m => ({
+            id: m.id,
+            matchType: m.matchType,
+            pointsToWin: m.pointsToWin,
+            numberOfGames: m.numberOfGames,
+            team1Label: m.team1PlayerNames?.join(' & ') || 'Team 1',
+            team2Label: m.team2PlayerNames?.join(' & ') || 'Team 2',
+            team1PlayerIds: m.team1PlayerIds,
+            team2PlayerIds: m.team2PlayerIds,
+            scheduledDate: m.scheduledDate,
+          }));
+        console.log(`[WatchSync JS] watchAvailable=${available}, scheduledMatches=${scheduled.length}, userId=${userId}`);
+        const result = watchSync.sendScheduledMatchesToWatch(scheduled, userId);
+        console.log(`[WatchSync JS] sendScheduledMatchesToWatch result=${result}`);
+      } catch (e) {
+        console.log(`[WatchSync JS] Error: ${e}`);
+      }
+    })();
+  }, [scheduledMatchCount, currentUser?.id]);
+
+  // Apple Watch sync (Effect 2): Listen for completed matches from watch (mount-only)
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+
+    let isMounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    (async () => {
+      try {
+        const watchSync = await import('../../modules/watch-sync/src');
+        if (!isMounted) return;
+
+        unsubscribe = watchSync.onMatchCompletedFromWatch(async (payload) => {
+          if (!isMounted) return;
+          try {
+            const { match: watchMatch } = payload;
+            if (!watchMatch?.phoneMatchId) return;
+
+            // Idempotency: don't overwrite if already completed with newer timestamp
+            const existingMatch = matchesRef.current.find(m => m.id === watchMatch.phoneMatchId);
+            if (existingMatch?.status === 'completed' && existingMatch.lastModifiedAt > watchMatch.completedAt) {
+              return;
+            }
+
+            const games: Game[] = watchMatch.games.map(g => ({
+              team1Score: g.team1Score,
+              team2Score: g.team2Score,
+              winnerTeam: g.winnerTeam as 1 | 2,
+              ...(g.rallyLog ? {
+                rallyLog: g.rallyLog.map(r => ({
+                  ...r,
+                  rallyWinner: r.rallyWinner as 1 | 2,
+                  servingTeam: r.servingTeam as 1 | 2,
+                  serverNumber: r.serverNumber as 1 | 2,
+                }))
+              } : {}),
+            }));
+
+            await updateMatch(watchMatch.phoneMatchId, {
+              status: 'completed' as const,
+              winnerTeam: watchMatch.winnerTeam as 1 | 2,
+              games,
+            });
+          } catch (error) {
+            console.error('Error processing watch match completion:', error);
+          }
+        });
+      } catch {
+        // Watch sync module not available
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+      unsubscribe?.();
+    };
+  }, [updateMatch]);
 
   // Context value with all the methods and data — memoized to prevent unnecessary re-renders
   // of all 22+ consumers. Functions are stable (useCallback with [] deps + refs) so they
