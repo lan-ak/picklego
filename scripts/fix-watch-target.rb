@@ -16,7 +16,7 @@ unless watch_target
   exit 1
 end
 
-# Find the iOS target (to remove watch files from it)
+# Find the iOS target
 ios_target = project.targets.find { |t| t.name == 'PickleGo' }
 
 # Remove any existing PickleGoWatch group
@@ -93,94 +93,81 @@ end
   end
 end
 
-# Add "Build & Embed Watch Content" script phase to the iOS target.
-# EAS Build uses `xcodebuild archive -destination 'generic/platform=iOS'` which
-# forces ALL scheme targets to build for iOS SDK. So the watch target CANNOT be
-# in the scheme. Instead, this script phase builds the watch target separately
-# with the watchOS SDK, then copies it into the app bundle during archive.
+# Add "Embed Watch Content" script phase to the iOS target.
+# Uses a script phase (not CopyFiles with product reference) because a product
+# reference creates an implicit dependency that breaks simulator builds.
+# The scheme entry builds the watch target during archive, and this script copies it.
 if ios_target
-  embed_phase_name = 'Build and Embed Watch Content'
-  existing_embed = ios_target.build_phases.find { |bp| bp.respond_to?(:name) && bp.name == embed_phase_name }
+  embed_phase_name = 'Embed Watch Content'
+  # Remove any old phases (script or copy)
+  ios_target.build_phases.select { |bp|
+    bp.respond_to?(:name) && (bp.name == embed_phase_name || bp.name == 'Build and Embed Watch Content')
+  }.each(&:remove_from_project)
 
-  unless existing_embed
-    embed_phase = project.new(Xcodeproj::Project::Object::PBXShellScriptBuildPhase)
-    embed_phase.name = embed_phase_name
-    embed_phase.shell_script = <<~'SCRIPT'
-      # Only embed during archive (ACTION=install)
-      if [ "${ACTION}" != "install" ]; then
-        echo "Skipping watch build (not archiving)"
-        exit 0
-      fi
-
-      WATCH_BUILD_DIR="${BUILD_DIR}/watchos-build"
-      echo "Building PickleGoWatch for watchOS..."
-      xcodebuild build \
-        -project "${PROJECT_DIR}/PickleGo.xcodeproj" \
-        -target PickleGoWatch \
-        -configuration "${CONFIGURATION}" \
-        -sdk watchos \
-        ONLY_ACTIVE_ARCH=NO \
-        SYMROOT="${WATCH_BUILD_DIR}" \
-        CODE_SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY}}" \
-        DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM}" \
-        CODE_SIGN_STYLE="${CODE_SIGN_STYLE}" \
-        CODE_SIGNING_REQUIRED="${CODE_SIGNING_REQUIRED:-YES}" \
-        CODE_SIGNING_ALLOWED="${CODE_SIGNING_ALLOWED:-YES}" \
-        AD_HOC_CODE_SIGNING_ALLOWED="${AD_HOC_CODE_SIGNING_ALLOWED:-NO}" \
-        2>&1
-
-      if [ $? -ne 0 ]; then
-        echo "error: PickleGoWatch build failed"
-        exit 1
-      fi
-
-      WATCH_APP="${WATCH_BUILD_DIR}/${CONFIGURATION}-watchos/PickleGoWatch.app"
-
-      if [ ! -d "${WATCH_APP}" ]; then
-        echo "error: PickleGoWatch.app not found at ${WATCH_APP}"
-        exit 1
-      fi
-
-      DEST="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Watch"
+  embed_phase = project.new(Xcodeproj::Project::Object::PBXShellScriptBuildPhase)
+  embed_phase.name = embed_phase_name
+  embed_phase.shell_script = <<~'SCRIPT'
+    if [ "${ACTION}" != "install" ]; then
+      exit 0
+    fi
+    WATCH_APP="${BUILD_DIR}/${CONFIGURATION}-watchos/PickleGoWatch.app"
+    DEST="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Watch"
+    if [ -d "${WATCH_APP}" ]; then
       mkdir -p "${DEST}"
       cp -R "${WATCH_APP}" "${DEST}/"
-      echo "Embedded PickleGoWatch.app into ${DEST}/"
-    SCRIPT
-    embed_phase.shell_path = '/bin/sh'
-    ios_target.build_phases << embed_phase
+      echo "Embedded PickleGoWatch.app into Watch/"
+    else
+      echo "warning: PickleGoWatch.app not found at ${WATCH_APP}"
+    fi
+  SCRIPT
+  embed_phase.shell_path = '/bin/sh'
+  ios_target.build_phases << embed_phase
+  puts "  Added '#{embed_phase_name}' script phase to PickleGo target"
 
-    puts "  Added '#{embed_phase_name}' script phase to PickleGo target"
-  else
-    puts "  '#{embed_phase_name}' phase already exists"
-  end
-
-  # Remove PickleGoWatch from PickleGo scheme if present.
-  # EAS uses -destination 'generic/platform=iOS' which forces iOS SDK on all
-  # scheme targets. The watch target is built by the script phase instead.
+  # Add PickleGoWatch to the PickleGo scheme for archive builds only.
+  # Local xcodebuild archive (without -destination flag) resolves the watch target
+  # correctly using its SDKROOT=watchos build setting. The scheme entry tells
+  # xcodebuild to build the watch target during archive.
   scheme_path = File.join(ios_root, 'PickleGo.xcodeproj', 'xcshareddata', 'xcschemes', 'PickleGo.xcscheme')
   if File.exist?(scheme_path)
     require 'rexml/document'
     doc = REXML::Document.new(File.read(scheme_path))
     build_action = doc.elements['//BuildAction']
     if build_action
-      removed = false
+      # Remove any existing watch entry first
       build_action.elements.each('BuildActionEntries/BuildActionEntry') do |entry|
         entry.elements.each('BuildableReference') do |ref|
           if ref.attributes['BlueprintName'] == 'PickleGoWatch'
             entry.parent.delete_element(entry)
-            removed = true
           end
         end
       end
-      if removed
-        File.write(scheme_path, doc.to_s)
-        puts "  Removed PickleGoWatch from PickleGo scheme"
-      end
+
+      # Add fresh entry — archive only
+      entries = build_action.elements['BuildActionEntries']
+      entry = entries.add_element('BuildActionEntry')
+      entry.add_attributes({
+        'buildForTesting' => 'NO',
+        'buildForRunning' => 'NO',
+        'buildForProfiling' => 'NO',
+        'buildForArchiving' => 'YES',
+        'buildForAnalyzing' => 'NO'
+      })
+      ref = entry.add_element('BuildableReference')
+      ref.add_attributes({
+        'BuildableIdentifier' => 'primary',
+        'BlueprintIdentifier' => watch_target.uuid,
+        'BuildableName' => 'PickleGoWatch.app',
+        'BlueprintName' => 'PickleGoWatch',
+        'ReferencedContainer' => 'container:PickleGo.xcodeproj'
+      })
+      File.write(scheme_path, doc.to_s)
+      puts "  Added PickleGoWatch to scheme (archive only)"
     end
   end
 end
 
-# Apply watch build settings that the config plugin sets (belt-and-suspenders)
+# Apply watch build settings
 watch_target.build_configurations.each do |config|
   config.build_settings['SDKROOT'] = 'watchos'
   config.build_settings['WATCHOS_DEPLOYMENT_TARGET'] = '10.0'
@@ -192,12 +179,6 @@ watch_target.build_configurations.each do |config|
   config.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
 end
 
-# Note: productType stays as com.apple.product-type.application (not watchapp2).
-# watchapp2 causes "unable to resolve product type" for simulator builds because
-# Xcode validates all targets in the project. SDKROOT=watchos + scheme entry
-# handles the archive correctly, and the script phase handles embedding.
-
 # Save
 project.save
 puts "\nDone! PickleGoWatch file references fixed."
-puts "Open ios/PickleGo.xcworkspace in Xcode and build."
