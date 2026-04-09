@@ -93,35 +93,82 @@ end
   end
 end
 
-# Note: "Embed Watch Content" build phase is NOT added here.
-# Adding it (even empty) can cause Xcode/EAS to try compiling the watch target
-# under the iOS SDK, which fails. The watch app is distributed separately
-# or added manually in Xcode for local archive builds.
+# Add "Embed Watch Content" copy files build phase to the iOS target.
+# This tells xcodebuild archive to embed PickleGoWatch.app inside the main bundle.
+# IMPORTANT: Do NOT add ios_target.add_dependency(watch_target) — that forces
+# Xcode to compile the watch target with the iOS SDK, which fails.
 if ios_target
+  # Add a Run Script build phase that embeds the watch app during archive only.
+  # We can't use a CopyFiles build phase with a product reference because that
+  # creates an implicit dependency, forcing Xcode to build the watch target with
+  # the iOS SDK (fails for simulator builds). A script phase with ACTION check
+  # only runs the copy during `xcodebuild archive`.
+  embed_phase_name = 'Embed Watch Content'
+  existing_embed = ios_target.build_phases.find { |bp| bp.respond_to?(:name) && bp.name == embed_phase_name }
 
-  # Remove PickleGoWatch from the PickleGo scheme if present.
-  # The watch target must NOT be in the iOS scheme — it has SDKROOT=watchos
-  # and cannot be compiled under the iphoneos SDK that EAS Build uses.
-  # The watch app is built and submitted separately.
+  unless existing_embed
+    embed_phase = project.new(Xcodeproj::Project::Object::PBXShellScriptBuildPhase)
+    embed_phase.name = embed_phase_name
+    embed_phase.shell_script = <<~SCRIPT
+      if [ "${ACTION}" = "install" ]; then
+        WATCH_APP="${BUILD_DIR}/${CONFIGURATION}-watchos/PickleGoWatch.app"
+        DEST="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Watch"
+        if [ -d "${WATCH_APP}" ]; then
+          mkdir -p "${DEST}"
+          cp -R "${WATCH_APP}" "${DEST}/"
+          echo "Embedded PickleGoWatch.app into Watch/"
+        else
+          echo "warning: PickleGoWatch.app not found at ${WATCH_APP}"
+        fi
+      fi
+    SCRIPT
+    embed_phase.shell_path = '/bin/sh'
+    ios_target.build_phases << embed_phase
+
+    puts "  Added '#{embed_phase_name}' script phase to PickleGo target"
+  else
+    puts "  '#{embed_phase_name}' phase already exists"
+  end
+
+  # Add PickleGoWatch to the PickleGo scheme for archive builds only.
+  # buildForArchiving=YES tells xcodebuild archive to compile the watch target
+  # with its own SDKROOT (watchos). All other build actions are NO so simulator
+  # builds skip it entirely.
   scheme_path = File.join(ios_root, 'PickleGo.xcodeproj', 'xcshareddata', 'xcschemes', 'PickleGo.xcscheme')
   if File.exist?(scheme_path)
     require 'rexml/document'
     doc = REXML::Document.new(File.read(scheme_path))
     build_action = doc.elements['//BuildAction']
     if build_action
-      removed = false
+      # Remove any existing watch entry first (clean slate)
       build_action.elements.each('BuildActionEntries/BuildActionEntry') do |entry|
         entry.elements.each('BuildableReference') do |ref|
           if ref.attributes['BlueprintName'] == 'PickleGoWatch'
             entry.parent.delete_element(entry)
-            removed = true
           end
         end
       end
-      if removed
-        File.write(scheme_path, doc.to_s)
-        puts "  Removed PickleGoWatch from PickleGo scheme"
-      end
+
+      # Add fresh entry with archive-only flags
+      entries = build_action.elements['BuildActionEntries']
+      entry = entries.add_element('BuildActionEntry')
+      entry.add_attributes({
+        'buildForTesting' => 'NO',
+        'buildForRunning' => 'NO',
+        'buildForProfiling' => 'NO',
+        'buildForArchiving' => 'YES',
+        'buildForAnalyzing' => 'NO'
+      })
+      ref = entry.add_element('BuildableReference')
+      ref.add_attributes({
+        'BuildableIdentifier' => 'primary',
+        'BlueprintIdentifier' => watch_target.uuid,
+        'BuildableName' => 'PickleGoWatch.app',
+        'BlueprintName' => 'PickleGoWatch',
+        'ReferencedContainer' => 'container:PickleGo.xcodeproj'
+      })
+      File.write(scheme_path, doc.to_s)
+      puts "  Added PickleGoWatch to scheme (archive only)"
     end
   end
 end

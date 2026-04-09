@@ -124,6 +124,23 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     eas: {
       projectId: "5ab7653e-2d17-4fb1-9f19-ad2c2c5bc710",
+      build: {
+        experimental: {
+          ios: {
+            appExtensions: [
+              {
+                targetName: "PickleGoWatch",
+                bundleIdentifier: "com.picklego.picklego.watchkitapp",
+                entitlements: {
+                  "com.apple.security.application-groups": [
+                    "group.com.picklego.picklego",
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      },
     },
   },
   owner: "lanre-25",
