@@ -93,70 +93,34 @@ end
   end
 end
 
-# Add "Embed Watch Content" copy files build phase to the iOS target
-# This embeds PickleGoWatch.app inside the main app bundle for distribution.
+# Note: "Embed Watch Content" build phase is NOT added here.
+# Adding it (even empty) can cause Xcode/EAS to try compiling the watch target
+# under the iOS SDK, which fails. The watch app is distributed separately
+# or added manually in Xcode for local archive builds.
 if ios_target
-  embed_phase_name = 'Embed Watch Content'
-  existing_embed = ios_target.build_phases.find { |bp| bp.respond_to?(:name) && bp.name == embed_phase_name }
 
-  unless existing_embed
-    embed_phase = project.new(Xcodeproj::Project::Object::PBXCopyFilesBuildPhase)
-    embed_phase.name = embed_phase_name
-    embed_phase.symbol_dst_subfolder_spec = :wrapper
-    embed_phase.dst_path = '$(CONTENTS_FOLDER_PATH)/Watch'
-    embed_phase.dst_subfolder_spec = '16'  # 16 = Watch Content
-    ios_target.build_phases << embed_phase
-
-    # Note: We intentionally do NOT add a target dependency or product reference here.
-    # Adding a dependency forces Xcode to build the watch target with the iOS SDK,
-    # which fails because watchOS sources can't compile for iphonesimulator.
-    # For EAS/archive builds, the PickleGo scheme includes PickleGoWatch as an
-    # archive-only build entry, and xcodebuild archive handles the multi-SDK correctly.
-    # The empty embed phase ensures the build phase exists in the pbxproj for Xcode
-    # to populate when archiving.
-
-    puts "  Added '#{embed_phase_name}' build phase to PickleGo target"
-  else
-    puts "  '#{embed_phase_name}' build phase already exists"
-  end
-
-  # For the PickleGo scheme, exclude the watch target from simulator builds
-  # by marking it to only build for archive. The scheme controls this.
+  # Remove PickleGoWatch from the PickleGo scheme if present.
+  # The watch target must NOT be in the iOS scheme — it has SDKROOT=watchos
+  # and cannot be compiled under the iphoneos SDK that EAS Build uses.
+  # The watch app is built and submitted separately.
   scheme_path = File.join(ios_root, 'PickleGo.xcodeproj', 'xcshareddata', 'xcschemes', 'PickleGo.xcscheme')
   if File.exist?(scheme_path)
     require 'rexml/document'
     doc = REXML::Document.new(File.read(scheme_path))
     build_action = doc.elements['//BuildAction']
     if build_action
-      # Check if PickleGoWatch entry already exists
-      has_watch_entry = false
+      removed = false
       build_action.elements.each('BuildActionEntries/BuildActionEntry') do |entry|
         entry.elements.each('BuildableReference') do |ref|
-          has_watch_entry = true if ref.attributes['BlueprintName'] == 'PickleGoWatch'
+          if ref.attributes['BlueprintName'] == 'PickleGoWatch'
+            entry.parent.delete_element(entry)
+            removed = true
+          end
         end
       end
-
-      unless has_watch_entry
-        entries = build_action.elements['BuildActionEntries']
-        entry = entries.add_element('BuildActionEntry')
-        # Only build for archiving — not for running/testing (avoids SDK mismatch on simulator)
-        entry.add_attributes({
-          'buildForTesting' => 'NO',
-          'buildForRunning' => 'NO',
-          'buildForProfiling' => 'NO',
-          'buildForArchiving' => 'YES',
-          'buildForAnalyzing' => 'NO'
-        })
-        ref = entry.add_element('BuildableReference')
-        ref.add_attributes({
-          'BuildableIdentifier' => 'primary',
-          'BlueprintIdentifier' => watch_target.uuid,
-          'BuildableName' => 'PickleGoWatch.app',
-          'BlueprintName' => 'PickleGoWatch',
-          'ReferencedContainer' => 'container:PickleGo.xcodeproj'
-        })
+      if removed
         File.write(scheme_path, doc.to_s)
-        puts "  Added PickleGoWatch to scheme (archive only)"
+        puts "  Removed PickleGoWatch from PickleGo scheme"
       end
     end
   end
