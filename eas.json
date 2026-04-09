@@ -8,24 +8,14 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
-        "simulator": false,
-        "pre-install": "gem install xcodeproj",
-        "post-install": "ruby scripts/fix-watch-target.rb"
+        "simulator": false
       }
     },
     "preview": {
-      "distribution": "internal",
-      "ios": {
-        "pre-install": "gem install xcodeproj",
-        "post-install": "ruby scripts/fix-watch-target.rb"
-      }
+      "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "ios": {
-        "pre-install": "gem install xcodeproj",
-        "post-install": "ruby scripts/fix-watch-target.rb"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {
