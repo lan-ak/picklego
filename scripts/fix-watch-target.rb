@@ -107,29 +107,38 @@ if ios_target
   embed_phase = project.new(Xcodeproj::Project::Object::PBXShellScriptBuildPhase)
   embed_phase.name = embed_phase_name
   embed_phase.shell_script = <<~'SCRIPT'
+    # Only run during archive (ACTION=install)
     if [ "${ACTION}" != "install" ]; then
       exit 0
     fi
 
-    DEST="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Watch"
+    WATCH_BUILD_DIR="${BUILD_DIR}/watchos-build"
+    echo "Building PickleGoWatch for watchOS..."
+    xcodebuild build \
+      -project "${PROJECT_DIR}/PickleGo.xcodeproj" \
+      -target PickleGoWatch \
+      -configuration "${CONFIGURATION}" \
+      -sdk watchos \
+      ONLY_ACTIVE_ARCH=NO \
+      SYMROOT="${WATCH_BUILD_DIR}" \
+      DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM}" \
+      CODE_SIGN_STYLE="Automatic" \
+      CODE_SIGN_IDENTITY="Apple Development" \
+      2>&1
 
-    # With SKIP_INSTALL=NO, Xcode puts the watch app in the install dir
-    INSTALL_APP="${DSTROOT}/Applications/PickleGoWatch.app"
-    # Fallback: check the build products directory
-    BUILD_APP="${BUILD_DIR}/${CONFIGURATION}-watchos/PickleGoWatch.app"
-
-    if [ -d "${INSTALL_APP}" ] && [ ! -L "${INSTALL_APP}" ]; then
-      WATCH_APP="${INSTALL_APP}"
-    elif [ -e "${BUILD_APP}" ]; then
-      # Resolve symlinks and copy the real files
-      WATCH_APP="$(cd "${BUILD_APP}" 2>/dev/null && pwd -P)" || WATCH_APP="${BUILD_APP}"
-    else
-      echo "warning: PickleGoWatch.app not found"
-      exit 0
+    if [ $? -ne 0 ]; then
+      echo "error: PickleGoWatch build failed"
+      exit 1
     fi
 
+    WATCH_APP="${WATCH_BUILD_DIR}/${CONFIGURATION}-watchos/PickleGoWatch.app"
+    if [ ! -d "${WATCH_APP}" ]; then
+      echo "error: PickleGoWatch.app not found at ${WATCH_APP}"
+      exit 1
+    fi
+
+    DEST="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Watch"
     mkdir -p "${DEST}"
-    # Use -RL to dereference symlinks during copy
     cp -RL "${WATCH_APP}" "${DEST}/PickleGoWatch.app"
     echo "Embedded PickleGoWatch.app into Watch/"
   SCRIPT
@@ -137,17 +146,15 @@ if ios_target
   ios_target.build_phases << embed_phase
   puts "  Added '#{embed_phase_name}' script phase to PickleGo target"
 
-  # Add PickleGoWatch to the PickleGo scheme for archive builds only.
-  # Local xcodebuild archive (without -destination flag) resolves the watch target
-  # correctly using its SDKROOT=watchos build setting. The scheme entry tells
-  # xcodebuild to build the watch target during archive.
+  # Remove PickleGoWatch from the scheme — it's built by the script phase above.
+  # The archive uses -destination generic/platform=iOS which would force the watch
+  # target to build with the iOS SDK if it were in the scheme.
   scheme_path = File.join(ios_root, 'PickleGo.xcodeproj', 'xcshareddata', 'xcschemes', 'PickleGo.xcscheme')
   if File.exist?(scheme_path)
     require 'rexml/document'
     doc = REXML::Document.new(File.read(scheme_path))
     build_action = doc.elements['//BuildAction']
     if build_action
-      # Remove any existing watch entry first
       build_action.elements.each('BuildActionEntries/BuildActionEntry') do |entry|
         entry.elements.each('BuildableReference') do |ref|
           if ref.attributes['BlueprintName'] == 'PickleGoWatch'
@@ -155,27 +162,8 @@ if ios_target
           end
         end
       end
-
-      # Add fresh entry — archive only
-      entries = build_action.elements['BuildActionEntries']
-      entry = entries.add_element('BuildActionEntry')
-      entry.add_attributes({
-        'buildForTesting' => 'NO',
-        'buildForRunning' => 'NO',
-        'buildForProfiling' => 'NO',
-        'buildForArchiving' => 'YES',
-        'buildForAnalyzing' => 'NO'
-      })
-      ref = entry.add_element('BuildableReference')
-      ref.add_attributes({
-        'BuildableIdentifier' => 'primary',
-        'BlueprintIdentifier' => watch_target.uuid,
-        'BuildableName' => 'PickleGoWatch.app',
-        'BlueprintName' => 'PickleGoWatch',
-        'ReferencedContainer' => 'container:PickleGo.xcodeproj'
-      })
       File.write(scheme_path, doc.to_s)
-      puts "  Added PickleGoWatch to scheme (archive only)"
+      puts "  Removed PickleGoWatch from scheme"
     end
   end
 end

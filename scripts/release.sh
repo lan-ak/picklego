@@ -43,6 +43,7 @@ xcodebuild archive \
   -workspace ios/PickleGo.xcworkspace \
   -scheme PickleGo \
   -configuration Release \
+  -destination "generic/platform=iOS" \
   -archivePath "$ARCHIVE_PATH" \
   -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$TEAM_ID" \

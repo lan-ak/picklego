@@ -165,6 +165,7 @@ function withWatchTarget(config) {
       ASSETCATALOG_COMPILER_APPICON_NAME: "AppIcon",
       SUPPORTS_MACCATALYST: "NO",
       SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: "NO",
+      SKIP_INSTALL: "NO",
     };
 
     // Iterate all build configurations and match by bundle ID

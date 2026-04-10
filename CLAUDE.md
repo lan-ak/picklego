@@ -101,7 +101,13 @@ cd functions && npm run build    # Compile TypeScript
 cd functions && npm run deploy   # Deploy to Firebase
 
 # Ship to TestFlight (iOS + watchOS)
-./scripts/release.sh         # Archives, then opens Xcode Organizer to upload
+./scripts/release.sh
+# Then in Xcode Organizer:
+#   1. Select the PickleGo archive
+#   2. Click "Distribute App"
+#   3. Select "App Store Connect" → "Upload"
+#   4. Let Xcode handle signing automatically
+#   5. Click "Upload"
 ```
 
 ## Apple Watch App
@@ -116,44 +122,58 @@ The watch app lives in `watch/` (source of truth) and gets copied to `ios/Pickle
 - **Build fixup**: `scripts/fix-watch-target.rb` — fixes Xcode file references, adds embed phase, configures scheme
 
 ### Build Pipeline (IMPORTANT)
-EAS Build **cannot** handle watchOS targets — it forces `-destination generic/platform=iOS` which compiles watch sources with the wrong SDK. All TestFlight/production builds must be done locally.
 
-**To ship to TestFlight:**
+**Ship to TestFlight / App Store:**
 ```bash
 ./scripts/release.sh
 ```
+Then in Xcode Organizer: "Distribute App" → "App Store Connect" → "Upload" → let Xcode handle signing → "Upload".
 
-This runs: `expo prebuild --clean` → `ruby scripts/fix-watch-target.rb` → `xcodebuild archive` → opens Xcode Organizer. Then click "Distribute App" → "App Store Connect" → "Upload".
+That's it. The script handles prebuild, watch target setup, and archiving automatically.
 
-Note: `xcodebuild -exportArchive` does NOT work via CLI because the watch target uses `productType = application` (not `watchapp2`), which Xcode's CLI export rejects. Xcode Organizer handles this correctly. This is a known limitation of mixed Expo + watchOS projects.
+**How it works under the hood:**
+1. `expo prebuild --clean` — creates fresh iOS project, config plugin adds watch target
+2. `ruby scripts/fix-watch-target.rb` — fixes file references, adds embed script phase, removes watch from scheme
+3. `xcodebuild archive -destination generic/platform=iOS` — builds the iOS app. The embed script phase separately builds the watch target with `-sdk watchos` and copies it into `PickleGo.app/Watch/`
+4. Opens Xcode Organizer — Xcode re-signs with the distribution cert during upload
+
+**Why it works this way:**
+- EAS Build cannot handle watchOS targets (forces iOS SDK on all scheme targets)
+- `xcodebuild -exportArchive` (CLI) rejects archives with `productType=application` watch companions
+- Xcode Organizer handles the re-signing and upload correctly
+- The watch target is NOT in the scheme — it's built by a script phase with `-sdk watchos` to avoid SDK conflicts
 
 **After `expo prebuild --clean`, you MUST run:**
 ```bash
 ruby scripts/fix-watch-target.rb
 ```
-This fixes Xcode file references, adds the "Embed Watch Content" script phase, and adds the watch target to the scheme (archive-only). Without it, the watch app won't compile or embed.
+Without this, the watch app won't compile or embed. The release script does this automatically.
 
-**For simulator testing only (no watch):**
+**For simulator testing (phone only):**
 ```bash
 npx expo prebuild --platform ios --clean
 ruby scripts/fix-watch-target.rb
-# Then build via Xcode or xcodebuild — simulator builds skip the watch target
+# Build via Xcode or xcodebuild — simulator builds skip the watch target automatically
 ```
 
-**For simulator testing with watch:**
+**For simulator testing (phone + watch):**
 ```bash
-# Build watch separately
+npx expo prebuild --platform ios --clean
+ruby scripts/fix-watch-target.rb
+# Build watch separately for watchOS simulator
 xcodebuild -project ios/PickleGo.xcodeproj -target PickleGoWatch -sdk watchsimulator ONLY_ACTIVE_ARCH=NO build
-# Symlink App Group containers (phone + watch sims have separate filesystems)
+# Symlink App Group containers (simulators have separate filesystems)
 ./scripts/link-sim-appgroup.sh
 ```
 
 ### Key Constraints
-- `watch/` is the source of truth — never edit files in `ios/PickleGoWatch/` (they get overwritten on prebuild)
-- The watch target uses `productType = application` (not `watchapp2`) because `watchapp2` breaks simulator builds
-- `SDKROOT = watchos` in build settings + scheme entry handles the correct SDK during archive
-- The embed phase is a shell script (not CopyFiles with product reference) to avoid implicit dependency that breaks simulator builds
+- `watch/` is the source of truth — never edit files in `ios/PickleGoWatch/` (overwritten on prebuild)
+- The watch target uses `productType = application` (not `watchapp2`) — `watchapp2` causes "Multiple commands produce" errors during archive
+- The watch target is NOT in the Xcode scheme — adding it causes SDK conflicts with `-destination generic/platform=iOS`
+- The embed phase is a shell script that builds the watch target separately with `-sdk watchos`
+- `xcodebuild -exportArchive` does NOT work via CLI — use Xcode Organizer for upload
 - Watch app version is synced from `app.config.ts` by the config plugin
+- Distribution signing happens during Xcode Organizer upload, not during archive
 
 ## Theme System
 
