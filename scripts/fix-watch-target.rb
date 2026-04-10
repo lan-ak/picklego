@@ -110,15 +110,28 @@ if ios_target
     if [ "${ACTION}" != "install" ]; then
       exit 0
     fi
-    WATCH_APP="${BUILD_DIR}/${CONFIGURATION}-watchos/PickleGoWatch.app"
+
     DEST="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Watch"
-    if [ -d "${WATCH_APP}" ]; then
-      mkdir -p "${DEST}"
-      cp -R "${WATCH_APP}" "${DEST}/"
-      echo "Embedded PickleGoWatch.app into Watch/"
+
+    # With SKIP_INSTALL=NO, Xcode puts the watch app in the install dir
+    INSTALL_APP="${DSTROOT}/Applications/PickleGoWatch.app"
+    # Fallback: check the build products directory
+    BUILD_APP="${BUILD_DIR}/${CONFIGURATION}-watchos/PickleGoWatch.app"
+
+    if [ -d "${INSTALL_APP}" ] && [ ! -L "${INSTALL_APP}" ]; then
+      WATCH_APP="${INSTALL_APP}"
+    elif [ -e "${BUILD_APP}" ]; then
+      # Resolve symlinks and copy the real files
+      WATCH_APP="$(cd "${BUILD_APP}" 2>/dev/null && pwd -P)" || WATCH_APP="${BUILD_APP}"
     else
-      echo "warning: PickleGoWatch.app not found at ${WATCH_APP}"
+      echo "warning: PickleGoWatch.app not found"
+      exit 0
     fi
+
+    mkdir -p "${DEST}"
+    # Use -RL to dereference symlinks during copy
+    cp -RL "${WATCH_APP}" "${DEST}/PickleGoWatch.app"
+    echo "Embedded PickleGoWatch.app into Watch/"
   SCRIPT
   embed_phase.shell_path = '/bin/sh'
   ios_target.build_phases << embed_phase
@@ -177,6 +190,7 @@ watch_target.build_configurations.each do |config|
   config.build_settings['INFOPLIST_FILE'] = 'PickleGoWatch/Info.plist'
   config.build_settings['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
   config.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
+  config.build_settings['SKIP_INSTALL'] = 'NO'
 end
 
 # Save

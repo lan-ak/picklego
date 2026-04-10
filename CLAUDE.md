@@ -101,7 +101,7 @@ cd functions && npm run build    # Compile TypeScript
 cd functions && npm run deploy   # Deploy to Firebase
 
 # Ship to TestFlight (iOS + watchOS)
-./scripts/archive-and-upload.sh
+./scripts/release.sh         # Archives, then opens Xcode Organizer to upload
 ```
 
 ## Apple Watch App
@@ -120,10 +120,12 @@ EAS Build **cannot** handle watchOS targets — it forces `-destination generic/
 
 **To ship to TestFlight:**
 ```bash
-./scripts/archive-and-upload.sh
+./scripts/release.sh
 ```
 
-This runs: `expo prebuild --clean` → `ruby scripts/fix-watch-target.rb` → `xcodebuild archive` → `xcodebuild -exportArchive` → upload instructions.
+This runs: `expo prebuild --clean` → `ruby scripts/fix-watch-target.rb` → `xcodebuild archive` → opens Xcode Organizer. Then click "Distribute App" → "App Store Connect" → "Upload".
+
+Note: `xcodebuild -exportArchive` does NOT work via CLI because the watch target uses `productType = application` (not `watchapp2`), which Xcode's CLI export rejects. Xcode Organizer handles this correctly. This is a known limitation of mixed Expo + watchOS projects.
 
 **After `expo prebuild --clean`, you MUST run:**
 ```bash
