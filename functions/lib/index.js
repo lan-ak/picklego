@@ -13,11 +13,13 @@ const scheduler_1 = require("firebase-functions/v2/scheduler");
 const ids_1 = require("./ids");
 const utils_1 = require("./utils");
 const app = (0, app_1.initializeApp)();
-/** Normalize a phone number to digits-only with US country code. */
+/** Normalize a phone number to digits-only with country code. */
 function normalizePhone(phone) {
     const digits = phone.replace(/\D/g, '');
     if (digits.length === 10)
         return '1' + digits;
+    if (digits.length === 11 && digits.startsWith('1'))
+        return digits;
     return digits;
 }
 const db = (0, firestore_2.getFirestore)(app);

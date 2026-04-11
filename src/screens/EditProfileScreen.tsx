@@ -19,6 +19,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Player } from '../types';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { isValidPhone, formatPhoneInput } from '../utils/phone';
+import { DEFAULT_COUNTRY, type Country } from '../utils/countries';
+import { CountryPickerModal } from '../components/CountryPickerModal';
 import { useToast } from '../context/ToastContext';
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import Animated from 'react-native-reanimated';
@@ -47,6 +49,8 @@ const EditProfileScreen: React.FC = () => {
   const [tempPassword, setTempPassword] = useState('');
   const [tempConfirmPassword, setTempConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedCountry, setSelectedCountry] = useState<Country>(DEFAULT_COUNTRY);
+  const [countryPickerVisible, setCountryPickerVisible] = useState(false);
 
   useEffect(() => {
     // Initialize form with current user data
@@ -82,7 +86,7 @@ const EditProfileScreen: React.FC = () => {
 
     // Phone validation
     if (tempPhone && tempPhone.trim()) {
-      if (!isValidPhone(tempPhone)) {
+      if (!isValidPhone(tempPhone, selectedCountry.dialCode)) {
         Alert.alert('Error', 'Please enter a valid phone number');
         return;
       }
@@ -108,7 +112,11 @@ const EditProfileScreen: React.FC = () => {
       };
 
       if (tempEmail) updates.email = tempEmail;
-      if (tempPhone) updates.phoneNumber = tempPhone;
+      if (tempPhone) {
+        updates.phoneNumber = selectedCountry.dialCode === '1'
+          ? tempPhone
+          : `+${selectedCountry.dialCode} ${tempPhone}`;
+      }
       if (tempPassword) updates.password = tempPassword;
 
       await updatePlayer(currentUser.id, updates);
@@ -177,15 +185,27 @@ const EditProfileScreen: React.FC = () => {
 
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Phone Number</Text>
-              <TextInput
-                style={styles.input}
-                value={tempPhone}
-                onChangeText={(text) => setTempPhone(formatPhoneInput(text))}
-                placeholder="(555) 123-4567"
-                keyboardType="phone-pad"
-                accessibilityLabel="Phone number"
-                accessibilityHint="Enter your phone number"
-              />
+              <View style={styles.phoneInputRow}>
+                <AnimatedPressable
+                  style={styles.countrySelector}
+                  onPress={() => setCountryPickerVisible(true)}
+                  hapticStyle="light"
+                >
+                  <Text style={styles.countrySelectorText}>
+                    {selectedCountry.flag} +{selectedCountry.dialCode}
+                  </Text>
+                  <Icon name="chevron-down" size={14} color={colors.gray400} />
+                </AnimatedPressable>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={tempPhone}
+                  onChangeText={(text) => setTempPhone(formatPhoneInput(text, selectedCountry.dialCode))}
+                  placeholder={selectedCountry.dialCode === '1' ? '(555) 123-4567' : 'Phone number'}
+                  keyboardType="phone-pad"
+                  accessibilityLabel="Phone number"
+                  accessibilityHint="Enter your phone number"
+                />
+              </View>
             </View>
 
             <View style={styles.inputContainer}>
@@ -260,6 +280,15 @@ const EditProfileScreen: React.FC = () => {
         </AnimatedPressable>
       </ScrollView>
       </Animated.View>
+      <CountryPickerModal
+        visible={countryPickerVisible}
+        onClose={() => setCountryPickerVisible(false)}
+        onSelect={(country) => {
+          setSelectedCountry(country);
+          setTempPhone('');
+        }}
+        selectedCode={selectedCountry.code}
+      />
     </Layout>
   );
 };
@@ -311,6 +340,24 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: spacing.lg,
     ...shadows.md,
+  },
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  countrySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
+  },
+  countrySelectorText: {
+    ...typography.bodyLarge,
+    color: colors.neutral,
   },
   inputContainer: {
     marginBottom: spacing.lg,

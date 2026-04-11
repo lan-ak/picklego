@@ -19,9 +19,11 @@ import { getPlayerDocument } from '../config/firebase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import type { ContactInfo, Player } from '../types';
-import { normalizePhone, formatPhoneDisplay } from '../utils/phone';
+import { normalizePhone, formatPhoneDisplay, formatPhoneInput, isValidPhone } from '../utils/phone';
 import { sendSMSInviteToContacts } from '../utils/smsInvite';
 import { useContacts } from '../hooks/useContacts';
+import { CountryPickerModal } from './CountryPickerModal';
+import { DEFAULT_COUNTRY, type Country } from '../utils/countries';
 
 type InviteContext = 'settings' | 'addMatch';
 
@@ -93,6 +95,8 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   // --- Invite tab: manual form state ---
   const [inviteName, setInviteName] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState<Country>(DEFAULT_COUNTRY);
+  const [countryPickerVisible, setCountryPickerVisible] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
   const [sending, setSending] = useState(false);
@@ -128,15 +132,12 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     const realPhones = new Set<string>();
     for (const p of [...allDeduped, ...noEmailPlayers]) {
       if (p.phoneNumber && !p.pendingClaim) {
-        const digits = p.phoneNumber.replace(/\D/g, '');
-        realPhones.add(digits.length === 10 ? '1' + digits : digits);
+        realPhones.add(normalizePhone(p.phoneNumber));
       }
     }
     const dedupedNoEmail = noEmailPlayers.filter(p => {
       if (!p.pendingClaim || !p.phoneNumber) return true;
-      const digits = p.phoneNumber.replace(/\D/g, '');
-      const norm = digits.length === 10 ? '1' + digits : digits;
-      return !realPhones.has(norm);
+      return !realPhones.has(normalizePhone(p.phoneNumber));
     });
 
     return [...allDeduped, ...dedupedNoEmail];
@@ -222,14 +223,14 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const hasEmail = inviteEmail.trim().length > 0;
     const hasPhone = invitePhone.trim().length > 0;
-    const normalizedPhone = hasPhone ? normalizePhone(invitePhone.trim()) : '';
+    const normalizedPhone = hasPhone ? normalizePhone(invitePhone.trim(), selectedCountry.dialCode) : '';
 
     if (hasEmail && !emailRegex.test(inviteEmail)) {
       Alert.alert('Error', 'Please enter a valid email address.');
       return;
     }
 
-    if (hasPhone && normalizedPhone.length < 10) {
+    if (hasPhone && !isValidPhone(invitePhone.trim(), selectedCountry.dialCode)) {
       Alert.alert('Error', 'Please enter a valid phone number.');
       return;
     }
@@ -582,13 +583,25 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
 
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Phone Number{inviteEmail.trim() ? ' (optional)' : ''}</Text>
-            <TextInput
-              style={styles.input}
-              value={invitePhone}
-              onChangeText={setInvitePhone}
-              placeholder="Enter phone number"
-              keyboardType="phone-pad"
-            />
+            <View style={styles.phoneInputRow}>
+              <AnimatedPressable
+                style={styles.countrySelector}
+                onPress={() => setCountryPickerVisible(true)}
+                hapticStyle="light"
+              >
+                <Text style={styles.countrySelectorText}>
+                  {selectedCountry.flag} +{selectedCountry.dialCode}
+                </Text>
+                <Icon name="chevron-down" size={14} color={colors.gray400} />
+              </AnimatedPressable>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                value={invitePhone}
+                onChangeText={(text) => setInvitePhone(formatPhoneInput(text, selectedCountry.dialCode))}
+                placeholder={selectedCountry.dialCode === '1' ? '(555) 123-4567' : 'Phone number'}
+                keyboardType="phone-pad"
+              />
+            </View>
           </View>
 
           <View style={styles.inputContainer}>
@@ -685,13 +698,24 @@ export const InvitePlayersModal: React.FC<InvitePlayersModalProps> = ({
   }
 
   return (
-    <DismissableModal
-      visible={visible}
-      onClose={handleClose}
-      overlayStyle={styles.modalOverlay}
-    >
-      {content}
-    </DismissableModal>
+    <>
+      <DismissableModal
+        visible={visible}
+        onClose={handleClose}
+        overlayStyle={styles.modalOverlay}
+      >
+        {content}
+      </DismissableModal>
+      <CountryPickerModal
+        visible={countryPickerVisible}
+        onClose={() => setCountryPickerVisible(false)}
+        onSelect={(country) => {
+          setSelectedCountry(country);
+          setInvitePhone('');
+        }}
+        selectedCode={selectedCountry.code}
+      />
+    </>
   );
 };
 
@@ -960,6 +984,25 @@ const styles = StyleSheet.create({
   },
 
   // Form inputs
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  countrySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: Platform.OS === 'ios' ? spacing.md : spacing.sm,
+  },
+  countrySelectorText: {
+    ...typography.bodySmall,
+    color: colors.neutral,
+  },
   inputContainer: {
     marginBottom: spacing.md,
   },

@@ -15,8 +15,8 @@ export async function sendSMSInviteToContacts(
   const message = `Hey! I'm using PickleGo to track our pickleball matches. Join me and let's play! ${deepLink}`;
   const phones = contacts.map(c => {
     const p = c.phone;
-    if (p.length === 11 && p.startsWith('1')) return `+${p}`;
-    return p;
+    // Ensure all numbers have + prefix for international SMS
+    return p.startsWith('+') ? p : `+${p}`;
   });
   const canSend = await SMS.isAvailableAsync();
   if (canSend) {

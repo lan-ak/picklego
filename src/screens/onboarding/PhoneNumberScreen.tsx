@@ -14,6 +14,7 @@ import type { OnboardingStackParamList, SMSInvite } from '../../types';
 import OnboardingLayout from '../../components/OnboardingLayout';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { Icon } from '../../components/Icon';
+import { CountryPickerModal } from '../../components/CountryPickerModal';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { useSlideIn, useHaptic } from '../../hooks';
@@ -21,6 +22,7 @@ import { callClaimSMSInvite } from '../../config/firebase';
 import { logAppsFlyerEvent } from '../../services/appsflyer';
 import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
 import { normalizePhone, formatPhoneInput, isValidPhone } from '../../utils/phone';
+import { DEFAULT_COUNTRY, type Country } from '../../utils/countries';
 
 type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'PhoneNumber'>;
 
@@ -87,11 +89,13 @@ const PhoneNumberScreen = () => {
   const { showToast } = useToast();
   const triggerHaptic = useHaptic();
   const [phone, setPhone] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState<Country>(DEFAULT_COUNTRY);
+  const [countryPickerVisible, setCountryPickerVisible] = useState(false);
   const [screenState, setScreenState] = useState<ScreenState>('idle');
   const [invites, setInvites] = useState<SMSInvite[]>([]);
   const [accepting, setAccepting] = useState<string | null>(null);
 
-  const phoneValid = isValidPhone(phone);
+  const phoneValid = isValidPhone(phone, selectedCountry.dialCode);
 
   const handleSubmit = useCallback(async () => {
     if (!currentUser?.id || !phoneValid) return;
@@ -99,10 +103,14 @@ const PhoneNumberScreen = () => {
     setScreenState('saving');
     try {
       const trimmedPhone = phone.trim();
-      await updatePlayer(currentUser.id, { phoneNumber: trimmedPhone });
+      // Store with country code prefix for international display
+      const displayPhone = selectedCountry.dialCode === '1'
+        ? trimmedPhone
+        : `+${selectedCountry.dialCode} ${trimmedPhone}`;
+      await updatePlayer(currentUser.id, { phoneNumber: displayPhone });
       logAppsFlyerEvent('phone_number_added');
 
-      const normalized = normalizePhone(trimmedPhone);
+      const normalized = normalizePhone(trimmedPhone, selectedCountry.dialCode);
       const foundInvites = await findSMSInvitesByPhone(normalized);
 
       if (foundInvites.length > 0) {
@@ -196,15 +204,24 @@ const PhoneNumberScreen = () => {
         {screenState === 'idle' && (
           <View style={styles.inputContainer}>
             <View style={styles.inputWrapper}>
-              <Icon name="phone" size={20} color={colors.gray400} />
+              <AnimatedPressable
+                style={styles.countrySelector}
+                onPress={() => setCountryPickerVisible(true)}
+                hapticStyle="light"
+              >
+                <Text style={styles.countrySelectorText}>
+                  {selectedCountry.flag} +{selectedCountry.dialCode}
+                </Text>
+                <Icon name="chevron-down" size={14} color={colors.gray400} />
+              </AnimatedPressable>
+              <View style={styles.inputDivider} />
               <TextInput
                 style={styles.input}
-                placeholder="(555) 123-4567"
+                placeholder={selectedCountry.dialCode === '1' ? '(555) 123-4567' : 'Phone number'}
                 placeholderTextColor={colors.gray300}
                 keyboardType="phone-pad"
                 value={phone}
-                onChangeText={(text) => setPhone(formatPhoneInput(text))}
-
+                onChangeText={(text) => setPhone(formatPhoneInput(text, selectedCountry.dialCode))}
               />
             </View>
             {phone.length > 0 && !phoneValid && (
@@ -246,6 +263,16 @@ const PhoneNumberScreen = () => {
 
         {screenState === 'noInvites' && <NoInvitesCard />}
       </View>
+
+      <CountryPickerModal
+        visible={countryPickerVisible}
+        onClose={() => setCountryPickerVisible(false)}
+        onSelect={(country) => {
+          setSelectedCountry(country);
+          setPhone('');
+        }}
+        selectedCode={selectedCountry.code}
+      />
     </OnboardingLayout>
   );
 };
@@ -266,6 +293,20 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     gap: spacing.md,
     ...shadows.sm,
+  },
+  countrySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  countrySelectorText: {
+    ...typography.bodyLarge,
+    color: colors.neutral,
+  },
+  inputDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: colors.gray200,
   },
   input: {
     flex: 1,

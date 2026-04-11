@@ -21,6 +21,13 @@ TEAM_ID="2Q87Z7RM4V"
 
 cd "$PROJECT_DIR"
 
+# Auto-increment build number
+BUILD_NUMBER_FILE="$PROJECT_DIR/build-number.json"
+CURRENT_BUILD=$(python3 -c "import json; print(json.load(open('$BUILD_NUMBER_FILE'))['buildNumber'])")
+NEXT_BUILD=$((CURRENT_BUILD + 1))
+python3 -c "import json; f=open('$BUILD_NUMBER_FILE','w'); json.dump({'buildNumber':$NEXT_BUILD},f); f.write('\n')"
+echo "Build number: $CURRENT_BUILD → $NEXT_BUILD"
+
 echo "================================"
 echo "  PickleGo — Release Build"
 echo "================================"

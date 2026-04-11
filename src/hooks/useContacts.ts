@@ -125,8 +125,12 @@ export function useContacts({ enabled }: UseContactsOptions): UseContactsReturn 
         const name = contact.name || contact.firstName || contact.lastName || '';
         for (const pn of contact.phoneNumbers) {
           if (!pn.number) continue;
-          const normalized = normalizePhone(pn.number);
-          if (normalized.length < 10 || seenPhones.has(normalized)) continue;
+          // If number starts with +, it's already international — strip + and use digits directly
+          const raw = pn.number.trim();
+          const normalized = raw.startsWith('+')
+            ? raw.replace(/\D/g, '')
+            : normalizePhone(raw);
+          if (normalized.length < 7 || seenPhones.has(normalized)) continue;
           seenPhones.add(normalized);
           contacts.push({
             name: name || pn.number,

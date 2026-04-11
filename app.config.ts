@@ -1,4 +1,7 @@
 import { ExpoConfig, ConfigContext } from "expo/config";
+import buildNumberJson from "./build-number.json";
+
+const BUILD_NUMBER = String(buildNumberJson.buildNumber);
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -17,6 +20,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   ios: {
     supportsTablet: false,
+    buildNumber: BUILD_NUMBER,
     bundleIdentifier: "com.picklego.picklego",
     googleServicesFile: process.env.GOOGLE_SERVICE_INFO_PLIST ?? "./GoogleService-Info.plist",
     usesAppleSignIn: true,
@@ -121,6 +125,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         ]
       : ["@react-native-google-signin/google-signin"]),
   ],
+  updates: {
+    url: "https://u.expo.dev/5ab7653e-2d17-4fb1-9f19-ad2c2c5bc710",
+  },
+  runtimeVersion: {
+    policy: "appVersion",
+  },
   extra: {
     eas: {
       projectId: "5ab7653e-2d17-4fb1-9f19-ad2c2c5bc710",
