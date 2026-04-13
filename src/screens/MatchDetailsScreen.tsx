@@ -28,6 +28,7 @@ import { db, getMatchDocument, callResendMatchNotifications } from '../config/fi
 import { generateOpenMatchLink } from '../services/appsflyer';
 import { usePlacement } from 'expo-superwall';
 import { PLACEMENTS } from '../services/superwallPlacements';
+import { isWatchAvailable } from '../../modules/watch-sync/src';
 
 type MatchDetailsRouteProp = RouteProp<RootStackParamList, 'MatchDetails'>;
 type MatchDetailsNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -46,6 +47,7 @@ const MatchDetailsScreen = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [matchNotifications, setMatchNotifications] = useState<MatchNotification[]>([]);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [watchAvailable, setWatchAvailable] = useState(false);
   const contextMatch = matches.find(m => m.id === route.params.matchId);
   const match = liveMatch || contextMatch || directMatch;
 
@@ -149,6 +151,16 @@ const MatchDetailsScreen = () => {
     if (!match) return;
     getNotificationsForMatch(match.id).then(setMatchNotifications);
   }, [match?.id]);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      try {
+        setWatchAvailable(isWatchAvailable());
+      } catch {
+        // Watch module unavailable (e.g. simulator without watch)
+      }
+    }
+  }, []);
 
   // --- Open invite handlers (must be before early returns to satisfy Rules of Hooks) ---
 
@@ -699,6 +711,14 @@ const MatchDetailsScreen = () => {
           </Section>
         )}
 
+        {/* Watch scoring hint */}
+        {Platform.OS === 'ios' && watchAvailable && match.status === 'scheduled' && isUserInMatch() && (
+          <View style={styles.watchInfoRow}>
+            <Icon name="watch" size={16} color={colors.gray500} />
+            <Text style={styles.watchInfoText}>Track scores on your Apple Watch</Text>
+          </View>
+        )}
+
         {/* Results Section - Only for completed matches */}
         {match.status === 'completed' && (
           <Section title="Match Results" icon="trophy" headerBorder style={{ marginBottom: spacing.sm }}>
@@ -1224,6 +1244,17 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.gray500,
     marginTop: spacing.xs,
+  },
+  watchInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  watchInfoText: {
+    ...typography.bodySmall,
+    color: colors.gray500,
+    marginLeft: spacing.sm,
   },
 });
 

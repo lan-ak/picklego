@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "appstorereject": {
+      "source": "nickgdwn/appstorereject-skills",
+      "sourceType": "github",
+      "computedHash": "e607d14138167b309e0235f1b1025a49c8e67f7ec75c0d7169b5fd20b17c0648"
+    },
+    "appstorereject-resolve": {
+      "source": "nickgdwn/appstorereject-skills",
+      "sourceType": "github",
+      "computedHash": "e40ed2d7875860772dcb611bfff495c9ec5f2b2f9ce0f6e067ef368ec93bb890"
+    },
+    "appstorereject-scan": {
+      "source": "nickgdwn/appstorereject-skills",
+      "sourceType": "github",
+      "computedHash": "775ae5a6593c33965a7c7b2e012aeb9ba0a84aea8011d1992b8f18022de01ccb"
+    }
+  }
+}

@@ -61,6 +61,7 @@ import {
   Link,
   Share2,
   Target,
+  Watch,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -125,6 +126,7 @@ const ICON_MAP = {
   'link': Link,
   'share-2': Share2,
   'target': Target,
+  'watch': Watch,
 } as const;
 
 export type IconName = keyof typeof ICON_MAP;

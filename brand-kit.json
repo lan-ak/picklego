@@ -1,0 +1,106 @@
+{
+  "brand": "PickleGo",
+  "tagline": "Your Pickleball Crew",
+  "description": "Pickleball match tracking and social app",
+
+  "colors": {
+    "primary": {
+      "Pickle Green": "#4CAF50",
+      "Power Yellow": "#FFC107",
+      "Court Blue": "#2196F3"
+    },
+    "neutral": {
+      "Deep Asphalt": "#333333",
+      "Court Gray": "#F5F5F5",
+      "Win White": "#FFFFFF"
+    },
+    "accent": {
+      "Error Red": "#F44336"
+    },
+    "overlays": {
+      "Green Tint": "rgba(76, 175, 80, 0.15)",
+      "Yellow Tint": "rgba(255, 193, 7, 0.15)",
+      "Blue Tint": "rgba(33, 150, 243, 0.15)"
+    }
+  },
+
+  "fonts": {
+    "primary": {
+      "family": "Fredoka",
+      "weights": {
+        "regular": 400,
+        "medium": 500,
+        "semibold": 600,
+        "bold": 700
+      },
+      "source": "https://fonts.google.com/specimen/Fredoka"
+    },
+    "display": {
+      "family": "Bungee",
+      "weights": {
+        "regular": 400
+      },
+      "source": "https://fonts.google.com/specimen/Bungee"
+    },
+    "secondary": {
+      "family": "Poppins",
+      "weights": {
+        "regular": 400,
+        "medium": 500,
+        "semibold": 600
+      },
+      "source": "https://fonts.google.com/specimen/Poppins"
+    }
+  },
+
+  "typography": {
+    "headline": { "font": "Fredoka", "weight": 700, "size": 32 },
+    "subheadline": { "font": "Fredoka", "weight": 600, "size": 24 },
+    "title": { "font": "Fredoka", "weight": 600, "size": 20 },
+    "body": { "font": "Fredoka", "weight": 500, "size": 16 },
+    "bodySmall": { "font": "Fredoka", "weight": 400, "size": 14 },
+    "button": { "font": "Fredoka", "weight": 600, "size": 16 },
+    "caption": { "font": "Fredoka", "weight": 400, "size": 12 },
+    "stats": { "font": "Fredoka", "weight": 700, "size": 24 }
+  },
+
+  "borderRadius": {
+    "small": 8,
+    "medium": 12,
+    "large": 16,
+    "extraLarge": 20,
+    "pill": 9999
+  },
+
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 20,
+    "xxl": 24,
+    "xxxl": 32
+  },
+
+  "tone": {
+    "voice": "Fun, friendly, active",
+    "personality": "Like a teammate who's always down to play",
+    "avoid": "Corporate, overly serious, aggressive competition language",
+    "keywords": ["crew", "game on", "rally", "dink", "play", "court"]
+  },
+
+  "adGuidelines": {
+    "primaryCTA": "Pickle Green (#4CAF50) background, white text, Fredoka SemiBold",
+    "secondaryCTA": "Power Yellow (#FFC107) background, Deep Asphalt text, Fredoka SemiBold",
+    "headlineFont": "Fredoka Bold or Bungee for impact",
+    "bodyFont": "Fredoka Medium or Poppins Regular",
+    "backgroundPreferred": ["#FFFFFF", "#F5F5F5"],
+    "backgroundBold": ["#4CAF50", "#333333"],
+    "doNotUse": [
+      "Gradients that muddy the primary green",
+      "More than 3 brand colors in one creative",
+      "Dark backgrounds with yellow text (low contrast)",
+      "Generic stock sports imagery — keep it pickleball-specific"
+    ]
+  }
+}
