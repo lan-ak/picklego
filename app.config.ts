@@ -7,7 +7,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: "PickleGo",
   slug: "PickleGo",
-  version: "1.0.3",
+  version: "1.0.4",
   scheme: "picklego",
   orientation: "portrait",
   icon: "./assets/icon.png",
