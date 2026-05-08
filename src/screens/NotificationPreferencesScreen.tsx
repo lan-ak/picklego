@@ -52,6 +52,11 @@ const PREFERENCE_OPTIONS: { key: PreferenceKey; label: string; description: stri
     label: 'Open Match Ready',
     description: 'When your open match is full and teams are set',
   },
+  {
+    key: 'reminders',
+    label: 'Reminders & Tips',
+    description: 'Periodic reminders to schedule matches and stay active',
+  },
 ];
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -62,6 +67,7 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   invite_accepted: true,
   open_match_join: true,
   open_match_full: true,
+  reminders: true,
 };
 
 const NotificationPreferencesScreen: React.FC = () => {

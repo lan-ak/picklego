@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.openMatchWaitlistPromotedNotifId = exports.openMatchWaitlistJoinNotifId = exports.openMatchFullNotifId = exports.openMatchLeaveNotifId = exports.openMatchJoinNotifId = exports.matchRemovedNotifId = exports.matchUpdatedNotifId = exports.inviteAcceptedNotifId = exports.matchCancelledNotifId = exports.matchInviteNotifId = exports.playerInviteNotifId = exports.newPlaceholderPlayerId = exports.newMatchId = void 0;
+exports.nudgeWeeklyNotifId = exports.nudgeNewUserNotifId = exports.openMatchWaitlistPromotedNotifId = exports.openMatchWaitlistJoinNotifId = exports.openMatchFullNotifId = exports.openMatchLeaveNotifId = exports.openMatchJoinNotifId = exports.matchRemovedNotifId = exports.matchUpdatedNotifId = exports.inviteAcceptedNotifId = exports.matchCancelledNotifId = exports.matchInviteNotifId = exports.playerInviteNotifId = exports.newPlaceholderPlayerId = exports.newMatchId = void 0;
 // SYNC: keep deterministic ID formats in sync with src/utils/ids.ts
 const crypto_1 = require("crypto");
 /** New match document ID */
@@ -44,4 +44,11 @@ exports.openMatchWaitlistJoinNotifId = openMatchWaitlistJoinNotifId;
 /** Open match waitlist promoted notification */
 const openMatchWaitlistPromotedNotifId = (matchId, promotedId) => `open_match_waitlist_promoted_${matchId}_${promotedId}_${(0, crypto_1.randomUUID)()}`;
 exports.openMatchWaitlistPromotedNotifId = openMatchWaitlistPromotedNotifId;
+// --- Re-engagement nudge IDs ---
+/** New user nudge — idempotent, one per player (deterministic) */
+const nudgeNewUserNotifId = (playerId) => `nudge_new_user_${playerId}`;
+exports.nudgeNewUserNotifId = nudgeNewUserNotifId;
+/** Weekly inactivity nudge — one per player per ISO week (deterministic) */
+const nudgeWeeklyNotifId = (playerId, year, week) => `nudge_weekly_${playerId}_${year}_w${week}`;
+exports.nudgeWeeklyNotifId = nudgeWeeklyNotifId;
 //# sourceMappingURL=ids.js.map

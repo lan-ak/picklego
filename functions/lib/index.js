@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resendMatchNotifications = exports.createNotificationsOnMatchUpdate = exports.createNotificationsOnMatchCreate = exports.deleteAccount = exports.expireOpenMatches = exports.cancelOpenMatch = exports.leaveOpenMatch = exports.joinOpenMatch = exports.recalculateStatsOnMatchUpdate = exports.lookupPhoneNumbers = exports.claimSMSInvite = exports.createSMSInvite = exports.sendPushOnNotificationWrite = exports.claimPlaceholderProfile = exports.acceptPlayerInvite = void 0;
+exports.nudgeInactiveUsersWeekly = exports.nudgeNewUsersWithoutMatch = exports.resendMatchNotifications = exports.createNotificationsOnMatchUpdate = exports.createNotificationsOnMatchCreate = exports.deleteAccount = exports.expireOpenMatches = exports.cancelOpenMatch = exports.leaveOpenMatch = exports.joinOpenMatch = exports.recalculateStatsOnMatchUpdate = exports.lookupPhoneNumbers = exports.claimSMSInvite = exports.createSMSInvite = exports.sendPushOnNotificationWrite = exports.claimPlaceholderProfile = exports.acceptPlayerInvite = void 0;
 const firestore_1 = require("firebase-functions/v2/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const v1_1 = require("firebase-functions/v1");
@@ -267,11 +267,8 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
         console.log(`[Push] skipping: status=${notification.status} (not 'sent'), id=${notifId}`);
         return;
     }
-    // Only send push for types that warrant a push
-    if (!['match_invite', 'match_updated', 'match_cancelled', 'player_invite', 'invite_accepted', 'open_match_join', 'open_match_leave', 'open_match_full', 'open_match_waitlist_join', 'open_match_waitlist_promoted'].includes(notification.type)) {
-        console.log(`[Push] skipping: unsupported type=${notification.type}, id=${notifId}`);
-        return;
-    }
+    // All notification types get push delivery.
+    // Per-type opt-out is handled by the preference check below.
     // If this is an update, skip if nothing meaningful changed
     if (isUpdate) {
         const before = change.before.data();
@@ -287,10 +284,12 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
         console.log(`[Push] skipping: placeholder recipient ${notification.recipientId}, id=${notifId}`);
         return;
     }
-    // Check if recipient has this notification type disabled in preferences
+    // Check if recipient has this notification type disabled in preferences.
+    // All nudge_* types map to the single 'reminders' preference key.
     const prefs = recipientDoc.exists ? recipientDoc.data().notificationPreferences : undefined;
-    if (prefs && prefs[notification.type] === false) {
-        console.log(`[Push] skipping: ${notification.type} disabled for ${notification.recipientId}, id=${notifId}`);
+    const prefKey = notification.type.startsWith('nudge_') ? 'reminders' : notification.type;
+    if (prefs && prefs[prefKey] === false) {
+        console.log(`[Push] skipping: ${notification.type} (pref=${prefKey}) disabled for ${notification.recipientId}, id=${notifId}`);
         return;
     }
     const pushTokens = recipientDoc.exists
@@ -343,9 +342,22 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
         title = "You're In!";
         body = notification.message || `You've been promoted from the waitlist — you're in the match!`;
     }
-    else {
+    else if (notification.type === 'nudge_new_user') {
+        title = 'Time to Play!';
+        body = notification.message || 'Schedule your first match and hit the courts!';
+    }
+    else if (notification.type === 'nudge_inactive_weekly') {
+        title = 'Miss the Courts?';
+        body = notification.message || 'Schedule a match this weekend!';
+    }
+    else if (notification.type === 'player_invite') {
         title = 'New Player Invite';
         body = notification.message || `${notification.senderName} wants to add you as a player!`;
+    }
+    else {
+        // Generic fallback — enables future server-only notification types
+        title = notification.pushTitle || 'PickleGo';
+        body = notification.message || 'You have a new notification';
     }
     // Send via Expo
     const messages = pushTokens.map((token) => ({
@@ -353,8 +365,9 @@ exports.sendPushOnNotificationWrite = v1_1.firestore
         channelId: 'match-invites',
         data: {
             ...(notification.matchId ? { matchId: notification.matchId } : {}),
-            screen: ['open_match_full', 'open_match_join', 'open_match_leave', 'open_match_waitlist_join', 'open_match_waitlist_promoted', 'match_invite', 'match_updated'].includes(notification.type) ? 'MatchDetails'
-                : 'Notifications',
+            screen: notification.type.startsWith('nudge_') ? 'AddMatch'
+                : ['open_match_full', 'open_match_join', 'open_match_leave', 'open_match_waitlist_join', 'open_match_waitlist_promoted', 'match_invite', 'match_updated'].includes(notification.type) ? 'MatchDetails'
+                    : 'Notifications',
             notificationId: notification.id,
         },
     }));
@@ -767,8 +780,13 @@ exports.recalculateStatsOnMatchUpdate = (0, firestore_1.onDocumentUpdated)('matc
                 .get();
             const playerMatches = matchesSnapshot.docs.map((d) => d.data());
             const stats = calculateOverallStats(playerMatches, playerId);
+            const completedMatches = playerMatches.filter(m => m.status === 'completed');
+            const lastCompletedMatchDate = completedMatches.length > 0
+                ? Math.max(...completedMatches.map(m => m.lastModifiedAt || m.createdAt))
+                : 0;
             batch.update(db.collection('players').doc(playerId), {
                 stats,
+                lastCompletedMatchDate,
                 updatedAt: Date.now(),
             });
             updatedCount++;
@@ -1525,5 +1543,129 @@ exports.resendMatchNotifications = (0, https_1.onCall)({ invoker: "private" }, a
     }
     console.log(`[Notifications] resendMatchNotifications: match=${matchId}, sender=${callerUid}, sent=${count}`);
     return { sent: count };
+});
+// ---------------------------------------------------------------------------
+// Re-engagement nudge notifications
+// ---------------------------------------------------------------------------
+/**
+ * Scheduled: nudge new users who haven't scheduled a match within 24 hours.
+ * Runs hourly. Queries players whose createdAt falls in the 24–25 hr window
+ * so each cohort is checked exactly once per schedule tick.
+ */
+exports.nudgeNewUsersWithoutMatch = (0, scheduler_1.onSchedule)('every 1 hours', async () => {
+    const now = Date.now();
+    const windowStart = now - 25 * 60 * 60 * 1000; // 25 hrs ago
+    const windowEnd = now - 24 * 60 * 60 * 1000; // 24 hrs ago
+    const playersSnap = await db.collection('players')
+        .where('createdAt', '>=', windowStart)
+        .where('createdAt', '<=', windowEnd)
+        .get();
+    if (playersSnap.empty)
+        return;
+    let sentCount = 0;
+    let batch = db.batch();
+    let batchSize = 0;
+    for (const playerDoc of playersSnap.docs) {
+        const player = playerDoc.data();
+        // Skip placeholders
+        if (player.pendingClaim === true)
+            continue;
+        // Skip players without push tokens
+        if (!player.pushTokens || player.pushTokens.length === 0)
+            continue;
+        // Check if the player has any matches
+        const matchesSnap = await db.collection('matches')
+            .where('allPlayerIds', 'array-contains', playerDoc.id)
+            .limit(1)
+            .get();
+        if (!matchesSnap.empty)
+            continue;
+        const notifId = (0, ids_1.nudgeNewUserNotifId)(playerDoc.id);
+        batch.set(db.collection('notifications').doc(notifId), {
+            id: notifId,
+            type: 'nudge_new_user',
+            status: 'sent',
+            recipientId: playerDoc.id,
+            senderId: 'picklego',
+            senderName: 'PickleGo',
+            message: 'Ready to play? Schedule your first match and hit the courts!',
+            createdAt: now,
+        });
+        sentCount++;
+        batchSize++;
+        if (batchSize >= 500) {
+            await batch.commit();
+            batch = db.batch();
+            batchSize = 0;
+        }
+    }
+    if (batchSize > 0) {
+        await batch.commit();
+    }
+    if (sentCount > 0) {
+        console.log(`nudgeNewUsersWithoutMatch: sent ${sentCount} nudge notifications`);
+    }
+});
+/**
+ * Scheduled: nudge inactive users every Friday at 10:00 AM ET.
+ * Queries players whose lastCompletedMatchDate is older than 7 days
+ * (or 0 = never completed) and who signed up more than 7 days ago.
+ */
+exports.nudgeInactiveUsersWeekly = (0, scheduler_1.onSchedule)({
+    schedule: 'every friday 10:00',
+    timeZone: 'America/New_York',
+}, async () => {
+    const now = Date.now();
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    // ISO week number for dedup ID
+    const currentDate = new Date(now);
+    const startOfYear = new Date(currentDate.getFullYear(), 0, 1);
+    const dayOfYear = Math.floor((now - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
+    const isoWeek = Math.ceil((dayOfYear + startOfYear.getDay() + 1) / 7);
+    const year = currentDate.getFullYear();
+    // Query players whose last completed match is older than 7 days (or 0 = never)
+    // AND who signed up more than 7 days ago (avoids overlap with new-user nudge)
+    const playersSnap = await db.collection('players')
+        .where('lastCompletedMatchDate', '<=', sevenDaysAgo)
+        .where('createdAt', '<=', sevenDaysAgo)
+        .get();
+    if (playersSnap.empty)
+        return;
+    let sentCount = 0;
+    let batch = db.batch();
+    let batchSize = 0;
+    for (const playerDoc of playersSnap.docs) {
+        const player = playerDoc.data();
+        // Skip placeholders
+        if (player.pendingClaim === true)
+            continue;
+        // Skip players without push tokens
+        if (!player.pushTokens || player.pushTokens.length === 0)
+            continue;
+        const notifId = (0, ids_1.nudgeWeeklyNotifId)(playerDoc.id, year, isoWeek);
+        batch.set(db.collection('notifications').doc(notifId), {
+            id: notifId,
+            type: 'nudge_inactive_weekly',
+            status: 'sent',
+            recipientId: playerDoc.id,
+            senderId: 'picklego',
+            senderName: 'PickleGo',
+            message: 'It\'s been a while! Schedule a match this weekend 🏓',
+            createdAt: now,
+        });
+        sentCount++;
+        batchSize++;
+        if (batchSize >= 500) {
+            await batch.commit();
+            batch = db.batch();
+            batchSize = 0;
+        }
+    }
+    if (batchSize > 0) {
+        await batch.commit();
+    }
+    if (sentCount > 0) {
+        console.log(`nudgeInactiveUsersWeekly: sent ${sentCount} nudge notifications`);
+    }
 });
 //# sourceMappingURL=index.js.map

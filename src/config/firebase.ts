@@ -79,6 +79,7 @@ export const createPlayerDocument = async (player: Player) => {
     const phoneHash = await computePhoneHash(playerData.phoneNumber);
     const dataToWrite = {
       ...playerData,
+      lastCompletedMatchDate: 0,
       ...(playerData.email ? { emailLowercase: playerData.email.trim().toLowerCase() } : {}),
       ...(phoneHash ? { phoneNumberHash: phoneHash } : {}),
     };

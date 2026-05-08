@@ -22,6 +22,8 @@ export interface NotificationPreferences {
   invite_accepted: boolean;
   open_match_join: boolean;
   open_match_full: boolean;
+  reminders: boolean;
+  [key: string]: boolean;
 }
 
 export interface Player {
@@ -150,7 +152,7 @@ export interface ContactInfo {
 
 export interface MatchNotification {
   id: string;
-  type: 'match_invite' | 'match_updated' | 'match_cancelled' | 'player_invite' | 'invite_accepted' | 'open_match_join' | 'open_match_leave' | 'open_match_full' | 'open_match_waitlist_join' | 'open_match_waitlist_promoted';
+  type: 'match_invite' | 'match_updated' | 'match_cancelled' | 'player_invite' | 'invite_accepted' | 'open_match_join' | 'open_match_leave' | 'open_match_full' | 'open_match_waitlist_join' | 'open_match_waitlist_promoted' | 'nudge_new_user' | 'nudge_inactive_weekly' | string;
   status: 'sent' | 'read' | 'accepted' | 'declined';
   recipientId: string;
   senderId: string;
@@ -277,6 +279,7 @@ export type OnboardingStackParamList = {
   ScheduleMatch: undefined;
   OnboardingAddMatch: { onboardingMode: true };
   Celebration: { matchCreated: boolean };
+  ReviewPrompt: undefined;
 };
 
 export type RootStackParamList = {

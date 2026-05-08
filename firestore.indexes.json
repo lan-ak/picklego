@@ -32,6 +32,14 @@
         { "fieldPath": "invitedBy", "order": "ASCENDING" },
         { "fieldPath": "pendingClaim", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "players",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdAt", "order": "ASCENDING" },
+        { "fieldPath": "lastCompletedMatchDate", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

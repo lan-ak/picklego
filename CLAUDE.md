@@ -33,7 +33,8 @@ src/
   theme/            # colors, typography, spacing, shadows, layout, animation
   assets/           # logo.png
   __tests__/        # Unit tests (matchLifecycle, scoreValidation, statsCalculator)
-functions/          # Firebase Cloud Functions (src/index.ts ~1700 lines)
+functions/          # Firebase Cloud Functions (src/index.ts ~1850 lines)
+functions/scripts/  # One-shot admin scripts (run via npx ts-node) — backfill, verifyIndex, findPlayer, testGenericFallback. Require Application Default Credentials (gcloud auth application-default login)
 watch/              # Apple Watch app (SwiftUI, source of truth)
 modules/watch-sync/ # Expo native module bridging WatchConnectivity to React Native
 plugins/            # withWatchTarget.js config plugin
@@ -107,13 +108,15 @@ SMS/Contacts: `invitePlayersBySMS`, `lookupContactsOnPickleGo`, `findSMSInvitesB
 - `resendMatchNotifications` — resend match invites to all participants
 
 **Triggers (Firestore):**
-- `sendPushOnNotificationWrite` — sends Expo push on notification doc create, deduplicates, cleans stale tokens
+- `sendPushOnNotificationWrite` — sends Expo push on notification doc create, deduplicates, cleans stale tokens. **Extensible**: no type allowlist — any notification type triggers a push (generic fallback uses `notification.message` as body, title="PickleGo"). `nudge_*` types map to the `reminders` preference key
 - `createNotificationsOnMatchCreate` — creates match_invite notifications for all players
 - `createNotificationsOnMatchUpdate` — handles roster changes (added → invite, existing → update, removed → cancel)
-- `recalculateStatsOnMatchUpdate` — recalculates all affected player stats on match completion/edit
+- `recalculateStatsOnMatchUpdate` — recalculates stats AND denormalizes `lastCompletedMatchDate` onto player docs on match completion/edit
 
 **Scheduled:**
 - `expireOpenMatches` — runs hourly, expires matches past scheduledDate
+- `nudgeNewUsersWithoutMatch` — runs hourly, sends `nudge_new_user` push to users who signed up 24–25hrs ago and have no matches
+- `nudgeInactiveUsersWeekly` — runs Friday 10:00 AM ET, sends `nudge_inactive_weekly` push to users with `lastCompletedMatchDate` > 7 days old (or 0) AND signup > 7 days ago
 
 ### Key Patterns
 - **Placeholder profiles**: SMS invites create `pendingClaim=true` players, merged via `claimPlaceholderProfile` Cloud Function when user signs up
@@ -123,6 +126,8 @@ SMS/Contacts: `invitePlayersBySMS`, `lookupContactsOnPickleGo`, `findSMSInvitesB
 - **Deep linking**: AppsFlyer OneLink for SMS invites and open match sharing
 - **Open matches**: Public matches with player pool, auto-randomized teams when full, FIFO waitlist
 - **Authenticated callables**: All Cloud Function callers use `authenticatedCallable()` wrapper with token refresh
+- **Extensible push notifications**: New server-side notification types ship with **functions deploy only** — no client release needed. The push trigger uses a generic fallback (title="PickleGo", body=`notification.message`), the client renders any `nudge_*` type generically via `NotificationCard`, and a single `reminders` preference toggle covers all nudges. To add a new re-engagement push: write a scheduled function that creates a notification doc with `type: 'nudge_<name>'`, `senderId: 'picklego'`, and a `message`. Optionally add a specific title/body mapping in `sendPushOnNotificationWrite` and a title in the client `NUDGE_TITLES` map for polish
+- **Denormalized inactivity field**: `players.lastCompletedMatchDate` is written by `recalculateStatsOnMatchUpdate` so the weekly nudge query is a single indexed read (`where lastCompletedMatchDate <= sevenDaysAgo and createdAt <= sevenDaysAgo`). Default `0` set on player creation. Composite index field order matters: `createdAt` first, then `lastCompletedMatchDate`
 
 ## Screens & Navigation
 
@@ -177,11 +182,12 @@ Player {
   id, name, email, phoneNumber, profilePic, rating,
   stats: PlayerStats { totalMatches, wins, losses, winPercentage, totalGames, gameWins, gameLosses, currentWinStreak, bestWinStreak },
   connections[], pendingConnections[], pushTokens[],
-  notificationPreferences: NotificationPreferences,
+  notificationPreferences: NotificationPreferences,  // includes 'reminders' for nudge_* types
   authProvider: 'email' | 'google' | 'apple',
   pendingClaim: boolean,   // placeholder awaiting claim
   invitedBy: string,
   phoneNumberHash: string, // SHA-256 for privacy
+  lastCompletedMatchDate: number,  // 0 if never; denormalized by recalculateStatsOnMatchUpdate; powers weekly inactivity nudge
   createdAt, updatedAt     // unix timestamps
 }
 
@@ -214,9 +220,10 @@ Game {
 MatchNotification {
   id, type: 'match_invite' | 'match_updated' | 'match_cancelled' | 'player_invite' |
             'invite_accepted' | 'open_match_join' | 'open_match_leave' | 'open_match_full' |
-            'open_match_waitlist_join' | 'open_match_waitlist_promoted',
+            'open_match_waitlist_join' | 'open_match_waitlist_promoted' |
+            'nudge_new_user' | 'nudge_inactive_weekly' | string,  // string escape hatch for future server-only types
   status: 'sent' | 'read' | 'accepted' | 'declined',
-  recipientId, senderId, senderName, senderProfilePic,
+  recipientId, senderId, senderName, senderProfilePic,  // system nudges use senderId='picklego', senderName='PickleGo'
   matchId, matchDate, matchLocation, message,
   createdAt, readAt, respondedAt
 }

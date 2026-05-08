@@ -54,3 +54,13 @@ export const openMatchWaitlistJoinNotifId = (matchId: string, joinerId: string) 
 /** Open match waitlist promoted notification */
 export const openMatchWaitlistPromotedNotifId = (matchId: string, promotedId: string) =>
   `open_match_waitlist_promoted_${matchId}_${promotedId}_${randomUUID()}`;
+
+// --- Re-engagement nudge IDs ---
+
+/** New user nudge — idempotent, one per player (deterministic) */
+export const nudgeNewUserNotifId = (playerId: string) =>
+  `nudge_new_user_${playerId}`;
+
+/** Weekly inactivity nudge — one per player per ISO week (deterministic) */
+export const nudgeWeeklyNotifId = (playerId: string, year: number, week: number) =>
+  `nudge_weekly_${playerId}_${year}_w${week}`;

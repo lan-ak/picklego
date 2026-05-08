@@ -55,6 +55,12 @@ const NotificationsScreen = () => {
       await markNotificationRead(notificationId);
     }
 
+    // Nudge notifications navigate to AddMatch to encourage scheduling
+    if (type && type.startsWith('nudge_')) {
+      navigation.navigate('AddMatch', {});
+      return;
+    }
+
     if (matchId) {
       // Check if the match still exists before navigating
       const matchExists = matches.some(m => m.id === matchId);

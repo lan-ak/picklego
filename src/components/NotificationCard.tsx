@@ -209,6 +209,43 @@ const NotificationCard = ({ notification, onPress, onAccept, onDecline, onDelete
     );
   }
 
+  // System nudge notifications (nudge_new_user, nudge_inactive_weekly, future nudge_* types)
+  if (notification.type.startsWith('nudge_')) {
+    const nudgeTitles: Record<string, string> = {
+      nudge_new_user: 'Time to Play!',
+      nudge_inactive_weekly: 'Miss the Courts?',
+    };
+    const nudgeTitle = nudgeTitles[notification.type] || 'PickleGo';
+    const isNudgeUnread = notification.status === 'sent';
+
+    return (
+      <AnimatedPressable
+        style={[styles.card, isNudgeUnread && styles.unreadCard]}
+        onPress={onPress}
+        accessibilityLabel={`${nudgeTitle}: ${notification.message || ''}`}
+        accessibilityRole="button"
+      >
+        <View style={styles.row}>
+          {isNudgeUnread && <View style={styles.unreadDot} />}
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Text style={[styles.title, isNudgeUnread && styles.unreadTitle]}>
+                {nudgeTitle}
+              </Text>
+              <View style={styles.headerRight}>
+                <Text style={styles.timeAgo}>{formatTimeAgo(notification.createdAt)}</Text>
+                {deleteButton}
+              </View>
+            </View>
+            <Text style={styles.body}>
+              {notification.message}
+            </Text>
+          </View>
+        </View>
+      </AnimatedPressable>
+    );
+  }
+
   // Default: match_invite
   const matchTypeLabel = notification.matchType === 'doubles' ? 'doubles' : 'singles';
 
