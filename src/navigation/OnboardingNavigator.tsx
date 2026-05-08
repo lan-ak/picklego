@@ -8,6 +8,7 @@ import PhoneNumberScreen from '../screens/onboarding/PhoneNumberScreen';
 import InviteFriendsScreen from '../screens/onboarding/InviteFriendsScreen';
 import ScheduleMatchScreen from '../screens/onboarding/ScheduleMatchScreen';
 import CelebrationScreen from '../screens/onboarding/CelebrationScreen';
+import ReviewPromptScreen from '../screens/onboarding/ReviewPromptScreen';
 import AddMatchScreen from '../screens/AddMatchScreen';
 
 const Stack = createNativeStackNavigator<OnboardingStackParamList>();
@@ -32,6 +33,7 @@ const OnboardingNavigator = () => {
         options={{ gestureEnabled: true, headerShown: false }}
       />
       <Stack.Screen name="Celebration" component={CelebrationScreen} />
+      <Stack.Screen name="ReviewPrompt" component={ReviewPromptScreen} />
     </Stack.Navigator>
   );
 };

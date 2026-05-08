@@ -11,18 +11,17 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { OnboardingStackParamList } from '../../types';
 import PicklePete from '../../components/PicklePete';
 import { PrimaryButton } from '../../components/Button';
-import { useData } from '../../context/DataContext';
 import { useFadeIn, useSlideIn, useHaptic } from '../../hooks';
-import { usePlacement } from 'expo-superwall';
-import { PLACEMENTS } from '../../services/superwallPlacements';
 import { colors, typography, spacing, springConfig } from '../../theme';
 
 type CelebrationRoute = RouteProp<OnboardingStackParamList, 'Celebration'>;
+type CelebrationNav = NativeStackNavigationProp<OnboardingStackParamList, 'Celebration'>;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CONFETTI_COUNT = 30;
@@ -100,9 +99,8 @@ const ConfettiPiece = ({ index }: { index: number }) => {
 
 const CelebrationScreen = () => {
   const route = useRoute<CelebrationRoute>();
+  const navigation = useNavigation<CelebrationNav>();
   const { matchCreated } = route.params;
-  const { completeOnboarding } = useData();
-  const { registerPlacement } = usePlacement();
   const triggerHaptic = useHaptic();
 
   // Animations
@@ -120,9 +118,8 @@ const CelebrationScreen = () => {
     transform: [{ scale: peteScale.value }],
   }));
 
-  const handleComplete = async () => {
-    registerPlacement({ placement: PLACEMENTS.ONBOARDING_COMPLETE });
-    await completeOnboarding();
+  const handleComplete = () => {
+    navigation.navigate('ReviewPrompt');
   };
 
   return (
