@@ -31,27 +31,10 @@ struct MatchListView: View {
                     for match in toDelete { modelContext.delete(match) }
                 }
             }
+            refreshRow
         }
         .refreshable {
             await syncManager.refreshAsync()
-        }
-        .overlay(alignment: .bottom) {
-            GeometryReader { geo in
-                let height = geo.size.height * 0.10
-                Button {
-                    Task { await syncManager.refreshAsync() }
-                } label: {
-                    Text("Refresh")
-                        .font(PickleGoFont.caption())
-                        .foregroundStyle(Color.pickleGreen)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: height)
-                        .background(Color.black)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .ignoresSafeArea(.container, edges: .bottom)
-            }
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -70,6 +53,29 @@ struct MatchListView: View {
             MatchSummaryView(matchId: dest.matchId, navigationPath: $navigationPath)
         }
         .onAppear { WatchSessionManager.shared.configure(modelContext: modelContext) }
+    }
+
+    // A normal scrollable list row so it's always reachable via the Digital Crown
+    // and respects the safe area on every watch size (including the taller,
+    // more-rounded 42mm/46mm Series 10/11 screens where a bottom-pinned button
+    // ended up below the tappable area).
+    private var refreshRow: some View {
+        Button {
+            Task { await syncManager.refreshAsync() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.clockwise")
+                Text("Refresh")
+            }
+            .font(PickleGoFont.caption())
+            .foregroundStyle(Color.pickleGreen)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
+        .accessibilityLabel("Refresh matches")
+        .accessibilityHint("Reloads matches from your phone")
     }
 
     private var emptyState: some View {
