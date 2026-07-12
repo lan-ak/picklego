@@ -124,6 +124,7 @@ struct ScoringView: View {
                         .lineLimit(1)
                         .opacity(0.4)
                     Text("\(match.currentTeam1Score)").font(PickleGoFont.scoreDigit())
+                        .lineLimit(1).minimumScaleFactor(0.5)
                     if match.servingTeam == 1 {
                         servingIndicator(serverNumber: match.serverNumber, size: 8, glowing: false)
                             .opacity(0.5)
@@ -135,6 +136,7 @@ struct ScoringView: View {
                         .lineLimit(1)
                         .opacity(0.4)
                     Text("\(match.currentTeam2Score)").font(PickleGoFont.scoreDigit())
+                        .lineLimit(1).minimumScaleFactor(0.5)
                     if match.servingTeam == 2 {
                         servingIndicator(serverNumber: match.serverNumber, size: 8, glowing: false)
                             .opacity(0.5)
@@ -150,6 +152,7 @@ struct ScoringView: View {
         let receivingScore = match.servingTeam == 1 ? match.currentTeam2Score : match.currentTeam1Score
         Text("\(servingScore) - \(receivingScore) - \(match.serverNumber)")
             .font(PickleGoFont.scoreCallout()).foregroundStyle(.white)
+            .lineLimit(1).minimumScaleFactor(0.6)
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
             .background(Capsule().fill(Color.white.opacity(0.08)))
@@ -168,6 +171,7 @@ struct ScoringView: View {
                 Text(truncated).font(PickleGoFont.teamName()).lineLimit(1).minimumScaleFactor(0.7)
                 Text("\(score)")
                     .font(PickleGoFont.scoreDigit())
+                    .lineLimit(1).minimumScaleFactor(0.5)
                     .foregroundStyle(isServing ? Color.pickleGreen : .white)
                 if isServing {
                     servingIndicator(serverNumber: match.serverNumber, size: 10, glowing: true)
