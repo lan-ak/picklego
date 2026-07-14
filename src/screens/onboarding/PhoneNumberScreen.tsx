@@ -19,7 +19,7 @@ import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { useSlideIn, useHaptic } from '../../hooks';
 import { callClaimSMSInvite } from '../../config/firebase';
-import { logAppsFlyerEvent } from '../../services/appsflyer';
+import { track } from '../../services/analytics';
 import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
 import { normalizePhone, formatPhoneInput, isValidPhone } from '../../utils/phone';
 import { DEFAULT_COUNTRY, type Country } from '../../utils/countries';
@@ -107,10 +107,19 @@ const PhoneNumberScreen = () => {
       const displayPhone = selectedCountry.dialCode === '1'
         ? trimmedPhone
         : `+${selectedCountry.dialCode} ${trimmedPhone}`;
-      await updatePlayer(currentUser.id, { phoneNumber: displayPhone });
-      logAppsFlyerEvent('phone_number_added');
 
+      // E.164 digits, persisted alongside the display string. Attribution is the reason:
+      // Meta hashes phone numbers WITH the country code, and displayPhone omits it for the
+      // default US country ("5551234567"), so hashing that matched nothing. The server's
+      // Conversions API reads this field back, so it has to live on the doc, not just here.
       const normalized = normalizePhone(trimmedPhone, selectedCountry.dialCode);
+
+      await updatePlayer(currentUser.id, {
+        phoneNumber: displayPhone,
+        phoneNumberE164: normalized,
+      });
+      track.phoneNumberAdded(normalized);
+
       const foundInvites = await findSMSInvitesByPhone(normalized);
 
       if (foundInvites.length > 0) {

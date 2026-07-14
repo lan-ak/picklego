@@ -5,7 +5,7 @@ import { View, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
-import { SuperwallProvider } from 'expo-superwall';
+import { SuperwallProvider, useSuperwallEvents } from 'expo-superwall';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
@@ -19,6 +19,9 @@ import { handleDeepLinkUrl } from './src/utils/deepLink';
 import { useSuperwallIdentity } from './src/hooks/useSuperwallIdentity';
 import type { PushNotificationData } from './src/types';
 import { initAppsFlyer } from './src/services/appsflyer';
+import { initMeta } from './src/services/meta';
+import { track } from './src/services/analytics';
+import TrackingPrimer from './src/components/TrackingPrimer';
 
 // Import to register the foreground notification handler
 import './src/services/pushNotifications';
@@ -26,6 +29,11 @@ import './src/services/pushNotifications';
 SplashScreen.preventAutoHideAsync();
 
 initAppsFlyer();
+
+// Fire-and-forget: internally waits for the ATT result before initializing the
+// Meta SDK, so the install event carries the correct tracking flag. Events logged
+// before that resolves are queued, not dropped.
+initMeta();
 
 // Set up Android notification channel
 if (Platform.OS === 'android') {
@@ -66,6 +74,39 @@ function handleNotificationResponse(response: Notifications.NotificationResponse
 /** Renderless component that syncs Firebase Auth identity + attributes to Superwall */
 function SuperwallIdentitySync() {
   useSuperwallIdentity();
+  return null;
+}
+
+/**
+ * Renderless component that forwards Superwall purchase outcomes to the attribution
+ * SDKs. Superwall does not do this itself for native StoreKit purchases — its Meta
+ * integration is browser-side Pixel for web paywalls only.
+ *
+ * Purchases go to AppsFlyer ONLY from here. Meta's copy is sent server-side by the
+ * superwallWebhook (functions/src/meta), which is also the only path that sees renewals —
+ * the client never does. Do not add a Meta purchase call here: FBSDK's logPurchase() cannot
+ * set an event_id, so it could never be deduplicated against the server's and revenue would
+ * double-count.
+ */
+function MetaPurchaseSync() {
+  useSuperwallEvents({
+    onSuperwallEvent: (info) => {
+      const event = info.event;
+      switch (event.event) {
+        case 'transactionComplete':
+          track.purchaseCompleted(event.product.price, event.product.productIdentifier);
+          break;
+        case 'freeTrialStart':
+          track.trialStarted(event.product.productIdentifier);
+          break;
+        case 'subscriptionStart':
+          track.subscriptionStarted(event.product.productIdentifier);
+          break;
+        default:
+          break;
+      }
+    },
+  });
   return null;
 }
 
@@ -132,10 +173,12 @@ export default function App() {
           }}
         >
           <SuperwallIdentitySync />
+          <MetaPurchaseSync />
           <NavigationContainer ref={navigationRef}>
             <SafeAreaProvider>
               <ToastProvider>
                 <Navigation />
+                <TrackingPrimer />
                 <StatusBar style="auto" />
               </ToastProvider>
             </SafeAreaProvider>

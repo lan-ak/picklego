@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.nudgeInactiveUsersWeekly = exports.nudgeNewUsersWithoutMatch = exports.resendMatchNotifications = exports.createNotificationsOnMatchUpdate = exports.createNotificationsOnMatchCreate = exports.deleteAccount = exports.expireOpenMatches = exports.cancelOpenMatch = exports.leaveOpenMatch = exports.joinOpenMatch = exports.recalculateStatsOnMatchUpdate = exports.lookupPhoneNumbers = exports.claimSMSInvite = exports.createSMSInvite = exports.sendPushOnNotificationWrite = exports.claimPlaceholderProfile = exports.acceptPlayerInvite = void 0;
+exports.nudgeInactiveUsersWeekly = exports.nudgeNewUsersWithoutMatch = exports.resendMatchNotifications = exports.createNotificationsOnMatchUpdate = exports.createNotificationsOnMatchCreate = exports.deleteAccount = exports.expireOpenMatches = exports.cancelOpenMatch = exports.leaveOpenMatch = exports.joinOpenMatch = exports.recalculateStatsOnMatchUpdate = exports.lookupPhoneNumbers = exports.claimSMSInvite = exports.createSMSInvite = exports.sendPushOnNotificationWrite = exports.claimPlaceholderProfile = exports.acceptPlayerInvite = exports.superwallWebhook = void 0;
 const firestore_1 = require("firebase-functions/v2/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const v1_1 = require("firebase-functions/v1");
@@ -12,16 +12,12 @@ const expo_server_sdk_1 = require("expo-server-sdk");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const ids_1 = require("./ids");
 const utils_1 = require("./utils");
+const phone_1 = require("./phone");
+// Superwall → Meta Conversions API bridge. Sends Purchase events (including
+// renewals, which the client SDK never sees) server-side.
+var superwallWebhook_1 = require("./meta/superwallWebhook");
+Object.defineProperty(exports, "superwallWebhook", { enumerable: true, get: function () { return superwallWebhook_1.superwallWebhook; } });
 const app = (0, app_1.initializeApp)();
-/** Normalize a phone number to digits-only with country code. */
-function normalizePhone(phone) {
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length === 10)
-        return '1' + digits;
-    if (digits.length === 11 && digits.startsWith('1'))
-        return digits;
-    return digits;
-}
 const db = (0, firestore_2.getFirestore)(app);
 const expo = new expo_server_sdk_1.default();
 /**
@@ -464,8 +460,8 @@ exports.claimSMSInvite = (0, https_1.onCall)(async (request) => {
         if (!callerPhone) {
             throw new https_1.HttpsError('failed-precondition', 'Phone number required to claim SMS invite');
         }
-        const normalizedCallerPhone = normalizePhone(callerPhone);
-        const recipientPhones = (invite.recipientPhones || []).map((p) => normalizePhone(p));
+        const normalizedCallerPhone = (0, phone_1.normalizePhone)(callerPhone);
+        const recipientPhones = (invite.recipientPhones || []).map((p) => (0, phone_1.normalizePhone)(p));
         if (!recipientPhones.includes(normalizedCallerPhone)) {
             throw new https_1.HttpsError('permission-denied', 'Phone number does not match invite recipients');
         }
@@ -536,7 +532,7 @@ exports.claimSMSInvite = (0, https_1.onCall)(async (request) => {
             // Verify the placeholder's phone number matches the claiming user's phone
             if (!callerPhone || !placeholder.phoneNumber)
                 continue;
-            if (normalizePhone(placeholder.phoneNumber) !== normalizePhone(callerPhone))
+            if ((0, phone_1.normalizePhone)(placeholder.phoneNumber) !== (0, phone_1.normalizePhone)(callerPhone))
                 continue;
             const placeholderId = placeholderDoc.id;
             // Transfer matches: replace placeholder ID with the new user's ID (query outside transaction)

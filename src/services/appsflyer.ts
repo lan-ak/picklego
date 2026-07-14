@@ -16,6 +16,9 @@ export function initAppsFlyer() {
     appId: '6743630735',
     onInstallConversionDataListener: true,
     onDeepLinkListener: true,
+    // Hold the install postback until ATT resolves so it can carry the IDFA.
+    // Installs will no longer post instantly — that is this flag working.
+    timeToWaitForATTUserAuthorization: 60,
   });
 
   appsflyer.setAppInviteOneLinkID('tb9Z');

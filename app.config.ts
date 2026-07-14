@@ -35,6 +35,36 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         "PickleGo uses your location to find nearby pickleball courts and set match locations.",
       NSPhotoLibraryUsageDescription:
         "PickleGo uses your photo library to let you choose a profile picture. For example, you can select an existing photo to represent yourself to other players.",
+      // NSUserTrackingUsageDescription is owned by the expo-tracking-transparency
+      // plugin. Setting it here too would make the winner order-dependent.
+      SKAdNetworkItems: [
+        { SKAdNetworkIdentifier: "v9wttpbfk9.skadnetwork" }, // Meta / Facebook
+        { SKAdNetworkIdentifier: "n38lu8286q.skadnetwork" }, // Meta / Instagram
+      ],
+    },
+    // Merged into the prebuild-generated ios/PickleGo/PrivacyInfo.xcprivacy, which
+    // otherwise declares NSPrivacyTracking:false — a false statement once the Meta
+    // SDK ships, and one Apple's automated check rejects.
+    // NSPrivacyTrackingDomains is deliberately omitted: iOS blocks listed domains
+    // outright when ATT is denied, and graph.facebook.com carries the SDK's
+    // non-tracking traffic too.
+    privacyManifests: {
+      NSPrivacyTracking: true,
+      NSPrivacyCollectedDataTypes: [
+        "NSPrivacyCollectedDataTypeDeviceID",
+        "NSPrivacyCollectedDataTypeUserID",
+        "NSPrivacyCollectedDataTypeProductInteraction",
+        "NSPrivacyCollectedDataTypeEmailAddress",
+        "NSPrivacyCollectedDataTypePhoneNumber",
+      ].map((NSPrivacyCollectedDataType) => ({
+        NSPrivacyCollectedDataType,
+        NSPrivacyCollectedDataTypeLinked: true,
+        NSPrivacyCollectedDataTypeTracking: true,
+        NSPrivacyCollectedDataTypePurposes: [
+          "NSPrivacyCollectedDataTypePurposeThirdPartyAdvertising",
+          "NSPrivacyCollectedDataTypePurposeAnalytics",
+        ],
+      })),
     },
   },
   android: {
@@ -113,8 +143,39 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       {
         devKey: process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY,
         appId: "6743630735",
+        // Hold the install postback until ATT resolves, so it can carry the IDFA.
+        timeToWaitForATTUserAuthorization: 60,
       },
     ],
+    [
+      "expo-tracking-transparency",
+      {
+        userTrackingPermission:
+          "This allows PickleGo to provide personalized recommendations and measure the effectiveness of our campaigns.",
+      },
+    ],
+    // Env-gated so a missing .env never breaks prebuild (same shape as google-signin below).
+    ...(process.env.EXPO_PUBLIC_META_APP_ID && process.env.EXPO_PUBLIC_META_CLIENT_TOKEN
+      ? [
+          [
+            "react-native-fbsdk-next",
+            {
+              appID: process.env.EXPO_PUBLIC_META_APP_ID,
+              clientToken: process.env.EXPO_PUBLIC_META_CLIENT_TOKEN,
+              displayName: "PickleGo",
+              scheme: `fb${process.env.EXPO_PUBLIC_META_APP_ID}`,
+              advertiserIDCollectionEnabled: true,
+              // Gives us fb_mobile_activate_app + install for free.
+              autoLogAppEventsEnabled: true,
+              // We initialize in src/services/meta.ts instead, after ATT resolves, so
+              // the first activate-app event carries the right tracking flag.
+              isAutoInitEnabled: false,
+              // expo-tracking-transparency owns NSUserTrackingUsageDescription.
+              iosUserTrackingPermission: false,
+            },
+          ] as [string, any],
+        ]
+      : []),
     "./plugins/withWatchTarget",
     ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
       ? [

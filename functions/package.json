@@ -5,7 +5,9 @@
   "scripts": {
     "build": "tsc",
     "serve": "npm run build && firebase emulators:start --only functions",
-    "deploy": "npm run build && firebase deploy --only functions"
+    "deploy": "npm run build && firebase deploy --only functions",
+    "meta": "tsx scripts/meta.ts",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json"
   },
   "engines": {
     "node": "22"
@@ -13,9 +15,12 @@
   "dependencies": {
     "expo-server-sdk": "^3.10.0",
     "firebase-admin": "^12.0.0",
-    "firebase-functions": "^6.0.0"
+    "firebase-functions": "^6.0.0",
+    "svix": "^1.96.1"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
     "typescript": "~5.5.0"
   }
 }

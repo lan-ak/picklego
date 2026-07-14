@@ -32,7 +32,16 @@ export interface Player {
   email?: string;
   password?: string;
   rating?: number;
+  /** Display form, e.g. "5551234567" (US) or "+44 7700900123". Not for hashing. */
   phoneNumber?: string;
+  /**
+   * E.164 digits with country code, e.g. "15551234567".
+   *
+   * Meta hashes phone numbers with the country code, and `phoneNumber` omits it for US
+   * users — so Advanced Matching and the Conversions API must both read this field, never
+   * `phoneNumber`. Written by PhoneNumberScreen; read back server-side by the CAPI webhook.
+   */
+  phoneNumberE164?: string;
   profilePic?: string;
   matches?: string[];
   stats?: PlayerStats;
@@ -47,6 +56,24 @@ export interface Player {
   pendingConnections?: string[];
   phoneNumberHash?: string;
   notificationPreferences?: NotificationPreferences;
+  metaContext?: MetaContext;
+}
+
+/**
+ * Device context the Meta Conversions API requires on every app event. The server
+ * can't derive any of this, so the client captures it once and denormalizes it onto
+ * the player doc for the CAPI Cloud Function to read.
+ */
+export interface MetaContext {
+  /** Meta's install ID (AppEventsLogger.getAnonymousID). Maps to CAPI `anon_id`. */
+  anonId?: string;
+  /** IDFA. All-zeros when ATT is denied. Maps to CAPI `madid`. */
+  advertiserId?: string;
+  /** Whether ATT was granted. Maps to CAPI `app_data.advertiser_tracking_enabled`. */
+  advertiserTrackingEnabled: boolean;
+  /** Meta's 16-element device array. Maps to CAPI `app_data.extinfo`. */
+  extinfo: string[];
+  updatedAt: number;
 }
 
 export interface Coordinates {

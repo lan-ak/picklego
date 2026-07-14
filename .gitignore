@@ -44,3 +44,7 @@ google-services.json
 
 # typescript
 *.tsbuildinfo
+
+# Meta Ads CLI launch ledgers — local run state holding live campaign/adset/ad ids.
+# Machine-specific, and not something to carry in the repo.
+functions/.meta-runs/

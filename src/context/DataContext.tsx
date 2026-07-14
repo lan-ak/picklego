@@ -46,7 +46,7 @@ import {
 } from '../config/firebase';
 import { hashPhone } from '../utils/phone';
 import { registerPushToken, unregisterPushToken } from '../services/pushNotifications';
-import { setAppsFlyerUserId, logAppsFlyerEvent } from '../services/appsflyer';
+import { identifyUser, resetUser, syncMetaContext, track } from '../services/analytics';
 import { useOnboardingStatus } from '../hooks/useOnboardingStatus';
 import { newMatchId, newPlaceholderPlayerId, playerInviteNotifId, matchCancelledNotifId } from '../utils/ids';
 
@@ -69,6 +69,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const socialSignUpInProgressRef = useRef(false);
   const resetUserState = () => {
     isResettingRef.current = true;
+    resetUser();
     unstable_batchedUpdates(() => {
       setCurrentUser(null);
       setMatches([]);
@@ -438,7 +439,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (playerDoc) {
             setCurrentUser(playerDoc);
-            setAppsFlyerUserId(playerDoc.id);
+            identifyUser(playerDoc.id, {
+              email: playerDoc.email,
+              phoneNumberE164: playerDoc.phoneNumberE164,
+              name: playerDoc.name,
+            });
+            // Fire-and-forget: gives the Conversions API the device context it needs
+            // to send app events server-side (renewals in particular).
+            void syncMetaContext(playerDoc.id, playerDoc.metaContext);
             setPlayers(prev => {
               const filtered = prev.filter(p => p.id !== playerDoc.id);
               return [...filtered, playerDoc];
@@ -721,7 +729,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw error;
     }
 
-    logAppsFlyerEvent('af_add_to_cart', { af_content_id: newMatch.id, af_content_type: 'match' });
+    track.matchCreated(newMatch.id, 'match');
     return newMatch;
   }, []);
 
@@ -760,7 +768,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         matchesRef.current.map(m => m.id === matchId ? updatedMatch : m)
       );
       if (updates.status === 'completed') {
-        logAppsFlyerEvent('match_complete', { af_content_id: matchId });
+        track.matchCompleted(matchId);
       }
     }
   }, []);
@@ -808,7 +816,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Only set as current user for auth signups
       if (playerData.email && playerData.password) {
         setCurrentUser(newPlayer);
-        logAppsFlyerEvent('af_complete_registration', { af_registration_method: 'email' });
+        track.signupCompleted('email');
       }
 
       return newPlayer;
@@ -1280,7 +1288,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await createPlayerDocument(newPlayer);
       setPlayers(prev => [...prev, newPlayer]);
       setCurrentUser(newPlayer);
-      logAppsFlyerEvent('af_complete_registration', { af_registration_method: provider });
+      track.signupCompleted(provider);
     } catch (error: any) {
       throw new Error(error.message);
     } finally {
@@ -1473,7 +1481,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // bidirectional connections, and creates the accept notification in a
         // single Firestore batch, preventing inconsistent state on partial failure.
         const result = await callAcceptPlayerInvite(notificationId);
-        logAppsFlyerEvent('player_connected', { af_description: 'invite_accepted' });
+        track.playerConnected('invite_accepted');
 
         // Fetch sender doc before batching state updates (so we can include it in a single render)
         let senderDoc: Player | null = null;
@@ -1559,7 +1567,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       contacts.map(c => c.phone),
       contacts.map(c => c.name),
     );
-    logAppsFlyerEvent('af_invite', { af_description: 'sms', af_quantity: String(contacts.length) });
+    track.inviteSent('sms', contacts.length);
     return { inviteId: result.inviteId };
   }, []);
 
@@ -1603,7 +1611,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw error;
     }
 
-    logAppsFlyerEvent('af_add_to_cart', { af_content_id: newMatch.id, af_content_type: 'open_match' });
+    track.matchCreated(newMatch.id, 'open_match');
     return newMatch;
   }, []);
 
@@ -1670,7 +1678,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await callClaimSMSInvite(pendingInviteId);
       if (result.claimed) {
         await AsyncStorage.removeItem('pendingSMSInviteId');
-        logAppsFlyerEvent('invite_claimed', { invite_id: pendingInviteId });
+        track.inviteClaimed(pendingInviteId);
         await refreshConnectedPlayers();
         await refreshNotifications();
       } else {

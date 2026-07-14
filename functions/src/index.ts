@@ -10,16 +10,13 @@ import Expo, { ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { inviteAcceptedNotifId, matchInviteNotifId, matchUpdatedNotifId, matchRemovedNotifId, openMatchJoinNotifId, openMatchLeaveNotifId, openMatchFullNotifId, openMatchWaitlistJoinNotifId, openMatchWaitlistPromotedNotifId, nudgeNewUserNotifId, nudgeWeeklyNotifId } from './ids';
 import { assignTeams, buildNotification } from './utils';
+import { normalizePhone } from './phone';
+
+// Superwall → Meta Conversions API bridge. Sends Purchase events (including
+// renewals, which the client SDK never sees) server-side.
+export { superwallWebhook } from './meta/superwallWebhook';
 
 const app = initializeApp();
-
-/** Normalize a phone number to digits-only with country code. */
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) return '1' + digits;
-  if (digits.length === 11 && digits.startsWith('1')) return digits;
-  return digits;
-}
 
 const db = getFirestore(app);
 const expo = new Expo();

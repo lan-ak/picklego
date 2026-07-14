@@ -12,7 +12,7 @@ Pickleball match tracking and social app built with React Native (Expo) and Fire
 - **Maps**: react-native-maps, expo-location, Google Places API
 - **Auth**: Email/password, Google Sign-In, Apple Sign-In (all via Firebase Auth)
 - **Notifications**: expo-notifications + Expo Server SDK (sent from Cloud Functions)
-- **Analytics**: AppsFlyer (attribution + deep linking via OneLink)
+- **Analytics**: AppsFlyer (attribution + deep linking via OneLink), Meta/Facebook SDK (`react-native-fbsdk-next` — Meta Ads attribution + App Events)
 - **Monetization**: Superwall (paywall placements: SESSION_START, ADD_MATCH_TAPPED, VIEW_STATS, COMPLETE_MATCH_TAPPED)
 - **Fonts**: Fredoka (primary), Bungee, Poppins
 
@@ -76,6 +76,7 @@ SMS/Contacts: `invitePlayersBySMS`, `lookupContactsOnPickleGo`, `findSMSInvitesB
 - `notifications/{id}` — match invites, updates, cancellations (scoped to sender/recipient)
 - `smsInvites/{id}` — SMS invitation tracking
 - `venues/{id}` — user-saved court locations
+- `metaCapiFailures/{eventName:eventId}` — purchase events Meta did not accept, parked for replay. Server-only (no client rules). Non-empty means revenue is missing from Meta.
 
 ### Firebase API (`src/config/firebase.ts`)
 
@@ -128,6 +129,92 @@ SMS/Contacts: `invitePlayersBySMS`, `lookupContactsOnPickleGo`, `findSMSInvitesB
 - **Authenticated callables**: All Cloud Function callers use `authenticatedCallable()` wrapper with token refresh
 - **Extensible push notifications**: New server-side notification types ship with **functions deploy only** — no client release needed. The push trigger uses a generic fallback (title="PickleGo", body=`notification.message`), the client renders any `nudge_*` type generically via `NotificationCard`, and a single `reminders` preference toggle covers all nudges. To add a new re-engagement push: write a scheduled function that creates a notification doc with `type: 'nudge_<name>'`, `senderId: 'picklego'`, and a `message`. Optionally add a specific title/body mapping in `sendPushOnNotificationWrite` and a title in the client `NUDGE_TITLES` map for polish
 - **Denormalized inactivity field**: `players.lastCompletedMatchDate` is written by `recalculateStatsOnMatchUpdate` so the weekly nudge query is a single indexed read (`where lastCompletedMatchDate <= sevenDaysAgo and createdAt <= sevenDaysAgo`). Default `0` set on player creation. Composite index field order matters: `createdAt` first, then `lastCompletedMatchDate`
+
+## Meta Ads Attribution
+
+Two independent paths send data to Meta. Which one owns an event is a deliberate decision, not an accident.
+
+### Client SDK (`react-native-fbsdk-next`)
+Owns installs, registration, match, and onboarding events. Initialized in `src/services/meta.ts` with `isAutoInitEnabled: false` — `initMeta()` waits for the ATT result, sets `setAdvertiserTrackingEnabled()`, and *only then* calls `initializeSDK()`, so the first `fb_mobile_activate_app` carries the correct tracking flag. Events fired before init are queued, not dropped.
+
+**App Tracking Transparency** is a hard prerequisite (no ATT → no IDFA → no attribution). `src/components/TrackingPrimer.tsx` is a cold-start priming overlay that gates on ATT status (`undetermined`), not onboarding state — so it reaches existing users on upgrade, and fires early enough that the install event carries the result.
+
+**Never use `AppEventsLogger.AppEvents.*` constants.** They come from the native module's `getConstants()`, which resolves to `{}` if the module doesn't bind under bridgeless — every constant becomes `undefined` and you silently call `logEvent(undefined)`. Use the literal `MetaEvents` map in `src/services/meta.ts`.
+
+### Conversions API (`functions/src/meta/`)
+Owns **purchases, exclusively.** The client never sends a Meta `Purchase`.
+
+Two reasons: (1) FBSDK's `logPurchase()` has no `event_id` parameter, so a client purchase and a server purchase could never be deduplicated and revenue would double-count; (2) the client never sees **renewals**, which are most of subscription revenue.
+
+> **⚠️ NOT YET LIVE. `META_DATASET_ID` is unset, so this path has never sent a single event.**
+> Without a dataset id there is no endpoint to POST to. Get it from Events Manager → Data
+> Sources → PickleGo → Settings → Dataset ID (there is no Graph edge for it; `npm run meta --
+> datasets` prints the click-path), then set it in **both** `functions/.env.local` and Secret
+> Manager. `doctor` reports this. Everything below is built and typechecked but unverified
+> against the live API — validate with `META_TEST_EVENT_CODE` before trusting it.
+
+`superwallWebhook` (the only `onRequest` in this codebase) receives Svix-signed Superwall events, verifies against `req.rawBody`, and forwards `initial_purchase` / `renewal` / `trial_conversion` / `non_renewing_purchase` to Meta as `Purchase`. Refunds (negative price) are skipped — Meta rejects negative values.
+
+It does the work **then** responds. Answering 200 first looks like a latency win but isn't: Cloud Run throttles CPU once the response is sent, so the Firestore read and Meta POST weren't guaranteed to run — and Superwall never retries a 200.
+
+Failures retry with backoff and then land in the **`metaCapiFailures`** collection, keyed `eventName:eventId`. A purchase Meta didn't accept is not allowed to evaporate into a log line.
+
+`REVENUE_EVENTS` is an *assumption* about Superwall's payload shape (the names are RevenueCat's). If it's wrong, every event is ignored and that looks exactly like "no purchases yet" — so unrecognized types are logged with their name, and a revenue event with no readable price logs a `warn`.
+
+Meta requires `app_data.extinfo` + `madid` + `anon_id` on app events, none of which a server can derive. The client captures them (`captureMetaDeviceContext()`) and denormalizes them onto `players/{id}.metaContext`; the webhook reads them back.
+
+**Phone numbers hash with the country code.** Read `players.phoneNumberE164`, never `players.phoneNumber` — the latter is a *display* string that for the default US country has no leading `1` ("5551234567"), and hashing it produced a value Meta has no record of. `normalizePhone` lives in `functions/src/phone.ts` and is shared; do not write a fourth copy.
+
+### Validating the attribution path
+`test_event_code` is the only way to see what Meta actually does with an event — a rejected app event is indistinguishable from silence. Set `META_TEST_EVENT_CODE` in `functions/.env` (a plain param, not a secret — it's a debug token, and an optional `defineSecret` fails the deploy when unset), drive a sandbox purchase, and watch Events Manager → Test Events. Remove it afterwards.
+
+Two things to check there, both currently **unverified**:
+- Does `fb_mobile_purchase` arrive **from the client**? `setAutoLogAppEventsEnabled(true)` also enables the iOS SDK's automatic in-app purchase logging, and there's no separate toggle. If it fires, the client is sending a purchase with no `event_id` alongside the server's — the exact double-count this design exists to prevent.
+- Does the CAPI `Purchase` land as the same event AEO optimizes for, or as a second one next to `fb_mobile_purchase`?
+
+### Secrets
+`functions/` uses `defineSecret` (`META_DATASET_ID`, `META_CAPI_TOKEN`, `SUPERWALL_WEBHOOK_SECRET`), set via `firebase functions:secrets:set`. **The System User token must never go in the root `.env`** — every `EXPO_PUBLIC_*` value is bundled into the shipped app. Only `EXPO_PUBLIC_META_APP_ID` and `EXPO_PUBLIC_META_CLIENT_TOKEN` belong there; both are public by design.
+
+**Nor may it go in `functions/.env`.** The Firebase CLI reads that file at deploy time and turns every value in it into a runtime environment variable on *every deployed Cloud Function* — a System User token with `ads_management` can spend money, so it must not be reachable from the Functions runtime. Marketing API credentials live in **`functions/.env.local`** (gitignored, and never deployed by Firebase). See `functions/.env.local.example`.
+
+`META_DATASET_ID` is the Events Manager dataset linked to the app — **not** the App ID, and not a web pixel. CAPI app events are rejected without it.
+
+**`META_CAPI_TOKEN` must NOT be the System User token.** Generate a dataset-scoped Conversions API token (Events Manager → dataset → Settings → Generate access token); it can only write events. The System User token carries `ads_management` and *can spend money* — putting it in Secret Manager would hand a money-spending credential to the Functions runtime, which is the one thing the `.env.local` / `.env` split exists to prevent. Two different tokens, deliberately.
+
+## Meta Ads Management (Marketing API)
+
+Separate from the attribution plumbing above: a full read+write CLI for running the ads themselves — launching campaigns, uploading creative, building audiences, reading performance, pausing what isn't working.
+
+```bash
+cd functions
+npm run meta -- doctor                          # check every prerequisite. ALWAYS run first.
+npm run meta -- help                            # full command surface
+npm run meta -- report --days 7 --level adset   # normalized spend / CPI / ROAS
+npm run meta -- launch --spec campaign.json     # build a whole campaign tree
+npm run meta -- selftest                        # offline; no token needed
+```
+The `--` is required (npm eats the flags without it).
+
+**Everything the CLI creates is created PAUSED and cannot spend money until a human activates it.** That is enforced in `scripts/meta/client.ts`, the single choke point every request passes through — no command module calls `fetch` directly, which is what makes the guardrail non-bypassable rather than a convention. It also enforces a budget ceiling, a budget floor, and account-wide spend headroom.
+
+**Activation** — not creation — is the operation that spends money, and it is checked in `client.post` itself, so it covers a raw `graph --method POST <id> --field status=ACTIVE` and not just the typed `resume` verbs. The account-wide cap reads **campaign-level budgets as well as ad-set ones**: under CBO (what `spec example` produces) the ad sets carry no budget, so summing only ad sets made the cap read zero and bind on nothing.
+
+`selftest` asserts these guardrails directly — the budget floor, the forced PAUSED, the activation check. They previously had no test at all.
+
+`--dry-run` prints the request without sending it; `--validate` has Meta validate it server-side and create nothing. They catch different classes of bug — use both before a first launch. A dry run **writes no ledger** (it creates nothing, so it has nothing to record) and still reads the account's currency and minimum, which is what lets it catch a `30`-meaning-$30 budget — the 100× bug — before it reaches Meta.
+
+Prefer `campaign archive` over `campaign delete`: archiving frees one of the app's 9 SKAdNetwork slots and **keeps the reporting history**; deleting destroys it.
+
+Detailed guidance for agents lives in the **`meta-ads` skill** (`.claude/skills/meta-ads/`), including the SKAdNetwork rules, the launch-spec schema, and a Graph error → fix table.
+
+**Human-only prerequisites** (Claude cannot do these; `doctor` diagnoses each). Each fails at a *different* step, so a successful campaign create proves nothing about the next one:
+- The Meta app must be **Live, not in Development Mode** — otherwise campaigns and ad sets succeed but every *creative* is rejected.
+- The Meta app needs an **iOS platform** configured (Bundle ID + iPhone Store ID `6743630735`) — otherwise campaigns succeed but every *ad set* is rejected (subcode 1885093).
+- A **Facebook Page** — every ad creative needs `object_story_spec.page_id` and there is no default. The token does *not* need `pages_read_engagement` to run ads; that only reads Page metadata.
+- The System User must be **assigned to the ad account** in Business Settings (having `ads_management` on the token is not sufficient).
+- The System User needs a **role on the app** (Business Settings → Accounts → Apps → Add People) to read what Meta has recorded for it. Without it `npm run meta -- events` fails with **code 3000** — a token can create campaigns for an app it cannot read. This is the command that tells you whether your app events are landing at all, so it's worth granting.
+
+Note the ad account bills in **CAD**. All budgets in the Meta API are integer minor units — `3000` is $30.00.
 
 ## Screens & Navigation
 
@@ -186,6 +273,8 @@ Player {
   authProvider: 'email' | 'google' | 'apple',
   pendingClaim: boolean,   // placeholder awaiting claim
   invitedBy: string,
+  phoneNumber: string,     // DISPLAY form ("5551234567" US, "+44 7700900123"). Never hash this.
+  phoneNumberE164: string, // digits + country code ("15551234567"). What Meta hashes — use this.
   phoneNumberHash: string, // SHA-256 for privacy
   lastCompletedMatchDate: number,  // 0 if never; denormalized by recalculateStatsOnMatchUpdate; powers weekly inactivity nudge
   createdAt, updatedAt     // unix timestamps
@@ -487,6 +576,9 @@ SMSInvite { id, inviterId, inviterName, recipientPhones[], recipientNames[], sta
 |---------|---------|
 | `pushNotifications` | FCM token registration/deregistration, permission requests, notification handlers |
 | `appsflyer` | Initialize attribution SDK, `generateOpenMatchLink(matchId)`, `generateOneLink(inviteId)`, deferred deep link handling |
+| `analytics` | **Fan-out facade — use this, not the vendor SDKs directly.** `identifyUser`, `resetUser`, `syncMetaContext`, and a `track.*` object that sends each conversion event to both AppsFlyer and Meta |
+| `meta` | Meta App Events wrapper — ATT-gated `initMeta()`, event queue, `setMetaUserData` (Advanced Matching), `captureMetaDeviceContext()` |
+| `tracking` | App Tracking Transparency gate. `whenTrackingResolved()` is the promise both attribution SDKs wait on before sending the install event |
 | `placesService` | Google Places API: `searchPlaces`, `getPlaceDetails`, `searchNearbyCourts` (10km default) |
 | `superwallPlacements` | Paywall placement name constants |
 | `constants` | App-wide configuration constants |
@@ -568,11 +660,31 @@ ruby scripts/fix-watch-target.rb
 ```bash
 npx expo prebuild --platform ios --clean
 ruby scripts/fix-watch-target.rb
-# Build watch separately for watchOS simulator
-xcodebuild -project ios/PickleGo.xcodeproj -target PickleGoWatch -sdk watchsimulator ONLY_ACTIVE_ARCH=NO build
+
+# Boot BOTH halves of a pair — sim-watch-override.sh greps for "active, connected",
+# and a pair only reaches that state when phone and watch are both booted.
+xcrun simctl list pairs                       # pick a pair, note both UDIDs
+xcrun simctl boot <phone-udid>
+xcrun simctl boot <watch-udid>
+
+# Phone: builds, installs and launches (simulator builds skip the watch target)
+npx expo run:ios --device <phone-udid>
+
+# Watch: built separately for watchOS. Use CONFIGURATION_BUILD_DIR, not -derivedDataPath —
+# the latter requires -scheme, and the watch target is deliberately not in the scheme.
+xcodebuild -project ios/PickleGo.xcodeproj -target PickleGoWatch -sdk watchsimulator \
+  -configuration Debug ONLY_ACTIVE_ARCH=NO CONFIGURATION_BUILD_DIR=/tmp/picklego-watch build
+
+# xcodebuild only produces the .app — it does not install it. Without this, the watch has no
+# App Group container and sim-watch-override.sh fails with "Watch app not installed".
+xcrun simctl install <watch-udid> /tmp/picklego-watch/PickleGoWatch.app
+
 # Symlink App Group containers (simulators have separate filesystems)
 ./scripts/sim-watch-override.sh
+./scripts/sim-watch-override.sh --check       # verify
 ```
+
+**Re-run `sim-watch-override.sh` after every reinstall of either app.** Simulator container UUIDs are regenerated on install, so the symlink goes stale and silently points at a dead path — the watch just stops seeing matches. `--check` detects this.
 
 ### Key Constraints
 - `watch/` is the source of truth — never edit files in `ios/PickleGoWatch/` (overwritten on prebuild)

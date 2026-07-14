@@ -7,6 +7,15 @@
     "rules": "storage.rules"
   },
   "functions": {
-    "source": "functions"
+    "source": "functions",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "scripts/**",
+      ".meta-runs/**",
+      "*.local",
+      "firebase-debug.log",
+      "firebase-debug.*.log"
+    ]
   }
 }
